@@ -1,0 +1,8 @@
+name "jcli"
+description "A CLI framework library."
+authors "Sealab"
+copyright "Copyright © 2019, Sealab"
+license "MIT"
+
+targetType "library"
+targetPath "bin"

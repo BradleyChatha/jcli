@@ -1,0 +1,16 @@
+.dub
+docs.json
+__dummy.html
+docs/
+bin/
+/jcli
+jcli.so
+jcli.dylib
+jcli.dll
+jcli.a
+jcli.lib
+jcli-test-*
+*.exe
+*.o
+*.obj
+*.lst
