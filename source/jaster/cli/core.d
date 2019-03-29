@@ -3,7 +3,7 @@ module jaster.cli.core;
 private
 {
     import std.exception : enforce;
-    import std.algorithm : startsWith;
+    import std.algorithm : startsWith, filter;
     import std.format    : format;
     import std.uni       : toLower;
     import std.traits    : fullyQualifiedName, hasUDA, getUDAs, getSymbolsByUDA;
@@ -52,14 +52,85 @@ private class JCliRunner(CommandModules...)
 
     public
     {
-        void executeFromArgs(string[] args, IgnoreFirstArg ignore = IgnoreFirstArg.yes)
+        void executeFromArgs(string[] args, IgnoreFirstArg ignoreFirst = IgnoreFirstArg.yes)
         {
-            
+            if(args.length == 0)
+                return; // TODO: Help message.
+
+            if(ignoreFirst)
+                args = args[1..$];
+
+            auto command = this.doLookup(args);
+
+            version(release)
+            {
+                try command.onExecute(args);
+                catch(Exception ex)
+                {
+                    // TODO: Error message and things.
+                    return;
+                }
+            }
+            else
+                command.onExecute(args);
         }
     }
 
     private
     {
+        CommandInfo doLookup(ref string[] args)
+        {
+            
+            /++
+            Lookup rules:
+                All args are temp converted to lower case for lookup purposes.
+
+                Lookup rules are done in the same order as listed.
+
+                [Command Group]
+                - Take the 0th argument.
+                - Look over all commands and find all commands that have the 0th argument match their command group.
+                - Take the 1st arg (if it exists, otherwise goto the [No Command Group] stage.
+                - Look over all commands that match the command group, and then find the command that matches the 1st arg.
+                    - TODO: Ensure there are no duplicate commands when parsing modules.
+                - Execute the command if it exists, otherwise show an error and the help text.
+
+                [No Command Group]
+                - Take the 0th argument
+                - Look over all commands for the command that matches the arg.
+                - Execute the command if it exists, otherwise show an error and the help text.
+            ++/
+            
+            auto arg = args[0].toLower();
+            
+            // [Command Group]
+            if(args.length > 1)
+            {
+                auto commandsInGroup = this._commands.filter!(c => c.group == arg);
+
+                if(!commandsInGroup.empty)
+                {
+                    auto command = commandsInGroup.filter!(c => c.name == args[1].toLower());
+                    // TODO: Show help text.
+                    // TODO: Put emphesis on subcommands of this group.
+                    enforce(!command.empty);
+
+                    args.removeAt(0);
+                    args.removeAt(0);
+                    return command.front;
+                }
+
+                // Fall through into [No Command Group]
+            }
+
+            // [No Command Group]
+            auto command = this._commands.filter!(c => c.name == arg);
+            enforce(!command.empty, "TODO: Help message and stuff.");
+
+            args.removeAt(0);
+            return command.front;
+        }
+
         void parseModules()
         {
             static foreach(mod; CommandModules)
@@ -144,26 +215,46 @@ private class JCliRunner(CommandModules...)
 
                     // Full
                     if(arg.startsWith("--"))
-                    {                        
+                    {
                         enforce(arg.length > 2, "There is a stray '--', likely meaning a messed up long-form argument.");
                         isIndexed = false;
                         
                         // Find where the name ends and the value begins.
-                        size_t optionNameEnd = size_t.max; // If it stays size_t.max, that means there's no value attach, and is likely a boolean option.
+                        size_t optionNameEnd = size_t.max; // If it stays size_t.max, that means there's no value attached.
+                        char splitChar = '\0';
                         foreach(argI, argChar; arg)
                         {
                             if(argChar == '=' || argChar == ' ')
                             {
+                                splitChar = argChar;
                                 optionNameEnd = argI;
                                 optionName = arg[2..optionNameEnd];
                                 break;
                             }
+                            else if(argI == arg.length - 1)
+                            {
+                                optionName = arg[2..$];
+                                break;
+                            }
                         }
-                        
+
                         // Read in the value.
-                        size_t valueStringStart = optionNameEnd + 1; // + 1 to skip the space or = sign.
-                        if(optionNameEnd != size_t.max && valueStringStart < arg.length)
-                            valueString = arg[valueStringStart..$];
+                        if(splitChar == '=')
+                        {
+                            size_t valueStringStart = optionNameEnd + 1; // + 1 to skip the = sign.
+                            if(optionNameEnd != size_t.max && valueStringStart < arg.length)
+                                valueString = arg[valueStringStart..$];
+                        }
+                        else if(i + 1 < args.length)
+                        {
+                            // TODO: Think about how this fucks up the boolean ones...
+                            //       Only way around it is a forward lookup here, or before, to create a list of names that are boolean values.
+                            auto val = args[++i];
+                            if(val.startsWith("-") || val.startsWith("--")) // This can be avoided when we have the lookup code done.
+                                --i;
+                            else
+                                valueString = val;
+                        }
                     }
                     // Short hand
                     else if(arg.startsWith("-"))
@@ -172,12 +263,22 @@ private class JCliRunner(CommandModules...)
                         isIndexed = false;
                         optionName = arg[1..2];
 
-                        if(arg.length != 2) // If it's 2, then it's likely a boolean option (and if not, we validate that a bit later on)
+                        if(arg.length != 2) // If it's 2, then it's likely a boolean option, or has a space between it's argument. (and if not, we validate that a bit later on)
                         {
-                            size_t startIndex = (arg[2] == ' ' || arg[2] == '=')
+                            size_t startIndex = (arg[2] == '=')
                                                 ? 3 : 2;
                             
                             valueString = arg[startIndex..$];
+                        }
+                        else if(i + 1 < args.length)
+                        {
+                            // TODO: Think about how this fucks up the boolean ones...
+                            //       Only way around it is a forward lookup here, or before, to create a list of names that are boolean values.
+                            auto val = args[++i];
+                            if(val.startsWith("-") || val.startsWith("--")) // This can be avoided when we have the lookup code done.
+                                --i;
+                            else
+                                valueString = val;
                         }
                     }
                     // Indexed
@@ -221,13 +322,13 @@ private class JCliRunner(CommandModules...)
                     // TODO: Display help text
                     throw new Exception(
                         (isIndexed)
-                        ? format("Stray argument: %s", valueString)
-                        : format("Unrecognised option: %s = %s", optionName, valueString)
+                        ? format("Stray argument: %s | %s", valueString, args)
+                        : format("Unrecognised option: %s = %s | %s", optionName, valueString, args)
                     );
                 }
 
                 // TODO: Display help text.
-                enforce(requiredArgNames.length != 0, format("The following required args are missing: %s", requiredArgNames));
+                enforce(requiredArgNames.length == 0, format("The following required args are missing: %s", requiredArgNames));
 
                 commandObject.onExecute();
             };
@@ -253,9 +354,10 @@ enum IsIndexedArgument(alias Symbol)   = hasUDA!(Symbol, ArgumentIndex);
 enum IsOptionArgument(alias Symbol)    = hasUDA!(Symbol, ArgumentOption);
 enum IsRequiredArgument(alias Symbol)  = hasUDA!(Symbol, ArgumentRequired);
 
-void runCliCommands(CommandModules...)()
+void runCliCommands(CommandModules...)(string[] args, IgnoreFirstArg ignoreFirst = IgnoreFirstArg.yes)
 {
     auto runner = new JCliRunner!CommandModules;
+    runner.executeFromArgs(args);
 }
 
 import jaster.cli.example;

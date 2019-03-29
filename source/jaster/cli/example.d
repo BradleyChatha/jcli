@@ -56,5 +56,5 @@ void pseudoMain(string[] args)
     runCliCommands!
     (
         jaster.cli.example
-    )();
+    )(args);
 }
