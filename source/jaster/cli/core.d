@@ -8,6 +8,7 @@ private
     import std.uni       : toLower;
     import std.traits    : fullyQualifiedName, hasUDA, getUDAs, getSymbolsByUDA;
     import std.meta      : staticMap, Filter;
+    import std.typecons  : Flag;
     import jaster.cli.udas;
 }
 
@@ -23,6 +24,8 @@ template GetUdaOrDefault(alias Symbol, alias Uda, Uda default_)
     else
         enum GetUdaOrDefault = default_;
 }
+
+alias IgnoreFirstArg = Flag!"ignoreFirst";
 
 private class JCliRunner(CommandModules...)
 {
@@ -49,7 +52,10 @@ private class JCliRunner(CommandModules...)
 
     public
     {
-
+        void executeFromArgs(string[] args, IgnoreFirstArg ignore = IgnoreFirstArg.yes)
+        {
+            
+        }
     }
 
     private
@@ -86,6 +92,8 @@ private class JCliRunner(CommandModules...)
 
                     info.group = info.group.toLower();
                     info.name  = info.name.toLower();
+
+                    this._commands ~= info;
                 }}
             }}
         }
@@ -210,8 +218,18 @@ private class JCliRunner(CommandModules...)
                     if(argHandled)
                         continue;
 
-                    // If we get here, then we haven't handled it, so do errory stuffs.
+                    // TODO: Display help text
+                    throw new Exception(
+                        (isIndexed)
+                        ? format("Stray argument: %s", valueString)
+                        : format("Unrecognised option: %s = %s", optionName, valueString)
+                    );
                 }
+
+                // TODO: Display help text.
+                enforce(requiredArgNames.length != 0, format("The following required args are missing: %s", requiredArgNames));
+
+                commandObject.onExecute();
             };
         }
 

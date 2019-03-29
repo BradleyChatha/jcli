@@ -7,6 +7,14 @@ struct Command
 struct CommandGroup
 {
     string group;
+    
+    this(string group)
+    {
+        import std.algorithm : canFind;
+        assert(!group.canFind(' ') && !group.canFind('\t'), "Nested command groups aren't supported yet, so please don't use whitespace in @CommandGroup.");
+
+        this.group = group;
+    }
 }
 
 struct CommandName
