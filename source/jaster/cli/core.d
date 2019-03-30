@@ -345,6 +345,7 @@ private class JCliRunner(CommandModules...)
 
             static if(is(ArgType == string))
                 setValue(valueString);
+            else static assert(false, "Unsupported argument type: "~ArgType.stringof~" for arg "~__traits(identifier, Argument));
         }
     }
 }
