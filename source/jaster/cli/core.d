@@ -329,8 +329,6 @@ private class JCliRunner(CommandModules...)
                         }
                         else if(i + 1 < args.length)
                         {
-                            // TODO: Think about how this fucks up the boolean ones...
-                            //       Only way around it is a forward lookup here, or before, to create a list of names that are boolean values.
                             auto val = args[++i];
                             if(val.startsWith("-") || val.startsWith("--")) // This can be avoided when we have the lookup code done.
                                 --i;
