@@ -376,7 +376,6 @@ private class JCliRunner(CommandModules...)
                     if(argHandled)
                         continue;
 
-                    // TODO: Display help text
                     throw new Exception(
                         (isIndexed)
                         ? format("Stray argument: %s | %s", valueString, args)
@@ -384,7 +383,6 @@ private class JCliRunner(CommandModules...)
                     );
                 }
 
-                // TODO: Display help text.
                 enforce(requiredArgNames.length == 0, format("The following required args are missing: %s", requiredArgNames));
 
                 commandObject.onExecute();
