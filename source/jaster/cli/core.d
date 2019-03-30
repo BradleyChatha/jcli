@@ -2,12 +2,15 @@ module jaster.cli.core;
 
 private
 {
-    import std.exception : enforce;
-    import std.algorithm : startsWith, filter;
+    import std.array     : array;
+    import std.exception : enforce, assumeUnique;
+    import std.algorithm : startsWith, filter, multiSort, SwapStrategy, map;
+    import std.range     : repeat, take;
     import std.format    : format;
     import std.uni       : toLower;
     import std.traits    : fullyQualifiedName, hasUDA, getUDAs, getSymbolsByUDA;
     import std.meta      : staticMap, Filter;
+    import std.stdio     : writeln, writefln;
     import std.typecons  : Flag;
     import jaster.cli.udas;
 }
@@ -38,6 +41,11 @@ private class JCliRunner(CommandModules...)
         string description;
         
         CommandExecuteFunc onExecute; // Handles creation, arg parsing, and execution.
+
+        string getDisplayString()
+        {
+            return (this.group.length > 0) ? this.group ~ " " ~ this.name : this.name;
+        }
     }
 
     private
@@ -48,39 +56,85 @@ private class JCliRunner(CommandModules...)
     this()
     {
         this.parseModules();
+
+        // This is done so help text is generated in the right order.
+        this._commands.multiSort!("a.name < b.name", "a.group.length == 0 || a.group < b.group", SwapStrategy.unstable);
     }
 
     public
     {
         void executeFromArgs(string[] args, IgnoreFirstArg ignoreFirst = IgnoreFirstArg.yes)
         {
-            if(args.length == 0)
-                return; // TODO: Help message.
+            // To avoid having to write logic just to accomadate args being a length of 0 later on, it's easier
+            // to just check here.
+            if(args.length == 0 || (args.length == 1 && ignoreFirst))
+            {
+                writeln("ERROR: No arguments were given.");
+                writeln(this.createOverallHelpText());
+                return;
+            }
 
+            // If we're passed args directly from main, then args[0] will be the path to the program, so we just
+            // want to ignore it.
+            // Unlike std.getopt however, we actually give the user a choice on whether to do this T.T
             if(ignoreFirst)
                 args = args[1..$];
 
-            auto command = this.doLookup(args);
-
-            version(release)
+            CommandInfo command;
+            
+            // Lookup the command
+            try command = this.doLookup(args);
+            catch(Exception ex)
             {
-                try command.onExecute(args);
-                catch(Exception ex)
-                {
-                    // TODO: Error message and things.
-                    return;
-                }
+                writeln("ERROR: ", ex.msg);
+                writeln(this.createOverallHelpText());
+                return;
             }
-            else
-                command.onExecute(args);
+
+            // Then execute it
+            try command.onExecute(args);
+            catch(Exception ex)
+            {
+                writeln("ERROR: ", ex.msg);
+                writeln(this.createOverallHelpText()); // TODO: Change this to be a specific help text for the command, instead of overall.
+
+                debug writeln(ex.info);
+                return;
+            }
         }
     }
 
     private
     {
+        // Help text for all overall commands.
+        string createOverallHelpText()
+        {
+            import std.array : appender;
+
+            // For padding.
+            auto largestSize = this._commands.map!(c => c.getDisplayString()).getLargestStringSize() + 1; // + 1 since we're including the postfix space.
+
+            auto help = appender!(char[]);
+            help.reserve(4096);
+            help.put("Commands Available:\n");
+            
+            foreach(arr; this._commands.map!(c => this.createCommandHelpText(c, largestSize)))
+                help.put(arr);
+
+            return help.data.assumeUnique;
+        }
+
+        string createCommandHelpText(CommandInfo command, size_t largestSize)
+        {
+            return format("\t%s%s- %s\n",
+                           command.getDisplayString(),
+                           ' '.repeat(largestSize - command.getDisplayString().length),
+                           command.description
+                         );
+        }
+
         CommandInfo doLookup(ref string[] args)
         {
-            
             /++
             Lookup rules:
                 All args are temp converted to lower case for lookup purposes.
@@ -111,9 +165,7 @@ private class JCliRunner(CommandModules...)
                 if(!commandsInGroup.empty)
                 {
                     auto command = commandsInGroup.filter!(c => c.name == args[1].toLower());
-                    // TODO: Show help text.
-                    // TODO: Put emphesis on subcommands of this group.
-                    enforce(!command.empty);
+                    enforce(!command.empty, format("No command called '%s %s'", arg, args[1]));
 
                     args.removeAt(0);
                     args.removeAt(0);
@@ -125,7 +177,7 @@ private class JCliRunner(CommandModules...)
 
             // [No Command Group]
             auto command = this._commands.filter!(c => c.name == arg);
-            enforce(!command.empty, "TODO: Help message and stuff.");
+            enforce(!command.empty, "No command called '%s'".format(arg));
 
             args.removeAt(0);
             return command.front;
@@ -171,11 +223,16 @@ private class JCliRunner(CommandModules...)
 
         static CommandExecuteFunc createOnExecute(alias Command)()
         {
+            // TODO: For the love of god, split this function up.
+            //       I'm 100% sure the actual arg parsing part can be put into it's own function.
+            //       The further arg handling afterwards can probably also be moved, it'll just have a ton of parameters.
             alias Arguments         = getSymbolsByUDA!(Command, Argument);
             alias IndexArguments    = Filter!(IsIndexedArgument, Arguments);
             alias OptionArguments   = Filter!(IsOptionArgument, Arguments);
             alias RequiredArguments = Filter!(IsRequiredArgument, Arguments);
 
+            // TODO: Version flag for this, and all other pragma(msg)s. (mostly this one though).
+            // Possible TODO: A library that handles this for us.
             debug pragma(msg, format("[JCli] Debug: Out of %s arguments. %s are indexed. %s are options.",
                                      Arguments.length, IndexArguments.length, OptionArguments.length                         
             ));
@@ -361,10 +418,19 @@ void runCliCommands(CommandModules...)(string[] args, IgnoreFirstArg ignoreFirst
     runner.executeFromArgs(args);
 }
 
-import jaster.cli.example;
-alias Test = runCliCommands!(jaster.cli.udas, jaster.cli.example);
+alias Test = runCliCommands!(jaster.cli.udas);
 
+private size_t getLargestStringSize(R)(R range)
+{
+    size_t largest = 0;
+    foreach(str; range)
+    {
+        if(str.length > largest)
+            largest = str.length;
+    }
 
+    return largest;
+}
 
 
 //////////////////////////////////////////////////////////////////

@@ -16,7 +16,7 @@ struct ParamOptionParseCommand
     @Argument
     @ArgumentIndex(0)
     string str2;
-    
+
     void onExecute()
     {
         assert(this.str == "Lalafell", this.str);
