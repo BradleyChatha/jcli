@@ -28,6 +28,14 @@ template GetUdaOrDefault(alias Symbol, alias Uda, Uda default_)
         enum GetUdaOrDefault = default_;
 }
 
+template GetAllCommands(alias Symbol)
+{
+    alias MapFunc(string Name) = StringToMember!(Symbol, Name);
+    enum  FilterFunc(alias Member) = hasUDA!(Member, Command);
+                
+    alias GetAllCommands = Filter!(FilterFunc, staticMap!(MapFunc, __traits(allMembers, Symbol)));
+}
+
 alias IgnoreFirstArg = Flag!"ignoreFirst";
 
 private class JCliRunner(CommandModules...)
@@ -190,10 +198,7 @@ private class JCliRunner(CommandModules...)
                 pragma(msg, "[JCli] Info: Processing module "~fullyQualifiedName!mod);
 
                 // Get all commands.
-                alias MapFunc(string Name) = StringToMember!(mod, Name);
-                enum  FilterFunc(alias Member) = hasUDA!(Member, Command);
-                
-                alias Members = Filter!(FilterFunc, staticMap!(MapFunc, __traits(allMembers, mod)));
+                alias Members = GetAllCommands!mod;
                 static if(Members.length == 0)
                     pragma(msg, "[JCli] Warning: Module "~fullyQualifiedName!mod~" contains no commands.");
 
