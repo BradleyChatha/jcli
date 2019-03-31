@@ -41,6 +41,7 @@ unittest
     doTest("--str Lalafell Suck");
     doTest("--str=Lalafell Suck");
 
+    // Manual tests for now.
     runCliCommands!(jaster.cli.tests)(["--help"], IgnoreFirstArg.no);
     runCliCommands!(jaster.cli.tests)(["test", "--help"], IgnoreFirstArg.no);
     runCliCommands!(jaster.cli.tests)(["test", "param-option", "--help"], IgnoreFirstArg.no);
