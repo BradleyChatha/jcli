@@ -11,6 +11,7 @@ struct ParamOptionParseCommand
 {
     @Argument
     @ArgumentOption("s|str")
+    @ArgumentRequired
     string str;
 
     @Argument
@@ -39,4 +40,8 @@ unittest
     doTest("-sLalafell Suck");
     doTest("--str Lalafell Suck");
     doTest("--str=Lalafell Suck");
+
+    runCliCommands!(jaster.cli.tests)(["--help"], IgnoreFirstArg.no);
+    runCliCommands!(jaster.cli.tests)(["test", "--help"], IgnoreFirstArg.no);
+    runCliCommands!(jaster.cli.tests)(["test", "param-option", "--help"], IgnoreFirstArg.no);
 }

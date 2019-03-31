@@ -4,7 +4,7 @@ private
 {
     import std.array     : array;
     import std.exception : enforce, assumeUnique;
-    import std.algorithm : startsWith, filter, multiSort, SwapStrategy, map;
+    import std.algorithm : startsWith, filter, multiSort, SwapStrategy, map, any;
     import std.range     : repeat, take;
     import std.format    : format;
     import std.uni       : toLower;
@@ -36,21 +36,52 @@ template GetAllCommands(alias Symbol)
     alias GetAllCommands = Filter!(FilterFunc, staticMap!(MapFunc, __traits(allMembers, Symbol)));
 }
 
+// It's out here because the compiler throws a wobbly.
+enum ArgFilterFunc(alias Member) = hasUDA!(Member, Argument);
+template GetAllArugments(alias Symbol)
+{    
+    alias MapFunc(string Name) = StringToMember!(Symbol, Name);
+                
+    alias GetAllArugments = Filter!(ArgFilterFunc, staticMap!(MapFunc, __traits(allMembers, Symbol)));
+}
+
 alias IgnoreFirstArg = Flag!"ignoreFirst";
 
 private class JCliRunner(CommandModules...)
 {
     alias CommandExecuteFunc = void function(ref string[]);
 
+    enum ArgumentType
+    {
+        Indexed,
+        Option
+    }
+
+    struct ArgumentInfo
+    {
+        string name;
+        string description;
+        string typeNameShort;
+        ArgumentType type;
+        size_t indexedIndex = size_t.max; // Indexed arguments only.
+        bool required;
+
+        string getDisplayNameString()
+        {
+            return format("%s <%s>", this.name, this.typeNameShort);
+        }
+    }
+
     struct CommandInfo
     {
         string group;
         string name;
         string description;
-        
+
+        ArgumentInfo[] args;        
         CommandExecuteFunc onExecute; // Handles creation, arg parsing, and execution.
 
-        string getDisplayString()
+        string getDisplayNameString()
         {
             return (this.group.length > 0) ? this.group ~ " " ~ this.name : this.name;
         }
@@ -89,6 +120,12 @@ private class JCliRunner(CommandModules...)
                 args = args[1..$];
 
             CommandInfo command;
+
+            if(args[0] == "--help" || args[0] == "-h")
+            {
+                writeln(this.createOverallHelpText());
+                return;
+            }
             
             // Lookup the command
             try command = this.doLookup(args);
@@ -99,12 +136,20 @@ private class JCliRunner(CommandModules...)
                 return;
             }
 
+            // This differs from the check just above in that this activates for when "--help" is used for
+            // any arg position that isn't the first one (aka, the command arg position).
+            if(args.any!(a => a == "--help" || a == "-h"))
+            {
+                writeln(this.createCommandDetailedHelpText(command));
+                return;
+            }
+
             // Then execute it
             try command.onExecute(args);
             catch(Exception ex)
             {
                 writeln("ERROR: ", ex.msg);
-                writeln(this.createOverallHelpText()); // TODO: Change this to be a specific help text for the command, instead of overall.
+                writeln(this.createCommandDetailedHelpText(command));
 
                 debug writeln(ex.info);
                 return;
@@ -120,25 +165,63 @@ private class JCliRunner(CommandModules...)
             import std.array : appender;
 
             // For padding.
-            auto largestSize = this._commands.map!(c => c.getDisplayString()).getLargestStringSize() + 1; // + 1 since we're including the postfix space.
+            auto largestSize = this._commands.map!(c => c.getDisplayNameString()).getLargestStringSize() + 1; // + 1 since we're including the postfix space.
 
             auto help = appender!(char[]);
             help.reserve(4096);
             help.put("Commands Available:\n");
             
-            foreach(arr; this._commands.map!(c => this.createCommandHelpText(c, largestSize)))
+            foreach(arr; this._commands.map!(c => this.createCommandBriefHelpText(c, largestSize)))
                 help.put(arr);
 
             return help.data.assumeUnique;
         }
 
-        string createCommandHelpText(CommandInfo command, size_t largestSize)
+        string createCommandBriefHelpText(CommandInfo command, size_t largestSize)
         {
             return format("\t%s%s- %s\n",
-                           command.getDisplayString(),
-                           ' '.repeat(largestSize - command.getDisplayString().length),
+                           command.getDisplayNameString(),
+                           ' '.repeat(largestSize - command.getDisplayNameString().length),
                            command.description
                          );
+        }
+
+        string createCommandDetailedHelpText(CommandInfo command)
+        {
+            import std.array : appender;
+            
+            auto largestSize = command.args.map!(a => a.getDisplayNameString()).getLargestStringSize() + 1;
+            auto help = appender!(char[]);
+            help.reserve(4096);
+
+            // TODO: Change "[Arguments]" to directly include the actual indexed arguments.
+            //       e.g. "Usage: ... [arg1] [arg2] <optionalArg3>"
+            help.put(format("Usage: %s [Options] [Arguments]\n", command.getDisplayNameString()));
+
+            help.put("Valid [Options]:\n");
+            foreach(arg; command.args.filter!(a => a.type == ArgumentType.Option))
+            {
+                help.put(format("\t%s%s- %s%s\n",
+                    arg.getDisplayNameString(),
+                    ' '.repeat(largestSize - arg.getDisplayNameString().length),
+                    (arg.required) ? "[Required] " : "",
+                    arg.description
+                ));
+            }
+
+            // TODO: Remove code duplication, or complete the other TODO just above.
+            help.put("Valid [Arguments] In Order:\n");
+            foreach(arg; command.args.filter!(a => a.type == ArgumentType.Indexed))
+            {
+                help.put(format("\t%s%s- %s%s\n",
+                    arg.getDisplayNameString(),
+                    ' '.repeat(largestSize - arg.getDisplayNameString().length),
+                    (arg.required) ? "[Required] " : "",
+                    arg.description
+                ));
+            }
+
+            return help.data.assumeUnique;
         }
 
         CommandInfo doLookup(ref string[] args)
@@ -217,9 +300,36 @@ private class JCliRunner(CommandModules...)
                     info.name        = GetUdaOrDefault!(command, CommandName, CommandName(__traits(identifier, command))).name;
                     info.description = GetUdaOrDefault!(command, CommandDescription, CommandDescription("N/A")).description;
                     info.onExecute   = this.createOnExecute!command;
+                    info.group       = info.group.toLower();
+                    info.name        = info.name.toLower();
 
-                    info.group = info.group.toLower();
-                    info.name  = info.name.toLower();
+                    // Process all arguments
+                    static foreach(arg; GetAllArugments!command)
+                    {{
+                        ArgumentInfo argInfo;
+
+                        // TODO: Check to make sure ArgumentIndex and ArgumentOption are mutually exclusive.
+
+                        static if(hasUDA!(arg, ArgumentIndex))
+                        {
+                            enum IndexInfo = getUDAs!(arg, ArgumentIndex)[0];
+                            argInfo.type = ArgumentType.Indexed;
+                            argInfo.indexedIndex = IndexInfo.index;
+                            argInfo.name = __traits(identifier, arg);
+                        }
+                        else static if(hasUDA!(arg, ArgumentOption))
+                        {
+                            enum OptionInfo = getUDAs!(arg, ArgumentOption)[0];
+                            argInfo.type = ArgumentType.Option;
+                            argInfo.name = OptionInfo.option;
+                        }
+                        else static assert(false, format("Argument %s doesn't have either @ArgumentOption nor @ArgumentIndex", fullyQualifiedName!arg));
+
+                        argInfo.description = GetUdaOrDefault!(arg, ArgumentDescription, ArgumentDescription("N/A")).description;
+                        argInfo.required = hasUDA!(arg, ArgumentRequired);
+                        argInfo.typeNameShort = typeof(arg).stringof;
+                        info.args ~= argInfo;
+                    }}
 
                     this._commands ~= info;
                 }}
@@ -241,8 +351,6 @@ private class JCliRunner(CommandModules...)
             debug pragma(msg, format("[JCli] Debug: Out of %s arguments. %s are indexed. %s are options.",
                                      Arguments.length, IndexArguments.length, OptionArguments.length                         
             ));
-
-            // TODO: Check to make sure ArgumentIndex and ArgumentOption are mutually exclusive.
 
             return (ref string[] args)
             {
