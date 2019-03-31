@@ -198,6 +198,7 @@ private class JCliRunner(CommandModules...)
             //       e.g. "Usage: ... [arg1] [arg2] <optionalArg3>"
             help.put(format("Usage: %s [Options] [Arguments]\n", command.getDisplayNameString()));
 
+            // TODO: Sort by name.
             help.put("Valid [Options]:\n");
             foreach(arg; command.args.filter!(a => a.type == ArgumentType.Option))
             {
@@ -209,7 +210,7 @@ private class JCliRunner(CommandModules...)
                 ));
             }
 
-            // TODO: Remove code duplication, or complete the other TODO just above.
+            // TODO: Remove code duplication, or complete the other TODO at the top.
             help.put("Valid [Arguments] In Order:\n");
             foreach(arg; command.args.filter!(a => a.type == ArgumentType.Indexed))
             {
