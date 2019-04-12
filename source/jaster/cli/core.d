@@ -4,7 +4,7 @@ private
 {
     import std.array     : array;
     import std.exception : enforce, assumeUnique;
-    import std.algorithm : startsWith, filter, multiSort, SwapStrategy, map, any;
+    import std.algorithm : startsWith, filter, multiSort, SwapStrategy, map, any, countUntil;
     import std.range     : repeat, take;
     import std.format    : format;
     import std.uni       : toLower;
@@ -363,9 +363,17 @@ private class JCliRunner(CommandModules...)
                     requiredArgNames ~= fullyQualifiedName!required;
 
                 // Helper funcs
-                void removeArg(ref size_t i)
+                void removeArg(ref size_t i, string requiredName = null)
                 {
                     args.removeAt(i--);
+
+                    if(requiredName != null)
+                    {
+                        auto pos = requiredArgNames.countUntil(requiredName);
+                        assert(pos != -1);
+
+                        requiredArgNames.removeAt(pos);
+                    }
                 }
 
                 // For loop instead of foreach since we'll be modifying the array as we go along.
@@ -466,7 +474,7 @@ private class JCliRunner(CommandModules...)
                             enum Option = getUDAs!(argument, ArgumentOption)[0];
                             if(!argHandled && !isIndexed && Option.isValidOption(optionName))
                             {
-                                removeArg(i);
+                                removeArg(i, (IsRequiredArgument!argument) ? fullyQualifiedName!argument : "");
                                 parseIntoObject!(Command, argument)(commandObject, valueString);
                                 argHandled = true;
                             }
@@ -476,7 +484,7 @@ private class JCliRunner(CommandModules...)
                             enum Index = getUDAs!(argument, ArgumentIndex)[0];
                             if(!argHandled && isIndexed && indexedIndex == Index.index)
                             {
-                                removeArg(i);
+                                removeArg(i, (IsRequiredArgument!argument) ? fullyQualifiedName!argument : "");
                                 indexedIndex++;
                                 parseIntoObject!(Command, argument)(commandObject, valueString);
                                 argHandled = true;
