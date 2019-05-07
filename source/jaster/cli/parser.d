@@ -5,20 +5,60 @@ private
     import std.typecons : Flag;
 }
 
+/// What type of data an `ArgToken` stores.
 enum ArgTokenType
 {
+    /// None. If this ever gets returned by the `ArgPullParser`, it's an error.
     None,
+    
+    /// Plain text. Note that these values usually do have some kind of meaning (e.g. the value of a named argument) but it's
+    /// too inaccurate for the parser to determine their meanings. So it's up to whatever is using the parser.
     Text,
-    ArgumentName,
+
+    /// The name of a short hand argument ('-h', '-c', etc.) $(B without) the leading '-'.
+    ShortHandArgument,
+
+    /// The name of a long hand argument ('--help', '--config', etc.) $(B without) the leading '--'.
+    LongHandArgument,
+    
+    /// End of file/input.
     EOF
 }
 
+/// Contains information about a token.
 struct ArgToken
 {
+    /// The value making up the token.
     string value;
+
+    /// The type of data this token represents.
     ArgTokenType type;
 }
 
+/++
+ + A pull parser for command line arguments.
+ +
+ + Notes:
+ +  The input is given as a `string[]`. This mostly only matters for `ArgTokenType.Text` values.
+ +  This is because the parser does not split up plain text by spaces like a shell would.
+ +
+ +  e.g. There will be different results between `ArgPullParser(["env set OAUTH_SECRET 29ef"])` and
+ +  `ArgPullParser(["env", "set", "OAUTH_SECRET", "29ef"])`
+ +
+ +  The former is given back as a single token containing the entire string. The latter will return 4 tokens, containing the individual strings.
+ +
+ + Argument Formats:
+ +  The following named argument formats are supported.
+ +
+ +  '-n'         - Shorthand with no argument. (returns `ArgTokenTypes.ShortHandArgument`)
+ +  '-n ARG'     - Shorthand with argument. (`ArgTokenTypes.ShortHandArgument` and `ArgTokenTypes.Text`)
+ +  '-n=ARG'     - Shorthand with argument with an equals sign. The equals sign is removed from the token output. (`ArgTokenTypes.ShortHandArgument` and `ArgTokenTypes.Text`)
+ +  '-nARG       - Shorthand with argument with no space between them. (`ArgTokenTypes.ShortHandArgument` and `ArgTokenTypes.Text`)
+ +
+ +  '--name'     - Longhand with no argument.
+ +  '--name ARG' - Longhand with argument.
+ +  '--name=ARG' - Longhand with argument with an equals sign. The equals sign is removed from the token output.
+ + ++/
 struct ArgPullParser
 {
     /// Variables ///
@@ -32,7 +72,11 @@ struct ArgPullParser
         size_t   _currentCharIndex; // Current index into the current arg.
         ArgToken _currentToken;
     }
-
+    
+    /++
+     + Params:
+     +  args = The arguments to parse. Please see the 'notes' section for `ArgPullParser`.
+     + ++/
     this(string[] args)
     {
         this._args = args;
@@ -42,16 +86,19 @@ struct ArgPullParser
     /// Range interface ///
     public
     {
+        /// Parses the next token.
         void popFront()
         {
             this.nextToken();
         }
 
+        /// Returns: the last parsed token.
         ArgToken front()
         {
             return this._currentToken;
         }
 
+        /// Returns: Whether there's no more characters to parse.
         bool empty()
         {
             return this._currentToken.type == ArgTokenType.EOF;
@@ -167,7 +214,7 @@ struct ArgPullParser
                 enforce(slice.length > 2, "Unfinished argument name. Found '--' but no characters following it.");
 
                 this._currentCharIndex += 2;
-                this._currentToken = ArgToken(this.readToEnd(OrSpace.yes, OrEqualSign.yes), ArgTokenType.ArgumentName);
+                this._currentToken = ArgToken(this.readToEnd(OrSpace.yes, OrEqualSign.yes), ArgTokenType.LongHandArgument);
                 return;
             }
             else if(slice.length >= 1 && slice[0] == '-')
@@ -175,7 +222,7 @@ struct ArgPullParser
                 enforce(slice.length > 1, "Unfinished argument name. Found '-' but no character following it.");
 
                 this._currentCharIndex += 2; // += 2 so we skip over the arg name.
-                this._currentToken = ArgToken(slice[1..2], ArgTokenType.ArgumentName);
+                this._currentToken = ArgToken(slice[1..2], ArgTokenType.ShortHandArgument);
 
                 // Skip over the equals sign if there is one.
                 if(this._currentCharIndex < this.currentArg.length
@@ -210,6 +257,9 @@ unittest
         // Short hand named arguments.
         "-cMyConfig.json", "-c=MyConfig.json", "-c MyConfig.json",
 
+        // Simple example to prove that you don't need the arg name and value in the same string.
+        "-c", "MyConfig.json",
+
         // Plain text.
         "Some Positional Argument"
     ];
@@ -223,19 +273,21 @@ unittest
     assert(tokens[1]  == ArgToken("set",                         ArgTokenType.Text));
 
     // Long hand named arguments.
-    assert(tokens[2]  == ArgToken("config",                      ArgTokenType.ArgumentName));
+    assert(tokens[2]  == ArgToken("config",                      ArgTokenType.LongHandArgument));
     assert(tokens[3]  == ArgToken("MyConfig.json",               ArgTokenType.Text));
-    assert(tokens[4]  == ArgToken("config",                      ArgTokenType.ArgumentName));
+    assert(tokens[4]  == ArgToken("config",                      ArgTokenType.LongHandArgument));
     assert(tokens[5]  == ArgToken("MyConfig.json",               ArgTokenType.Text));
 
     // Short hand named arguments.
-    assert(tokens[6]  == ArgToken("c",                           ArgTokenType.ArgumentName));
+    assert(tokens[6]  == ArgToken("c",                           ArgTokenType.ShortHandArgument));
     assert(tokens[7]  == ArgToken("MyConfig.json",               ArgTokenType.Text));
-    assert(tokens[8]  == ArgToken("c",                           ArgTokenType.ArgumentName));
+    assert(tokens[8]  == ArgToken("c",                           ArgTokenType.ShortHandArgument));
     assert(tokens[9]  == ArgToken("MyConfig.json",               ArgTokenType.Text));
-    assert(tokens[10] == ArgToken("c",                           ArgTokenType.ArgumentName));
+    assert(tokens[10] == ArgToken("c",                           ArgTokenType.ShortHandArgument));
     assert(tokens[11] == ArgToken("MyConfig.json",               ArgTokenType.Text));
+    assert(tokens[12] == ArgToken("c",                           ArgTokenType.ShortHandArgument));
+    assert(tokens[13] == ArgToken("MyConfig.json",               ArgTokenType.Text));
 
     // Plain text.
-    assert(tokens[12] == ArgToken("Some Positional Argument",    ArgTokenType.Text));
+    assert(tokens[14] == ArgToken("Some Positional Argument",    ArgTokenType.Text));
 }
