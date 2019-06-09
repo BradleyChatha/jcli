@@ -26,10 +26,7 @@ struct CommandPositionalArg
     IsRequired isRequired;
 }
 
-struct ArgBinderFunc 
-{
-    
-}
+struct ArgBinderFunc {}
 
 template getSingleUDA(alias Symbol, alias UDA)
 {
