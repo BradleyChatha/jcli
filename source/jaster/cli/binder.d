@@ -5,6 +5,7 @@ private
     import std.traits : isNumeric;
     import jaster.cli.udas : ArgBinderFunc; // Compiler can't see this for some reason when the import is nested.
 }
+
 struct ArgBinder(Modules...)
 {
     import std.conv   : to;
@@ -12,7 +13,7 @@ struct ArgBinder(Modules...)
     import std.meta   : AliasSeq;
     import jaster.cli.udas, jaster.cli.internal;
     
-    alias AllModules = AliasSeq!(jaster.cli.binder, Modules);
+    alias AllModules = AliasSeq!(Modules, jaster.cli.binder);
 
     /+ PUBLIC INTERFACE +/
     public
