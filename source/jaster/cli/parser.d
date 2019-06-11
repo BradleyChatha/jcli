@@ -103,6 +103,18 @@ struct ArgPullParser
         {
             return this._currentToken.type == ArgTokenType.EOF;
         }
+        
+        /// Returns: A copy of the pull parser in it's current state.
+        ArgPullParser save()
+        {
+            ArgPullParser parser;
+            parser._args             = this._args;
+            parser._currentArgIndex  = this._currentArgIndex;
+            parser._currentCharIndex = this._currentCharIndex;
+            parser._currentToken     = this._currentToken;
+
+            return parser;
+        }
     }
 
     /// Parsing ///

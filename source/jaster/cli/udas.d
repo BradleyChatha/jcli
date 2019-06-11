@@ -5,8 +5,6 @@ private
     import std.typecons : Flag;
 }
 
-alias IsRequired = Flag!"isArgRequired";
-
 struct CommandPattern
 {
     string value;
@@ -16,14 +14,12 @@ struct CommandNamedArg
 {
     string pattern;
     string description;
-    IsRequired isRequired;
 }
 
 struct CommandPositionalArg
 {
     size_t position;
     string name;
-    IsRequired isRequired;
 }
 
 struct ArgBinderFunc {}

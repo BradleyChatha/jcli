@@ -16,7 +16,7 @@ struct ArgBinder(Modules...)
     alias AllModules = AliasSeq!(Modules, jaster.cli.binder);
 
     /+ PUBLIC INTERFACE +/
-    public
+    public static
     {
         void bind(T)(string arg, ref T value)
         {
@@ -48,7 +48,7 @@ struct ArgBinder(Modules...)
                         );
 
                         static if(is(Params[1] == T)
-                            || __traits(compiles, Binder("", T.init))) // Template support.
+                               || __traits(compiles, Binder("", T.init))) // Template support.
                         {
                             debugPragma!("Using arg binder `"~BinderFQN~"` for type `"~T.stringof~"`.");
                             Binder(arg, value);
@@ -74,12 +74,12 @@ struct ArgBinder(Modules...)
 ///
 unittest
 {
-    auto binder = ArgBinder!(jaster.cli.binder)();
+    alias Binder = ArgBinder!(jaster.cli.binder);
 
     int value;
     string strValue;
-    binder.bind("200", value);
-    binder.bind("200", strValue);
+    Binder.bind("200", value);
+    Binder.bind("200", strValue);
 
     assert(value == 200);
     assert(strValue == "200");
