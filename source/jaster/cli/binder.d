@@ -99,3 +99,11 @@ if(isNumeric!T)
     import std.conv : to;
     value = arg.to!T;
 }
+
+@ArgBinderFunc
+void enumBinder(T)(string arg, ref T value)
+if(is(T == enum))
+{
+    import std.conv : to;
+    value = arg.to!T;
+}
