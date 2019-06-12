@@ -202,9 +202,10 @@ final class CommandLineInterface(Modules...)
             auto result = this._commands.filter!(c => matchSpacefullPattern(c.pattern.value, /*ref*/ args));
             enforce(!result.empty, "Unknown command: "~args.front.value);
 
-            // TODO: Display error message on error.
             string errorMessage;
-            return result.front.doExecute(args, /*ref*/ errorMessage);
+            auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage);
+
+            return statusCode;
         }
     }
 
