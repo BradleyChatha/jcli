@@ -132,14 +132,15 @@ final class CommandLineInterface(Modules...)
 
                 // Parse args.
                 size_t positionalArgIndex = 0;
-                for(auto token = parser.front; !parser.empty; parser.popFront())
+                for(; !parser.empty; parser.popFront())
                 {
+                    const token = parser.front;
                     final switch(token.type) with(ArgTokenType)
                     {
                         case Text:
                             enforce(positionalArgIndex < positionalArgs.length, "Stray positional arg found: '"~token.value~"'");
-                            namedArgs[positionalArgIndex].setter(token, /*ref*/ commandInstance);
-                            namedArgs[positionalArgIndex++].wasFound = true;
+                            positionalArgs[positionalArgIndex].setter(token, /*ref*/ commandInstance);
+                            positionalArgs[positionalArgIndex++].wasFound = true;
                             break;
 
                         case LongHandArgument:
@@ -373,7 +374,7 @@ version(unittest)
         int onExecute()
         {
             import std.conv : to;
-
+            
             return (b.isNull) ? 0
                               : (b.get() == a.to!string) ? 1
                                                          : -1;
