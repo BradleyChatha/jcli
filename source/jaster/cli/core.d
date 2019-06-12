@@ -12,6 +12,109 @@ public
 }
 
 // Needs to be a class for a default ctor.
+/++
+ + Provides the functionality of parsing command line arguments, and then calling a command.
+ +
+ + Description:
+ +  The `Modules` template parameter is used directly with `jaster.cli.binder.ArgBinder` to provide the arg binding functionality.
+ +  Please refer to `ArgBinder`'s documentation if you are wanting to use custom made binder funcs.
+ +
+ +  Commands are detected by looking over every module in `Modules`, and within each module looking for types marked with `@CommandPattern`.
+ +
+ + Patterns:
+ +  Patterns are pretty simple.
+ +
+ +  Example #1: The pattern "run" will match if the given command line args starts with "run".
+ +
+ +  Example #2: The pattern "run all" will match if the given command line args starts with "run all" (["run all"] won't work right now, only ["run", "all"] will)
+ +
+ +  Example #3: The pattern "r|run" will match if the given command line args starts with "r", or "run all".
+ +
+ +  Patterns with spaces are only allowed inside of `@CommandPattern` pattern UDAs. The `@CommandNamedArg` UDA is a bit more special.
+ +
+ +  For `@CommandNamedArg`, spaces are not allowed, since named arguments can't be split into spaces.
+ +
+ +  For `@CommandNamedArg`, patterns or subpatterns (When "|" is used to have multiple patterns) will be treated differently depending on their length.
+ +  For patterns with only 1 character, they will be matched using short-hand argument form (See `ArgPullParser`'s documentation).
+ +  For pattern with more than 1 character, they will be matched using long-hand argument form.
+ +
+ +  Example #4: The pattern (for `@CommandNamedArg`) "v|verbose" will match when either "-v" or "--verbose" is used.
+ +
+ + Commands:
+ +  A command is a struct or class (class support coming soon) that is marked with `@CommandPattern`.
+ +
+ +  Commands have only one requirement - They have a function called `onExecute`.
+ +
+ +  The `onExecute` function is called whenever the command's pattern is matched with the command line arguments.
+ +
+ +  The `onExecute` function must be compatible with one of these signatures:
+ +      `void onExecute();`
+ +      `int onExecute();`
+ +
+ +  The signature that returns an `int` is used to return a custom status code.
+ +
+ +  If a command has it's pattern matched, then it's arguments will be parsed before `onExecute` is called.
+ +
+ +  Arguments are either positional (`@CommandPositionalArg`) or named (`@CommandNamedArg`).
+ +
+ + Positional_Arguments:
+ +  A positional arg is an argument that appears in a certain 'position'. For example, imagine we had a command that we wanted to
+ +  execute by using `"myTool create SomeFile.txt \"This is some content\""`.
+ +
+ +  The shell will pass `["create", "SomeFile.txt", "This is some content"]` to our program. We will assume we already have a command that will match with "create".
+ +  We are then left with the other two strings.
+ +
+ +  `"SomeFile.txt"` is in the 0th position, so it's value will be binded to the field marked with `@CommandPositionalArg(0)`.
+ +
+ +  `"This is some content"` is in the 1st position, so it's value will be binded to the field marked with `@CommandNamedArg(1)`.
+ +
+ + Named_Arguments:
+ +  A named arg is an argument that follows a name. Names are either in long-hand form ("--file") or short-hand form ("-f").
+ +
+ +  For example, imagine we execute a custom tool with `"myTool create -f=SomeFile.txt --content \"This is some content\""`.
+ +
+ +  The shell will pass `["create", "-f=SomeFile.txt", "--content", "This is some content"]`. Notice how the '-f' uses an '=' sign, but '--content' doesn't.
+ +  This is because the `ArgPullParser` supports various different forms of named arguments (e.g. ones that use '=', and ones that don't).
+ +  Please refer to it's documentation for more information.
+ +
+ +  Imagine we already have a command made that matches with "create". We are then left with the rest of the arguments.
+ +
+ +  "-f=SomeFile.txt" is parsed as an argument called "f" with the value "SomeFile.txt". Using the logic specified in the "Binding Arguments" section (below), 
+ +  we perform the binding of "SomeFile.txt" to whichever field marked with `@CommandNamedArg` matches with the name "f".
+ +
+ +  ["--content", "This is some content"] is parsed as an argument called "content" with the value "This is some content". We apply the same logic as above.
+ +
+ + Binding_Arguments:
+ +  Once we have matched a field marked with either `@CommandPositionalArg` or `@CommandNamedArg` with a position or name (respectively), then we
+ +  need to bind the value to the field.
+ +
+ +  This is where the `ArgBinder` is used. First of all, please refer to it's documentation as it's kind of important.
+ +  Second of all, we esentially generate a call similar to: `ArgBinderInstance.bind(myCommandInstance.myMatchedField, valueToBind)`
+ +
+ +  So imagine we have this field inside a command - `@CommandPositionalArg(0) myIntField;`
+ +
+ +  Now imagine we have the value "200" in the 0th position. This means it'll be matchd with `myIntField`.
+ +
+ +  This will esentially generate this call: `ArgBinderInstance.bind(myCommandInstance.myIntField, "200")`
+ +
+ +  From there, ArgBinder will do it's thing of binding/converting the string "200" into the integer 200
+ +
+ + Optional_And_Required_Arguments:
+ +  By default, all arguments are required.
+ +
+ +  To make an optional argument, you must make it `Nullable`. For example, to have an optional in argument you'd use `Nullable!int` as the type.
+ +
+ +  Note that `Nullable` is publicly imported by this module, for ease of use.
+ +
+ +  Before a nullable argument is binded, it is first lowered down into it's base type before being passed to the `ArgBinder`.
+ +  In other words, a `Nullable!int` argument will be treated as a normal `int` by the ArgBinder.
+ +
+ +  If there is a single required argument that is not provided by the user, then an exception is thrown (which in turn ends up showing an error message).
+ +  This does not occur with missing optional arguments.
+ +
+ + Params:
+ +  Modules = The modules that contain the commands and/or binder funcs to use.
+ + +/
 final class CommandLineInterface(Modules...)
 {
     alias CommandExecuteFunc    = int function(ArgPullParser, ref string errorMessageIfThereWasOne);
@@ -62,17 +165,35 @@ final class CommandLineInterface(Modules...)
     /+ PUBLIC INTERFACE +/
     public
     {
+        ///
         this()
         {
             static foreach(mod; Modules)
                 this.addCommandsFromModule!mod();
         }
-
+        
+        /++
+         + Parses the given `args`, and then executes the appropriate command (if one was found).
+         +
+         + Notes:
+         +  If an exception is thrown, the error message is displayed on screen (as well as the stack trace, for non-release builds)
+         +  and then -1 is returned.
+         +
+         + See_Also:
+         +  The documentation for `ArgPullParser` to understand the format for `args`.
+         +
+         + Params:
+         +  args = The args to parse.
+         +
+         + Returns:
+         +  The status code returned by the command, or -1 if an exception is thrown.
+         + +/
         int parseAndExecute(string[] args)
         {
             return this.parseAndExecute(ArgPullParser(args));
         } 
 
+        /// ditto
         int parseAndExecute(ArgPullParser args)
         {
             import std.algorithm : filter;
@@ -97,9 +218,10 @@ final class CommandLineInterface(Modules...)
             static foreach(symbol; getSymbolsByUDA!(Module, CommandPattern))
             {
                 static assert(is(symbol == struct), 
-                    "Only structs can be marked with @CommandPattern (maybe classes soon). Issue Symbol = " ~ __traits(identifier, symbol)
+                    "Only structs can be marked with @CommandPattern (classes soon). Issue Symbol = " ~ __traits(identifier, symbol)
                 );
 
+                pragma(msg, "Found command: ", __traits(identifier, symbol));
                 this.addCommand!symbol();
             }
         }
