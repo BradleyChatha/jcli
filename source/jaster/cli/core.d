@@ -19,7 +19,7 @@ public
  +  The `Modules` template parameter is used directly with `jaster.cli.binder.ArgBinder` to provide the arg binding functionality.
  +  Please refer to `ArgBinder`'s documentation if you are wanting to use custom made binder funcs.
  +
- +  Commands are detected by looking over every module in `Modules`, and within each module looking for types marked with `@CommandPattern`.
+ +  Commands are detected by looking over every module in `Modules`, and within each module looking for types marked with `@Command`.
  +
  + Patterns:
  +  Patterns are pretty simple.
@@ -30,7 +30,7 @@ public
  +
  +  Example #3: The pattern "r|run" will match if the given command line args starts with "r", or "run all".
  +
- +  Patterns with spaces are only allowed inside of `@CommandPattern` pattern UDAs. The `@CommandNamedArg` UDA is a bit more special.
+ +  Patterns with spaces are only allowed inside of `@Command` pattern UDAs. The `@CommandNamedArg` UDA is a bit more special.
  +
  +  For `@CommandNamedArg`, spaces are not allowed, since named arguments can't be split into spaces.
  +
@@ -41,7 +41,7 @@ public
  +  Example #4: The pattern (for `@CommandNamedArg`) "v|verbose" will match when either "-v" or "--verbose" is used.
  +
  + Commands:
- +  A command is a struct or class (class support coming soon) that is marked with `@CommandPattern`.
+ +  A command is a struct or class (class support coming soon) that is marked with `@Command`.
  +
  +  Commands have only one requirement - They have a function called `onExecute`.
  +
@@ -123,7 +123,7 @@ final class CommandLineInterface(Modules...)
 
     struct CommandInfo
     {
-        CommandPattern pattern;
+        Command pattern;
         string helpText;
         CommandExecuteFunc doExecute;
     }
@@ -163,7 +163,7 @@ final class CommandLineInterface(Modules...)
     }
 
     /+ PUBLIC INTERFACE +/
-    public
+    public final
     {
         ///
         this()
@@ -210,16 +210,16 @@ final class CommandLineInterface(Modules...)
     }
 
     /+ PRIVATE FUNCTIONS +/
-    private
+    private final
     {
         void addCommandsFromModule(alias Module)()
         {
             import std.traits : getSymbolsByUDA;
 
-            static foreach(symbol; getSymbolsByUDA!(Module, CommandPattern))
+            static foreach(symbol; getSymbolsByUDA!(Module, Command))
             {
                 static assert(is(symbol == struct), 
-                    "Only structs can be marked with @CommandPattern (classes soon). Issue Symbol = " ~ __traits(identifier, symbol)
+                    "Only structs can be marked with @Command (classes soon). Issue Symbol = " ~ __traits(identifier, symbol)
                 );
 
                 pragma(msg, "Found command: ", __traits(identifier, symbol));
@@ -232,7 +232,7 @@ final class CommandLineInterface(Modules...)
         {
             CommandInfo info;
             info.helpText  = "TODO";
-            info.pattern   = getSingleUDA!(T, CommandPattern);
+            info.pattern   = getSingleUDA!(T, Command);
             info.doExecute = this.createCommandExecuteFunc!T;
             this._commands ~= info;
         }
@@ -477,7 +477,7 @@ version(unittest)
 {
     private alias InstansiationTest = CommandLineInterface!(jaster.cli.core);
 
-    @CommandPattern("execute t|execute test|et|e test")
+    @Command("execute t|execute test|et|e test")
     private struct CommandTest
     {
         // These are added to test that they are safely ignored.

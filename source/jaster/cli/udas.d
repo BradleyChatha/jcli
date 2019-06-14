@@ -12,10 +12,13 @@ private
  + See_Also:
  +  `jaster.cli.core.CommandLineInterface` for more details.
  + +/
-struct CommandPattern
+struct Command
 {
     /// The pattern to match against.
     string value;
+
+    /// The description of this command.
+    string description;
 }
 
 /++
@@ -82,14 +85,14 @@ unittest
 {
     struct A {}
 
-    @CommandPattern("One")
+    @Command("One")
     struct B {}
 
-    @CommandPattern("One")
-    @CommandPattern("Two")
+    @Command("One")
+    @Command("Two")
     struct C {}
 
-    static assert(!__traits(compiles, getSingleUDA!(A, CommandPattern)));
-    static assert(!__traits(compiles, getSingleUDA!(C, CommandPattern)));
-    static assert(getSingleUDA!(B, CommandPattern).value == "One");
+    static assert(!__traits(compiles, getSingleUDA!(A, Command)));
+    static assert(!__traits(compiles, getSingleUDA!(C, Command)));
+    static assert(getSingleUDA!(B, Command).value == "One");
 }
