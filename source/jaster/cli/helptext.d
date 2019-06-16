@@ -2,16 +2,51 @@ module jaster.cli.helptext;
 
 private
 {
+    import std.typecons : Flag;
     import jaster.cli.udas;
 }
 
+/// A flag that should be used by content classes that have the ability to auto add argument dashes to arg names.
+/// (e.g. "-" and "--")
+alias AutoAddArgDashes = Flag!"addArgDashes";
+
+/++
+ + The interface for any class that can be used to generate content inside of a help
+ + text section.
+ + ++/
 interface IHelpSectionContent
 {
-    string getContent(const HelpSectionOptions);
+    /++
+     + Generates a string to display inside of a help text section.
+     +
+     + Params:
+     +  options = Options regarding how the text should be formatted.
+     +            Please try to match these options as closely as possible.
+     +
+     + Returns:
+     +  The generated content string.
+     + ++/
+    string getContent(const HelpSectionOptions options);
 
     /+ UTILITY FUNCTIONS +/
     protected final
     {
+        /++
+         + Wraps a piece of text into seperate lines, based on the given options.
+         +
+         + Throws:
+         +  `Exception` if the char limit is too small to show any text.
+         +
+         + Notes:
+         +  Currently, this performs character-wrapping instead of word-wrapping, so words
+         +  can be split between multiple lines. There is no technical reason for this outside of I'm lazy.
+         +
+         +  For every line created from the given `text`, the starting and ending spaces (not whitespace, just spaces)
+         +  are stripped off. This is so the user doesn't have to worry about random leading/trailling spaces, making it
+         +  easier to format for the general case (though specific cases might find this undesirable, I'm sorry).
+         +
+         +  For every line created from the given `text`, the line prefix defined in the `options` is prefixed onto every newly made line.
+         + ++/
         string lineWrap(const HelpSectionOptions options, const(char)[] text) const
         {
             import std.exception : assumeUnique, enforce;
@@ -52,22 +87,83 @@ interface IHelpSectionContent
     }
 }
 
+/++
+ + A help text section.
+ +
+ + A section is basically something like "Description:", or "Arguments:", etc.
+ +
+ + Notes:
+ +  Instances of this struct aren't ever really supposed to be kept around outside of `HelpTextBuilderTechnical`, so it's
+ +  non-copyable.
+ + ++/
 struct HelpSection
 {
+    /// The name of the section.
     string name;
+
+    /// The content of this section.
     IHelpSectionContent[] content;
+
+    /// The formatting options for this section.
+    HelpSectionOptions options;
+
+    /++
+     + Adds a new piece of content to this section.
+     +
+     + Params:
+     +  content = The content to add.
+     +
+     + Returns:
+     +  `this`
+     + ++/
+    ref HelpSection addContent(IHelpSectionContent content)
+    {
+        assert(content !is null);
+        this.content ~= content;
+
+        return this;
+    }
 
     @disable this(this){}
 }
 
+/++
+ + Options on how the text of a section is formatted.
+ +
+ + Notes:
+ +  It is up to the individual `IHelpSectionContent` implementors to follow these options.
+ + ++/
 struct HelpSectionOptions
 {
+    /// The prefix to apply to every new line of text inside the section.
     string linePrefix;
-    size_t lineCharLimit;
+
+    /// How many chars there are per line. This should be seen as a hard limit.
+    size_t lineCharLimit = 120;
 }
 
+/++
+ + A class used to create help text, in an object oriented fashion.
+ +
+ + Technical_Versus_Simple:
+ +  The Technical version of this class is meant to give the user full control of what's generated.
+ +
+ +  The Simple version (and any other versions the user may create) are meant to have more of a scope/predefined layout,
+ +  and so are simpler to use.
+ +
+ + Isnt_This_Overcomplicated?:
+ +  Kind of...
+ +
+ +  A goal of this library is to make it's foundational parts (such as this class, and the `ArgBinder` stuff) reusable on their own,
+ +  so even if the user doesn't like how I've designed the core part of the library (Everything in `jaster.cli.core`, and the UDAs relating to it)
+ +  they are given a small foundation to work off of to create their own version.
+ +
+ +  So I kind of need this to be a bit more complicated than it should be, so it's easy for me to provide built-in functionality that can be used
+ +  or not used as wished by the user, while also allowing the user to create their own.
+ + ++/
 final class HelpTextBuilderTechnical
 {
+    /// The default options for a section.
     static const DEFAULT_SECTION_OPTIONS = HelpSectionOptions("\t", 120);
 
     private
@@ -79,19 +175,42 @@ final class HelpTextBuilderTechnical
 
     public final
     {
+        /// Adds a new usage.
         void addUsage(string usageText)
         {
             this._usages ~= usageText;
         }
 
+        /++
+         + Adds a new section.
+         +
+         + Params:
+         +  sectionName = The name of the section.
+         +
+         + Returns:
+         +  A reference to the section, so that the `addContent` function can be called.
+         + ++/
         ref HelpSection addSection(string sectionName)
         {
             this._sections.length += 1;
             this._sections[$-1].name = sectionName;
+            this._sections[$-1].options = this._sectionOptions;
 
             return this._sections[$-1];
         }
 
+        /++
+         + Modifies an existing section (by returning it by reference).
+         +
+         + Assertions:
+         +  `sectionName` must exist.
+         +
+         + Params:
+         +  sectionName = The name of the section to modify.
+         +
+         + Returns:
+         +  A reference to the section, so it can be modified by calling code.
+         + ++/
         ref HelpSection modifySection(string sectionName)
         {
             foreach(ref section; this._sections)
@@ -103,6 +222,15 @@ final class HelpTextBuilderTechnical
             assert(false, "No section called '"~sectionName~"' was found.");
         }
 
+        /++
+         + Generates the help text based on the given usages and sections.
+         +
+         + Notes:
+         +  The result of this function aren't cached yet.
+         +
+         + Returns:
+         +  The generated text.
+         + ++/
         override string toString()
         {
             import std.array     : appender;
@@ -114,7 +242,7 @@ final class HelpTextBuilderTechnical
             output.reserve(4096);
 
             // Usages
-            this._usages.map!(u => "USAGE: "~u~"\n")
+            this._usages.map!(u => "Usage: "~u~"\n")
                         .each!(u => output ~= u);
 
             // Sections
@@ -123,7 +251,7 @@ final class HelpTextBuilderTechnical
                 // This could all technically be 'D-ified'/'rangeified' but I couldn't make it look nice.
                 output ~= "\n";
                 output ~= section.name~":\n";
-                section.content.map!(c => c.getContent(this._sectionOptions))
+                section.content.map!(c => c.getContent(section.options))
                                .each!(c => output ~= c);
             }
 
@@ -132,20 +260,138 @@ final class HelpTextBuilderTechnical
     }
 }
 
+/// TODO:
 final class HelpTextBuilderSimple
 {
     private
     {
-        // We have it as a field instead of inheriting from it, so that we can hide the technical functions.
-        HelpTextBuilderTechnical _builder;
+        struct PositionalArg
+        {
+            size_t position;
+            HelpSectionArgInfoContent.ArgInfo info;
+        }
+
+        string[]                            _usages;
+        HelpSectionArgInfoContent.ArgInfo[] _namedArgs;
+        PositionalArg[]                     _positionalArgs;
+        string                              _description;
     }
 
     public final
     {
+        HelpTextBuilderSimple addUsage(string usage)
+        {
+            this._usages ~= usage;
+            return this;
+        }
+
+        HelpTextBuilderSimple addNamedArg(string[] names, string description)
+        {
+            this._namedArgs ~= HelpSectionArgInfoContent.ArgInfo(names, description);
+            return this;
+        }
+
+        HelpTextBuilderSimple addNamedArg(string name, string description)
+        {
+            this.addNamedArg([name], description);
+            return this;
+        }
+
+        HelpTextBuilderSimple addPositionalArg(size_t position, string description, string displayName = null)
+        {
+            import std.conv : to;
+
+            this._positionalArgs ~= PositionalArg(
+                position,
+                HelpSectionArgInfoContent.ArgInfo(
+                    ["{"~position.to!string~"}"] ~ ((displayName is null) ? [] : [displayName]),
+                    description
+                )
+            );
+
+            return this;
+        }
+
+        @property
+        ref string description()
+        {
+            return this._description;
+        }
+
+        override string toString()
+        {
+            import std.algorithm : map;
+            import std.array     : array;
+
+            auto builder = new HelpTextBuilderTechnical();
+
+            foreach(use; this._usages)
+                builder.addUsage(use);
+
+            if(this.description !is null)
+            {
+                builder.addSection("Description")
+                       .addContent(new HelpSectionTextContent(this._description));
+            }
+
+            if(this._positionalArgs.length > 0)
+            {
+                builder.addSection("Positional Args")
+                       .addContent(new HelpSectionArgInfoContent(this._positionalArgs.map!(p => p.info).array, 
+                                                                 AutoAddArgDashes.no)
+                        );
+            }
+
+            if(this._namedArgs.length > 0)
+            {
+                builder.addSection("Named Args")
+                       .addContent(new HelpSectionArgInfoContent(this._namedArgs, AutoAddArgDashes.yes));
+            }
+
+            return builder.toString();
+        }
     }
+}
+///
+unittest
+{
+    auto builder = new HelpTextBuilderSimple();
+
+    builder.addUsage("MyCommand {0/InputFile} {1/OutputFile} [-v|--verbose]")
+           .addPositionalArg(0, "The input file.", "InputFile")
+           .addPositionalArg(1, "The output file.", "OutputFile")
+           .addNamedArg(["v","verbose"], "Verbose output");
+
+    builder.description = "This is a command that transforms the InputFile into an OutputFile";
+
+    assert(builder.toString() == 
+        "Usage: MyCommand {0/InputFile} {1/OutputFile} [-v|--verbose]\n"
+       ~"\n"
+       ~"Description:\n"
+       ~"\tThis is a command that transforms the InputFile into an OutputFile\n"
+       ~"\n"
+       ~"Positional Args:\n"
+       ~"    {0},InputFile                - The input file.\n"
+       ~"\n"
+       ~"    {1},OutputFile               - The output file.\n"
+       ~"\n"
+       ~"\n"
+       ~"Named Args:\n"
+       ~"    -v,--verbose                 - Verbose output\n"
+       ~"\n",
+
+        "\n"~builder.toString()
+    );
 }
 
 /+ BUILT IN SECTION CONTENT +/
+
+/++
+ + A simple content class the simply displays a given string.
+ +
+ + Notes:
+ +  This class is fully compliant with the `HelpSectionOptions`.
+ + ++/
 final class HelpSectionTextContent : IHelpSectionContent
 {
     string text;
@@ -205,22 +451,34 @@ unittest
     );
 }
 
+/++
+ + A content class for displaying information about a command line argument.
+ +
+ + Notes:
+ +  Please see this class' unittest to see an example of it's output.
+ + ++/
 final class HelpSectionArgInfoContent : IHelpSectionContent
 {
     enum NAME_CHAR_LIMIT_DIVIDER = 4;
     const MIDDLE_AFFIX = " - ";
 
+    /// The information about the arg.
     struct ArgInfo
     {
+        /// The different names that this arg can be used with (e.g 'v', 'verbose').
         string[] names;
+
+        /// The description of the argument.
         string description;
     }
 
     ArgInfo[] args;
+    AutoAddArgDashes addDashes;
 
-    this(ArgInfo[] args)
+    this(ArgInfo[] args, AutoAddArgDashes addDashes)
     {
         this.args = args;
+        this.addDashes = addDashes;
     }
 
     string getContent(const HelpSectionOptions badOptions)
@@ -262,7 +520,10 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
             // Line wrap. (This line alone is like, O(3n))
             auto nameText = lineWrap(
                 nameOptions, 
-                arg.names.map!(n => (n.length == 1) ? "-"~n : "--"~n)
+                arg.names.map!(n => (this.addDashes) 
+                                     ? (n.length == 1) ? "-"~n : "--"~n
+                                     : n
+                         )
                          .reduce!((a, b) => a~","~b)
                          .byChar
                          .array
@@ -361,10 +622,12 @@ unittest
             HelpSectionArgInfoContent.ArgInfo(["v", "verbose"],           "Display detailed information about what the program is doing."),
             HelpSectionArgInfoContent.ArgInfo(["f", "file"],              "The input file."),
             HelpSectionArgInfoContent.ArgInfo(["super","longer","names"], "Some unusuable command with long names and a long description.")
-        ]
+        ],
+
+        AutoAddArgDashes.yes
     );
     auto options = HelpSectionOptions(
-        "\t",
+        "\t", // Tabs get converted into 4 spaces.
         80
     );
 
