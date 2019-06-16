@@ -3,7 +3,7 @@ module jaster.cli.core;
 private
 {
     import std.traits : isSomeChar;
-    import jaster.cli.parser, jaster.cli.udas, jaster.cli.binder;
+    import jaster.cli.parser, jaster.cli.udas, jaster.cli.binder, jaster.cli.helptext;
 }
 
 public
@@ -124,7 +124,7 @@ final class CommandLineInterface(Modules...)
     struct CommandInfo
     {
         Command pattern;
-        string helpText;
+        HelpTextBuilderSimple helpText;
         CommandExecuteFunc doExecute;
     }
 
@@ -198,12 +198,19 @@ final class CommandLineInterface(Modules...)
         {
             import std.algorithm : filter;
             import std.exception : enforce;
+            import std.stdio     : writefln;
 
             auto result = this._commands.filter!(c => matchSpacefullPattern(c.pattern.value, /*ref*/ args));
             enforce(!result.empty, "Unknown command: "~args.front.value);
 
             string errorMessage;
             auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage);
+
+            if(errorMessage !is null)
+            {
+                writefln("ERROR: %s", errorMessage);
+                writefln(result.front.helpText.toString());
+            }
 
             return statusCode;
         }
@@ -231,10 +238,47 @@ final class CommandLineInterface(Modules...)
         if(is(T == struct))
         {
             CommandInfo info;
-            info.helpText  = "TODO";
+            info.helpText  = this.createHelpText!T();
             info.pattern   = getSingleUDA!(T, Command);
-            info.doExecute = this.createCommandExecuteFunc!T;
+            info.doExecute = this.createCommandExecuteFunc!T();
             this._commands ~= info;
+        }
+
+        HelpTextBuilderSimple createHelpText(alias T)()
+        {
+            import std.algorithm : splitter;
+            import std.array     : array;
+
+            // Get arg info.
+            NamedArgInfo!T[] namedArgs;
+            PositionalArgInfo!T[] positionalArgs;
+            /*static member*/ getArgs(/*ref*/ namedArgs, /*ref*/ positionalArgs);
+
+            // Get UDA
+            enum UDA = getSingleUDA!(T, Command);
+            auto builder = new HelpTextBuilderSimple();
+
+            foreach(arg; namedArgs)
+            {
+                builder.addNamedArg(
+                    arg.uda.pattern.splitter('|')
+                                   .array,
+                    arg.uda.description
+                );
+            }
+
+            foreach(arg; positionalArgs)
+            {
+                builder.addPositionalArg(
+                    arg.uda.position,
+                    arg.uda.description,
+                    arg.uda.name
+                );
+            }
+
+            builder.description = UDA.description;
+
+            return builder;
         }
 
         CommandExecuteFunc createCommandExecuteFunc(alias T)()

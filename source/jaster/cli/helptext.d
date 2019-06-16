@@ -533,7 +533,9 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
                 descriptionOptions,
                 arg.description
             );
-            descriptionText = descriptionText[descriptionOptions.linePrefix.length..$]; // Remove the padding from the first line.
+
+            if(descriptionText.length > descriptionOptions.linePrefix.length)
+                descriptionText = descriptionText[descriptionOptions.linePrefix.length..$]; // Remove the padding from the first line.
 
             // Then create our output line-by-line
             auto nameLines = nameText.splitter('\n');
