@@ -309,6 +309,18 @@ final class HelpTextBuilderSimple
             return this;
         }
 
+        HelpTextBuilderSimple setDescription(string desc)
+        {
+            this.description = desc;
+            return this;
+        }
+
+        HelpTextBuilderSimple setCommandName(string name)
+        {
+            this.commandName = name;
+            return this;
+        }
+
         @property
         ref string description()
         {
@@ -395,10 +407,9 @@ unittest
 
     builder.addPositionalArg(0, "The input file.", ArgIsOptional.no, "InputFile")
            .addPositionalArg(1, "The output file.", ArgIsOptional.no, "OutputFile")
-           .addNamedArg(["v","verbose"], "Verbose output", ArgIsOptional.yes);
-
-    builder.commandName = "MyCommand";
-    builder.description = "This is a command that transforms the InputFile into an OutputFile";
+           .addNamedArg(["v","verbose"], "Verbose output", ArgIsOptional.yes)
+           .setCommandName("MyCommand")
+           .setDescription("This is a command that transforms the InputFile into an OutputFile");
 
     assert(builder.toString() == 
         "Usage: MyCommand {0/InputFile} {1/OutputFile} <[v|verbose]> \n"
