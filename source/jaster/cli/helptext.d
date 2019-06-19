@@ -262,7 +262,19 @@ final class HelpTextBuilderTechnical
     }
 }
 
-/// TODO:
+/++
+ + A simpler version of `HelpTextBuilerTechnical`, as it has a fixed layout, and handles all of the section and content generation.
+ +
+ + Description:
+ +  This help text builder contains the following:
+ +
+ +      * A single 'Usage' line, which is generated automatically from the rest of the given data.
+ +      * A description section.
+ +      * A section for positional parameters, which are given a position, description, and an optional display name.
+ +      * A section for named parameters, which can have multiple names, and a description.
+ +
+ + Please see the unittest for an example of it's usage and output.
+ + ++/
 final class HelpTextBuilderSimple
 {
     private
