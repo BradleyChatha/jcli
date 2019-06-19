@@ -579,7 +579,7 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
         // Hello inefficient code, my old friend...
         foreach(arg; this.args)
         {
-            // Line wrap. (This line alone is like, O(3n))
+            // Line wrap. (This line alone is like, O(3n), not even mentioning memory usage)
             auto nameText = lineWrap(
                 nameOptions, 
                 arg.names.map!(n => (this.addDashes) 
