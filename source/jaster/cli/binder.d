@@ -169,3 +169,11 @@ if(is(T == enum))
     import std.conv : to;
     value = arg.to!T;
 }
+
+/// arg -> bool.
+@ArgBinderFunc
+void boolBinder(string arg, ref bool value)
+{
+    import std.conv : to;
+    value = arg.to!bool;
+}

@@ -135,6 +135,7 @@ final class CommandLineInterface(Modules...)
     //     ArgValueSetterFunc!T setter;
     //     bool wasFound; // For nullables, this is ignore. Otherwise, anytime this is false we need to throw.
     //     bool isNullable;
+    //     bool isBool;
     // }
     // alias NamedArgInfo(T) = ArgInfo!(CommandNamedArg, T);
     // alias PositionalArgInfo(T) = ArgInfo!(CommandPositionalArg, T);
@@ -146,6 +147,7 @@ final class CommandLineInterface(Modules...)
         ArgValueSetterFunc!T setter;
         bool wasFound; // For nullables, this is ignore. Otherwise, anytime this is false we need to throw.
         bool isNullable;
+        bool isBool;
     }
 
     struct PositionalArgInfo(T)
@@ -154,6 +156,7 @@ final class CommandLineInterface(Modules...)
         ArgValueSetterFunc!T setter;
         bool wasFound; // For nullables, this is ignore. Otherwise, anytime this is false we need to throw.
         bool isNullable;
+        bool isBool;
     }
 
     /+ VARIABLES +/
@@ -327,9 +330,13 @@ final class CommandLineInterface(Modules...)
                             }
                             enforce(result != NamedArgInfo!T.init, "Unknown named argument: '"~token.value~"'");
                             
-                            parser.popFront(); // TODO: Handle EOF
-                                               // TODO: Handle bools
-                            result.setter(parser.front, /*ref*/ commandInstance);
+                            if(result.isBool) // Bools don't need to have a value specified, they just have to exist.
+                                result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
+                            else
+                            {
+                                parser.popFront(); // TODO: Handle EOF
+                                result.setter(parser.front, /*ref*/ commandInstance);
+                            }
                             break;
 
                         case None:
@@ -510,6 +517,7 @@ final class CommandLineInterface(Modules...)
                                 ArgBinderInstance.bind(tok.value, /*ref*/ mixin("commandInstance.%s".format(SymbolName)));
                         };
                         arg.isNullable = isInstanceOf!(Nullable, SymbolType);
+                        arg.isBool     = is(SymbolType == bool) || is(SymbolType == Nullable!bool);
 
                         static if(hasUDA!(Symbol, CommandNamedArg)) namedArgs ~= arg;
                         else                                        positionalArgs ~= arg;
@@ -541,13 +549,16 @@ version(unittest)
         @CommandPositionalArg(0, "b")
         Nullable!string b;
 
+        @CommandNamedArg("c")
+        Nullable!bool c;
+
         int onExecute()
         {
             import std.conv : to;
             
-            return (b.isNull) ? 0
-                              : (b.get() == a.to!string) ? 1
-                                                         : -1;
+            return (b.isNull || !c.isNull) ? 0
+                                           : (b.get() == a.to!string) ? 1
+                                                                      : -1;
         }
     }
 
@@ -558,5 +569,6 @@ version(unittest)
         assert(cli.parseAndExecute(["execute", "t", "-a 20"])              == 0); // b is null
         assert(cli.parseAndExecute(["execute", "test", "20", "--avar 21"]) == -1); // a and b don't match
         assert(cli.parseAndExecute(["et", "20", "-a 20"])                  == 1); // a and b match
+        assert(cli.parseAndExecute(["e", "test", "20", "-a 20", "-c"])     == 0); // -c is used
     }
 }
