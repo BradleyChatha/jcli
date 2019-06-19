@@ -10,6 +10,8 @@ private
 /// (e.g. "-" and "--")
 alias AutoAddArgDashes = Flag!"addArgDashes";
 
+alias ArgIsOptional = Flag!"isOptional";
+
 /++
  + The interface for any class that can be used to generate content inside of a help
  + text section.
@@ -271,7 +273,7 @@ final class HelpTextBuilderSimple
             HelpSectionArgInfoContent.ArgInfo info;
         }
 
-        string[]                            _usages;
+        string                              _commandName;
         HelpSectionArgInfoContent.ArgInfo[] _namedArgs;
         PositionalArg[]                     _positionalArgs;
         string                              _description;
@@ -279,33 +281,28 @@ final class HelpTextBuilderSimple
 
     public final
     {
-        HelpTextBuilderSimple addUsage(string usage)
+        HelpTextBuilderSimple addNamedArg(string[] names, string description, ArgIsOptional isOptional)
         {
-            this._usages ~= usage;
+            this._namedArgs ~= HelpSectionArgInfoContent.ArgInfo(names, description, isOptional);
             return this;
         }
 
-        HelpTextBuilderSimple addNamedArg(string[] names, string description)
+        HelpTextBuilderSimple addNamedArg(string name, string description, ArgIsOptional isOptional)
         {
-            this._namedArgs ~= HelpSectionArgInfoContent.ArgInfo(names, description);
+            this.addNamedArg([name], description, isOptional);
             return this;
         }
 
-        HelpTextBuilderSimple addNamedArg(string name, string description)
-        {
-            this.addNamedArg([name], description);
-            return this;
-        }
-
-        HelpTextBuilderSimple addPositionalArg(size_t position, string description, string displayName = null)
+        HelpTextBuilderSimple addPositionalArg(size_t position, string description, ArgIsOptional isOptional, string displayName = null)
         {
             import std.conv : to;
 
             this._positionalArgs ~= PositionalArg(
                 position,
                 HelpSectionArgInfoContent.ArgInfo(
-                    ["{"~position.to!string~"}"] ~ ((displayName is null) ? [] : [displayName]),
-                    description
+                    [position.to!string] ~ ((displayName is null) ? [] : [displayName]),
+                    description,
+                    isOptional
                 )
             );
 
@@ -318,15 +315,26 @@ final class HelpTextBuilderSimple
             return this._description;
         }
 
+        @property
+        ref string commandName()
+        {
+            return this._commandName;
+        }
+
         override string toString()
         {
-            import std.algorithm : map;
+            import std.algorithm : map, joiner;
             import std.array     : array;
+            import std.range     : tee;
+            import std.format    : format;
+            import std.exception : assumeUnique;
 
             auto builder = new HelpTextBuilderTechnical();
 
-            foreach(use; this._usages)
-                builder.addUsage(use);
+            char[] usageString;
+            usageString.reserve(512);
+            usageString ~= this._commandName;
+            usageString ~= ' ';
 
             if(this.description !is null)
             {
@@ -337,17 +345,45 @@ final class HelpTextBuilderSimple
             if(this._positionalArgs.length > 0)
             {
                 builder.addSection("Positional Args")
-                       .addContent(new HelpSectionArgInfoContent(this._positionalArgs.map!(p => p.info).array, 
-                                                                 AutoAddArgDashes.no)
-                        );
+                       .addContent(new HelpSectionArgInfoContent(
+                           this._positionalArgs
+                                .tee!((p)
+                                {
+                                    auto text = "{%s}".format(p.info.names.joiner("/"));
+
+                                    usageString ~= (p.info.isOptional)
+                                                    ? "<"~text~">"
+                                                    : text;
+                                    usageString ~= ' ';
+                                })
+                                .map!(p => p.info)
+                                .array, 
+                            AutoAddArgDashes.no
+                        )
+                );
             }
 
             if(this._namedArgs.length > 0)
             {
                 builder.addSection("Named Args")
-                       .addContent(new HelpSectionArgInfoContent(this._namedArgs, AutoAddArgDashes.yes));
+                       .addContent(new HelpSectionArgInfoContent(
+                           this._namedArgs
+                               .tee!((a)
+                               {
+                                    auto text = "[%s]".format(a.names.joiner("|"));
+
+                                    usageString ~= (a.isOptional)
+                                                    ? "<"~text~">"
+                                                    : text;
+                                    usageString ~= ' ';
+                               })
+                               .array,
+                           AutoAddArgDashes.yes
+                        )
+                );
             }
 
+            builder.addUsage(usageString.assumeUnique);
             return builder.toString();
         }
     }
@@ -357,23 +393,23 @@ unittest
 {
     auto builder = new HelpTextBuilderSimple();
 
-    builder.addUsage("MyCommand {0/InputFile} {1/OutputFile} [-v|--verbose]")
-           .addPositionalArg(0, "The input file.", "InputFile")
-           .addPositionalArg(1, "The output file.", "OutputFile")
-           .addNamedArg(["v","verbose"], "Verbose output");
+    builder.addPositionalArg(0, "The input file.", ArgIsOptional.no, "InputFile")
+           .addPositionalArg(1, "The output file.", ArgIsOptional.no, "OutputFile")
+           .addNamedArg(["v","verbose"], "Verbose output", ArgIsOptional.yes);
 
+    builder.commandName = "MyCommand";
     builder.description = "This is a command that transforms the InputFile into an OutputFile";
 
     assert(builder.toString() == 
-        "Usage: MyCommand {0/InputFile} {1/OutputFile} [-v|--verbose]\n"
+        "Usage: MyCommand {0/InputFile} {1/OutputFile} <[v|verbose]> \n"
        ~"\n"
        ~"Description:\n"
        ~"\tThis is a command that transforms the InputFile into an OutputFile\n"
        ~"\n"
        ~"Positional Args:\n"
-       ~"    {0},InputFile                - The input file.\n"
+       ~"    0,InputFile                  - The input file.\n"
        ~"\n"
-       ~"    {1},OutputFile               - The output file.\n"
+       ~"    1,OutputFile                 - The output file.\n"
        ~"\n"
        ~"\n"
        ~"Named Args:\n"
@@ -470,6 +506,9 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
 
         /// The description of the argument.
         string description;
+
+        /// Whether the arg is optional or not.
+        ArgIsOptional isOptional;
     }
 
     ArgInfo[] args;

@@ -263,7 +263,8 @@ final class CommandLineInterface(Modules...)
                 builder.addNamedArg(
                     arg.uda.pattern.splitter('|')
                                    .array,
-                    arg.uda.description
+                    arg.uda.description,
+                    cast(ArgIsOptional)arg.isNullable
                 );
             }
 
@@ -272,6 +273,7 @@ final class CommandLineInterface(Modules...)
                 builder.addPositionalArg(
                     arg.uda.position,
                     arg.uda.description,
+                    cast(ArgIsOptional)arg.isNullable,
                     arg.uda.name
                 );
             }
