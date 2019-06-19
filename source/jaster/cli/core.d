@@ -278,6 +278,7 @@ final class CommandLineInterface(Modules...)
                 );
             }
 
+            builder.commandName = __traits(identifier, T);
             builder.description = UDA.description;
 
             return builder;
