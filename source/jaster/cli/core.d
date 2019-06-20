@@ -334,7 +334,11 @@ final class CommandLineInterface(Modules...)
                                 result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
                             else
                             {
-                                parser.popFront(); // TODO: Handle EOF
+                                parser.popFront();
+                                enforce(parser.front.type != ArgTokenType.EOF,
+                                    "Named arg '"~result.uda.pattern~"' was specified, but wasn't given a value."
+                                );
+
                                 result.setter(parser.front, /*ref*/ commandInstance);
                             }
                             break;
