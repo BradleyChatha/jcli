@@ -546,7 +546,7 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
     string getContent(const HelpSectionOptions badOptions)
     {
         import std.array     : array;
-        import std.algorithm : map, reduce, count, max, splitter, substitute;
+        import std.algorithm : map, reduce, count, max, splitter, substitute, filter;
         import std.conv      : to;
         import std.exception : assumeUnique;
         import std.utf       : byChar;
@@ -601,7 +601,7 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
 
             // Then create our output line-by-line
             auto nameLines = nameText.splitter('\n');
-            auto descriptionLines = descriptionText.splitter('\n');
+            auto descriptionLines = descriptionText.splitter('\n').filter!(l => l.length > 0);
 
             bool isFirstLine = true;
             size_t nameLength = 0;
@@ -698,7 +698,6 @@ unittest
     assert(content.getContent(options) ==
         "    -v,--verbose       - Display detailed information about what the program is\n"
        ~"                         doing.\n"
-       ~"\n"
        ~"    -f,--file          - The input file.\n"
        ~"\n"
        ~"    --super,--longer,  - Some unusuable command with long names and a long desc\n"
