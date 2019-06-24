@@ -635,9 +635,6 @@ version(unittest)
     unittest
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
-
-        cli.parseAndExecute(["", "-h"]);
-        cli.parseAndExecute(["", "--help"]);
         assert(cli.parseAndExecute(["execute", "t", "-a 20"],              IgnoreFirstArg.no) == 0); // b is null
         assert(cli.parseAndExecute(["execute", "test", "20", "--avar 21"], IgnoreFirstArg.no) == -1); // a and b don't match
         assert(cli.parseAndExecute(["et", "20", "-a 20"],                  IgnoreFirstArg.no) == 1); // a and b match
