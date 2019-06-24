@@ -219,6 +219,13 @@ final class CommandLineInterface(Modules...)
             import std.exception : enforce;
             import std.stdio     : writefln;
 
+            if(args.empty)
+            {
+                writefln("ERROR: No command was given.");
+                writefln(this.createAvailableCommandsHelpText(args).toString());
+                return -1;
+            }
+
             auto result = this._commands.filter!(c => matchSpacefullPattern(c.pattern.value, /*ref*/ args));
             enforce(!result.empty, "Unknown command: "~args.front.value);
 
@@ -238,6 +245,32 @@ final class CommandLineInterface(Modules...)
     /+ PRIVATE FUNCTIONS +/
     private final
     {
+        HelpTextBuilderTechnical createAvailableCommandsHelpText(ArgPullParser args)
+        {
+            import std.array     : array;
+            import std.algorithm : filter, sort, map, splitter;
+
+            auto builder = new HelpTextBuilderTechnical();
+            builder.addSection("Did you mean")
+                   .addContent(
+                       new HelpSectionArgInfoContent(
+                           this._commands
+                                 .filter!(c => args.empty || matchSpacefullPattern(c.pattern.value, /*ref*/ args, AllowPartialMatch.yes))
+                                 .map!(c => HelpSectionArgInfoContent.ArgInfo(
+                                     c.pattern.value.splitter('|').array,
+                                     c.pattern.description,
+                                     ArgIsOptional.no
+                                 ))
+                                 .array
+                                 .sort!"a.names[0] < b.names[0]"
+                                 .array, // eww...
+                            AutoAddArgDashes.no
+                       )
+            );
+
+            return builder;
+        }
+
         void addCommandsFromModule(alias Module)()
         {
             import std.traits : getSymbolsByUDA;
@@ -555,7 +588,7 @@ version(unittest)
 {
     private alias InstansiationTest = CommandLineInterface!(jaster.cli.core);
 
-    @Command("execute t|execute test|et|e test")
+    @Command("execute t|execute test|et|e test", "This is a test command")
     private struct CommandTest
     {
         // These are added to test that they are safely ignored.
@@ -589,6 +622,7 @@ version(unittest)
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
 
+        cli.parseAndExecute([]);
         assert(cli.parseAndExecute(["execute", "t", "-a 20"],              IgnoreFirstArg.no) == 0); // b is null
         assert(cli.parseAndExecute(["execute", "test", "20", "--avar 21"], IgnoreFirstArg.no) == -1); // a and b don't match
         assert(cli.parseAndExecute(["et", "20", "-a 20"],                  IgnoreFirstArg.no) == 1); // a and b match
