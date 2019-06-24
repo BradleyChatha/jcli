@@ -215,14 +215,23 @@ final class CommandLineInterface(Modules...)
         /// ditto
         int parseAndExecute(ArgPullParser args)
         {
-            import std.algorithm : filter;
+            import std.algorithm : filter, any;
             import std.exception : enforce;
             import std.stdio     : writefln;
 
             if(args.empty)
             {
                 writefln("ERROR: No command was given.");
-                writefln(this.createAvailableCommandsHelpText(args).toString());
+                writefln(this.createAvailableCommandsHelpText(args, "Available commands").toString());
+                return -1;
+            }
+
+            if(args.save.any!(t => t.type == ArgTokenType.ShortHandArgument && t.value == "h"
+                                || t.type == ArgTokenType.LongHandArgument && t.value == "help")
+            )
+            {
+                // First param needs to be an empty range to make the function display all commands.
+                writefln(this.createAvailableCommandsHelpText(ArgPullParser(null), "Available commands").toString());
                 return -1;
             }
 
@@ -250,13 +259,13 @@ final class CommandLineInterface(Modules...)
     /+ PRIVATE FUNCTIONS +/
     private final
     {
-        HelpTextBuilderTechnical createAvailableCommandsHelpText(ArgPullParser args)
+        HelpTextBuilderTechnical createAvailableCommandsHelpText(ArgPullParser args, string sectionName = "Did you mean")
         {
             import std.array     : array;
             import std.algorithm : filter, sort, map, splitter;
 
             auto builder = new HelpTextBuilderTechnical();
-            builder.addSection("Did you mean")
+            builder.addSection(sectionName)
                    .addContent(
                        new HelpSectionArgInfoContent(
                            this._commands
@@ -627,6 +636,8 @@ version(unittest)
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
 
+        cli.parseAndExecute(["", "-h"]);
+        cli.parseAndExecute(["", "--help"]);
         assert(cli.parseAndExecute(["execute", "t", "-a 20"],              IgnoreFirstArg.no) == 0); // b is null
         assert(cli.parseAndExecute(["execute", "test", "20", "--avar 21"], IgnoreFirstArg.no) == -1); // a and b don't match
         assert(cli.parseAndExecute(["et", "20", "-a 20"],                  IgnoreFirstArg.no) == 1); // a and b match
