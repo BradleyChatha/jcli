@@ -377,7 +377,7 @@ final class CommandLineInterface(Modules...)
                 catch(Exception ex)
                 {
                     executionError = ex.msg;
-                    debug executionError ~= ex.info.toString(); // trace info
+                    debug executionError ~= "\n\nSTACK TRACE:\n" ~ ex.info.toString(); // trace info
                     return -1;
                 }
             };
