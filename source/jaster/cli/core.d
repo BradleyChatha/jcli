@@ -2,7 +2,8 @@ module jaster.cli.core;
 
 private
 {
-    import std.traits : isSomeChar;
+    import std.typecons : Flag;
+    import std.traits   : isSomeChar;
     import jaster.cli.parser, jaster.cli.udas, jaster.cli.binder, jaster.cli.helptext;
 }
 
@@ -10,6 +11,9 @@ public
 {
     import std.typecons : Nullable;
 }
+
+/// 
+alias IgnoreFirstArg = Flag!"ignoreFirst";
 
 // Needs to be a class for a default ctor.
 /++
@@ -120,6 +124,7 @@ final class CommandLineInterface(Modules...)
     alias CommandExecuteFunc    = int function(ArgPullParser, ref string errorMessageIfThereWasOne);
     alias ArgValueSetterFunc(T) = void function(ArgToken, ref T);
     alias ArgBinderInstance     = ArgBinder!Modules;
+    alias AllowPartialMatch     = Flag!"partialMatch";
 
     struct CommandInfo
     {
@@ -186,13 +191,24 @@ final class CommandLineInterface(Modules...)
          +  The documentation for `ArgPullParser` to understand the format for `args`.
          +
          + Params:
-         +  args = The args to parse.
+         +  args        = The args to parse.
+         +  ignoreFirst = Whether to ignore the first value of `args` or not.
+         +                If `args` is passed as-is from the main function, then the first value will
+         +                be the path to the executable, and should be ignored.
          +
          + Returns:
          +  The status code returned by the command, or -1 if an exception is thrown.
          + +/
-        int parseAndExecute(string[] args)
+        int parseAndExecute(string[] args, IgnoreFirstArg ignoreFirst = IgnoreFirstArg.yes)
         {
+            if(ignoreFirst)
+            {
+                if(args.length <= 1)
+                    args.length = 0;
+                else
+                    args = args[1..$];
+            }
+
             return this.parseAndExecute(ArgPullParser(args));
         } 
 
@@ -397,7 +413,7 @@ final class CommandLineInterface(Modules...)
             assert(!matchSpacelessPattern("v|verbose", "lalafell"));
         }
 
-        static bool matchSpacefullPattern(string pattern, ref ArgPullParser parser)
+        static bool matchSpacefullPattern(string pattern, ref ArgPullParser parser, AllowPartialMatch allowPartial = AllowPartialMatch.no)
         {
             import std.algorithm : splitter;
 
@@ -405,6 +421,7 @@ final class CommandLineInterface(Modules...)
             {
                 auto savedParser = parser.save();
                 bool isAMatch = true;
+                bool isAPartialMatch = false;
                 foreach(split; subpattern.splitter(" "))
                 {
                     // import std.stdio;
@@ -417,10 +434,12 @@ final class CommandLineInterface(Modules...)
                         break;
                     }
 
+                    isAPartialMatch = true;
                     savedParser.popFront();
                 }
 
-                if(isAMatch)
+                if(isAMatch
+                || (isAPartialMatch && allowPartial))
                 {
                     parser = savedParser;
                     return true;
@@ -570,9 +589,9 @@ version(unittest)
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
 
-        assert(cli.parseAndExecute(["execute", "t", "-a 20"])              == 0); // b is null
-        assert(cli.parseAndExecute(["execute", "test", "20", "--avar 21"]) == -1); // a and b don't match
-        assert(cli.parseAndExecute(["et", "20", "-a 20"])                  == 1); // a and b match
-        assert(cli.parseAndExecute(["e", "test", "20", "-a 20", "-c"])     == 0); // -c is used
+        assert(cli.parseAndExecute(["execute", "t", "-a 20"],              IgnoreFirstArg.no) == 0); // b is null
+        assert(cli.parseAndExecute(["execute", "test", "20", "--avar 21"], IgnoreFirstArg.no) == -1); // a and b don't match
+        assert(cli.parseAndExecute(["et", "20", "-a 20"],                  IgnoreFirstArg.no) == 1); // a and b match
+        assert(cli.parseAndExecute(["e", "test", "20", "-a 20", "-c"],     IgnoreFirstArg.no) == 0); // -c is used
     }
 }
