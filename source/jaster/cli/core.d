@@ -227,7 +227,12 @@ final class CommandLineInterface(Modules...)
             }
 
             auto result = this._commands.filter!(c => matchSpacefullPattern(c.pattern.value, /*ref*/ args));
-            enforce(!result.empty, "Unknown command: "~args.front.value);
+            if(result.empty)
+            {
+                writefln("ERROR: Unknown command '%s'.", args.front.value);
+                writefln(this.createAvailableCommandsHelpText(args).toString());
+                return -1;
+            }
 
             string errorMessage;
             auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage);
@@ -622,7 +627,6 @@ version(unittest)
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
 
-        cli.parseAndExecute([]);
         assert(cli.parseAndExecute(["execute", "t", "-a 20"],              IgnoreFirstArg.no) == 0); // b is null
         assert(cli.parseAndExecute(["execute", "test", "20", "--avar 21"], IgnoreFirstArg.no) == -1); // a and b don't match
         assert(cli.parseAndExecute(["et", "20", "-a 20"],                  IgnoreFirstArg.no) == 1); // a and b match
