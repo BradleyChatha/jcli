@@ -300,7 +300,7 @@ final class CommandLineInterface(Modules...)
 
             static foreach(symbol; getSymbolsByUDA!(Module, Command))
             {
-                static assert(is(symbol == struct) && is(symbol == class), 
+                static assert(is(symbol == struct) || is(symbol == class), 
                     "Only structs and classes can be marked with @Command. Issue Symbol = " ~ __traits(identifier, symbol)
                 );
 
@@ -544,10 +544,12 @@ final class CommandLineInterface(Modules...)
 
             alias NameToMember(string Name) = __traits(getMember, T, Name);
             alias MemberNames               = __traits(allMembers, T);
-            alias MemberSymbols             = staticMap!(NameToMember, MemberNames);
 
-            static foreach(symbol_SOME_RANDOM_CRAP; MemberSymbols) // The postfix is necessary so the below `if` works, without forcing the user to not use the name 'symbol' in their code.
+            static foreach(symbolName; MemberNames)
             {{
+                // The postfix is necessary so the below `if` works, without forcing the user to not use the name 'symbol' in their code.
+                alias symbol_SOME_RANDOM_CRAP = NameToMember!symbolName; 
+                
                 // Skip over aliases, nested types, and enums.
                 static if(!isType!symbol_SOME_RANDOM_CRAP
                        && !is(symbol_SOME_RANDOM_CRAP == enum)
