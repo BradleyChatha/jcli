@@ -300,8 +300,8 @@ final class CommandLineInterface(Modules...)
 
             static foreach(symbol; getSymbolsByUDA!(Module, Command))
             {
-                static assert(is(symbol == struct), 
-                    "Only structs can be marked with @Command (classes soon). Issue Symbol = " ~ __traits(identifier, symbol)
+                static assert(is(symbol == struct) && is(symbol == class), 
+                    "Only structs and classes can be marked with @Command. Issue Symbol = " ~ __traits(identifier, symbol)
                 );
 
                 pragma(msg, "Found command: ", __traits(identifier, symbol));
@@ -369,6 +369,8 @@ final class CommandLineInterface(Modules...)
             return (ArgPullParser parser, ref string executionError, ServiceProvider services)
             {
                 T commandInstance = services.injectAndConstruct!T();
+                static if(is(T == class))
+                    assert(commandInstance !is null, "Dependency injection failed somehow.");
                 
                 // Get arg info.
                 NamedArgInfo!T[] namedArgs;
