@@ -5,6 +5,7 @@ private
     import std.typecons : Flag;
     import std.traits   : isSomeChar;
     import jaster.cli.parser, jaster.cli.udas, jaster.cli.binder, jaster.cli.helptext;
+    import jaster.ioc.container;
 }
 
 public
@@ -45,7 +46,7 @@ alias IgnoreFirstArg = Flag!"ignoreFirst";
  +  Example #4: The pattern (for `@CommandNamedArg`) "v|verbose" will match when either "-v" or "--verbose" is used.
  +
  + Commands:
- +  A command is a struct or class (class support coming soon) that is marked with `@Command`.
+ +  A command is a struct or class that is marked with `@Command`.
  +
  +  Commands have only one requirement - They have a function called `onExecute`.
  +
@@ -60,6 +61,9 @@ alias IgnoreFirstArg = Flag!"ignoreFirst";
  +  If a command has it's pattern matched, then it's arguments will be parsed before `onExecute` is called.
  +
  +  Arguments are either positional (`@CommandPositionalArg`) or named (`@CommandNamedArg`).
+ +
+ + Dependency_Injection:
+ +  Whenever a command object is created, it is created using dependency injection (via the `jioc` library).
  +
  + Positional_Arguments:
  +  A positional arg is an argument that appears in a certain 'position'. For example, imagine we had a command that we wanted to
@@ -121,7 +125,7 @@ alias IgnoreFirstArg = Flag!"ignoreFirst";
  + +/
 final class CommandLineInterface(Modules...)
 {
-    alias CommandExecuteFunc    = int function(ArgPullParser, ref string errorMessageIfThereWasOne);
+    alias CommandExecuteFunc    = int function(ArgPullParser, ref string errorMessageIfThereWasOne, ServiceProvider);
     alias ArgValueSetterFunc(T) = void function(ArgToken, ref T);
     alias ArgBinderInstance     = ArgBinder!Modules;
     alias AllowPartialMatch     = Flag!"partialMatch";
@@ -168,14 +172,19 @@ final class CommandLineInterface(Modules...)
     private
     {
         CommandInfo[] _commands;
+        ServiceProvider _services;
     }
 
     /+ PUBLIC INTERFACE +/
     public final
     {
         ///
-        this()
+        this(ServiceProvider services = null)
         {
+            if(services is null)
+                services = new ServiceProvider();
+            this._services = services;
+
             static foreach(mod; Modules)
                 this.addCommandsFromModule!mod();
         }
@@ -244,7 +253,7 @@ final class CommandLineInterface(Modules...)
             }
 
             string errorMessage;
-            auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage);
+            auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage, this._services);
 
             if(errorMessage !is null)
             {
@@ -301,7 +310,7 @@ final class CommandLineInterface(Modules...)
         }
 
         void addCommand(alias T)()
-        if(is(T == struct))
+        if(is(T == struct) || is(T == class))
         {
             CommandInfo info;
             info.helpText  = this.createHelpText!T();
@@ -357,9 +366,9 @@ final class CommandLineInterface(Modules...)
             import std.exception : enforce;
 
             // This is expecting the parser to have already read in the command's name, leaving only the args.
-            return (ArgPullParser parser, ref string executionError)
+            return (ArgPullParser parser, ref string executionError, ServiceProvider services)
             {
-                T commandInstance;
+                T commandInstance = services.injectAndConstruct!T();
                 
                 // Get arg info.
                 NamedArgInfo!T[] namedArgs;
