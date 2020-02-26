@@ -5,7 +5,7 @@ private
     import std.typecons : Flag;
     import std.traits   : isSomeChar;
     import jaster.cli.parser, jaster.cli.udas, jaster.cli.binder, jaster.cli.helptext;
-    import jaster.ioc.container;
+    import jaster.ioc;
 }
 
 public
@@ -182,7 +182,7 @@ final class CommandLineInterface(Modules...)
         this(ServiceProvider services = null)
         {
             if(services is null)
-                services = new ServiceProvider();
+                services = new ServiceProvider(null);
             this._services = services;
 
             static foreach(mod; Modules)
@@ -368,7 +368,7 @@ final class CommandLineInterface(Modules...)
             // This is expecting the parser to have already read in the command's name, leaving only the args.
             return (ArgPullParser parser, ref string executionError, ServiceProvider services)
             {
-                T commandInstance = services.injectAndConstruct!T();
+                T commandInstance = Injector.construct!T(services.defaultScope);
                 static if(is(T == class))
                     assert(commandInstance !is null, "Dependency injection failed somehow.");
                 

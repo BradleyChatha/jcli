@@ -2,5 +2,6 @@ module jaster.cli.internal;
 
 void debugPragma(string Message)()
 {
-    debug pragma(msg, "[JCLI]<DEBUG> "~Message);
+    version(JCLI_Verbose)
+        debug pragma(msg, "[JCLI]<DEBUG> "~Message);
 }
