@@ -33,7 +33,9 @@ alias IgnoreFirstArg = Flag!"ignoreFirst";
  +
  +  Example #2: The pattern "run all" will match if the given command line args starts with "run all" (["run all"] won't work right now, only ["run", "all"] will)
  +
- +  Example #3: The pattern "r|run" will match if the given command line args starts with "r", or "run all".
+ +  Example #3: The pattern "r|run" will match if the given command line args starts with "r", or "run".
+ +
+ +  Longer patterns take higher priority than shorter ones.
  +
  +  Patterns with spaces are only allowed inside of `@Command` pattern UDAs. The `@CommandNamedArg` UDA is a bit more special.
  +
@@ -181,12 +183,16 @@ final class CommandLineInterface(Modules...)
         ///
         this(ServiceProvider services = null)
         {
+            import std.algorithm : sort;
+
             if(services is null)
                 services = new ServiceProvider(null);
             this._services = services;
 
             static foreach(mod; Modules)
                 this.addCommandsFromModule!mod();
+
+            this._commands.sort!"a.pattern.pattern.length > b.pattern.pattern.length"();
         }
         
         /++
@@ -244,7 +250,7 @@ final class CommandLineInterface(Modules...)
                 return -1;
             }
 
-            auto result = this._commands.filter!(c => matchSpacefullPattern(c.pattern.value, /*ref*/ args));
+            auto result = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref*/ args));
             if(result.empty)
             {
                 writefln("ERROR: Unknown command '%s'.", args.front.value);
@@ -278,9 +284,9 @@ final class CommandLineInterface(Modules...)
                    .addContent(
                        new HelpSectionArgInfoContent(
                            this._commands
-                                 .filter!(c => args.empty || matchSpacefullPattern(c.pattern.value, /*ref*/ args, AllowPartialMatch.yes))
+                                 .filter!(c => args.empty || matchSpacefullPattern(c.pattern.pattern, /*ref*/ args, AllowPartialMatch.yes))
                                  .map!(c => HelpSectionArgInfoContent.ArgInfo(
-                                     c.pattern.value.splitter('|').array,
+                                     c.pattern.pattern.splitter('|').array,
                                      c.pattern.description,
                                      ArgIsOptional.no
                                  ))
@@ -353,7 +359,7 @@ final class CommandLineInterface(Modules...)
                 );
             }
 
-            builder.commandName = UDA.value;
+            builder.commandName = UDA.pattern;
             builder.description = UDA.description;
 
             return builder;

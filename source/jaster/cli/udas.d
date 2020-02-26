@@ -15,7 +15,7 @@ private
 struct Command
 {
     /// The pattern to match against.
-    string value;
+    string pattern;
 
     /// The description of this command.
     string description;
@@ -94,5 +94,5 @@ unittest
 
     static assert(!__traits(compiles, getSingleUDA!(A, Command)));
     static assert(!__traits(compiles, getSingleUDA!(C, Command)));
-    static assert(getSingleUDA!(B, Command).value == "One");
+    static assert(getSingleUDA!(B, Command).pattern == "One");
 }
