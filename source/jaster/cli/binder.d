@@ -106,7 +106,7 @@ static struct ArgBinder(Modules...)
                         );
 
                         static if(is(Params[1] == T)
-                               || __traits(compiles, Binder("", T.init))) // Template support.
+                               || __traits(compiles, Binder("", value))) // Template support.
                         {
                             debugPragma!("Using arg binder `"~BinderFQN~"` for type `"~T.stringof~"`.");
                             Binder(arg, value);
