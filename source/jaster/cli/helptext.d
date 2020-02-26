@@ -67,24 +67,37 @@ interface IHelpSectionContent
                     end = text.length;
                 
                 // Strip off whitespace, so things format properly.
-                while(text[offset] == ' ')
+                while(offset < text.length && text[offset] == ' ')
                 {
                     offset++;
                     if(end < text.length)
                         end++;
                 }
-
-                while(end != 0 && text[end - 1] == ' ')
-                    end--;
-
+                
                 actualText ~= options.linePrefix;
-                actualText ~= text[offset..end];
+                actualText ~= text[offset..(end >= text.length) ? text.length : end];
                 actualText ~= "\n";
 
                 offset += charsPerLine;
             }
 
+            // Don't keep the new line for the last line.
+            if(actualText.length > 0 && actualText[$-1] == '\n')
+                actualText = actualText[0..$-1];
+
             return actualText.assumeUnique;
+        }
+        
+        // issue #2
+        unittest
+        {
+            const obj = new HelpSectionTextContent(""); // Just so I can access the line wrap function.
+
+            const options = HelpSectionOptions("", 4);
+            const text = obj.lineWrap(options, "abcdefgh");
+
+            assert(text[$-1] != '\n', "lineWrap is inserting a new line at the end again.");
+            assert(text == "abc\ndef\ngh", text);
         }
     }
 }
@@ -236,7 +249,7 @@ final class HelpTextBuilderTechnical
         override string toString()
         {
             import std.array     : appender;
-            import std.algorithm : map, each;
+            import std.algorithm : map, each, joiner;
             import std.exception : assumeUnique;
             import std.format    : format;
 
@@ -244,14 +257,15 @@ final class HelpTextBuilderTechnical
             output.reserve(4096);
 
             // Usages
-            this._usages.map!(u => "Usage: "~u~"\n")
+            this._usages.map!(u => "Usage: "~u)
+                        .joiner("\n")
                         .each!(u => output ~= u);
 
             // Sections
             foreach(ref section; this._sections)
             {
                 // This could all technically be 'D-ified'/'rangeified' but I couldn't make it look nice.
-                output ~= "\n";
+                output ~= "\n\n";
                 output ~= section.name~":\n";
                 section.content.map!(c => c.getContent(section.options))
                                .each!(c => output ~= c);
@@ -434,7 +448,7 @@ unittest
        ~"    1,OutputFile                 - The output file.\n"
        ~"\n"
        ~"Named Args:\n"
-       ~"    -v,--verbose                 - Verbose output\n",
+       ~"    -v,--verbose                 - Verbose output",
 
         "\n"~builder.toString()
     );
@@ -472,13 +486,13 @@ unittest
     assert(content.getContent(options) == 
         "\tHey Hip\n"
        ~"\tLell Lo\n"
-       ~"\tll\n",
+       ~"\tll",
     
         "\n"~content.getContent(options)
     );
 
     options.lineCharLimit = 200;
-    assert(content.getContent(options) == "\tHey Hip Lell Loll\n");
+    assert(content.getContent(options) == "\tHey Hip Lell Loll");
 
     options.lineCharLimit = 2; // Enough for the prefix and ending new line, but not enough for any piece of text.
     assertThrown(content.getContent(options));
@@ -501,9 +515,7 @@ unittest
        ~"\tL\n"
        ~"\to\n"
        ~"\tl\n"
-       ~"\tl\n",
-    
-        "\n"~content.getContent(options)
+       ~"\tl"
     );
 }
 
@@ -639,6 +651,10 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
             }
         }
 
+        // Void the last new line, as it provides consistency with HelpSectionTextContent
+        if(output.length > 0 && output[$-1] == '\n')
+            output = output[0..$-1];
+
         // debug
         // {
         //     char[] a;
@@ -699,7 +715,7 @@ unittest
        ~"                         doing.\n"
        ~"    -f,--file          - The input file.\n"
        ~"    --super,--longer,  - Some unusuable command with long names and a long desc\n"
-       ~"    --names              ription.\n",
+       ~"    --names              ription.",
 
         "\n"~content.getContent(options)
     );
