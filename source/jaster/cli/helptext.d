@@ -555,7 +555,7 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
     string getContent(const HelpSectionOptions badOptions)
     {
         import std.array     : array;
-        import std.algorithm : map, reduce, count, max, splitter, substitute, filter;
+        import std.algorithm : map, reduce, count, max, splitter, substitute;
         import std.conv      : to;
         import std.exception : assumeUnique;
         import std.utf       : byChar;
@@ -609,8 +609,8 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
                 descriptionText = descriptionText[descriptionOptions.linePrefix.length..$]; // Remove the padding from the first line.
 
             // Then create our output line-by-line
-            auto nameLines = nameText.splitter('\n').filter!(l => l.length > 0);
-            auto descriptionLines = descriptionText.splitter('\n').filter!(l => l.length > 0);
+            auto nameLines = nameText.splitter('\n');
+            auto descriptionLines = descriptionText.splitter('\n');
 
             bool isFirstLine = true;
             size_t nameLength = 0;
