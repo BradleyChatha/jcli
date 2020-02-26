@@ -127,7 +127,7 @@ alias IgnoreFirstArg = Flag!"ignoreFirst";
  + +/
 final class CommandLineInterface(Modules...)
 {
-    alias CommandExecuteFunc    = int function(ArgPullParser, ref string errorMessageIfThereWasOne, ServiceProvider);
+    alias CommandExecuteFunc    = int function(ArgPullParser, ref string errorMessageIfThereWasOne, ServiceProvider, HelpTextBuilderSimple);
     alias ArgValueSetterFunc(T) = void function(ArgToken, ref T);
     alias ArgBinderInstance     = ArgBinder!Modules;
     alias AllowPartialMatch     = Flag!"partialMatch";
@@ -241,31 +241,26 @@ final class CommandLineInterface(Modules...)
                 return -1;
             }
 
-            if(args.save.any!(t => t.type == ArgTokenType.ShortHandArgument && t.value == "h"
-                                || t.type == ArgTokenType.LongHandArgument && t.value == "help")
-            )
-            {
-                // First param needs to be an empty range to make the function display all commands.
-                writefln(this.createAvailableCommandsHelpText(ArgPullParser(null), "Available commands").toString());
-                return -1;
-            }
-
-            auto result = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref*/ args));
+            auto argsSave = args; // If we can't find the exact command, sometimes we can get a partial match when showing help text.
+            auto result   = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref*/ args));
             if(result.empty)
             {
-                writefln("ERROR: Unknown command '%s'.", args.front.value);
+                if(containsHelpArgument(args))
+                {
+                    writefln(this.createAvailableCommandsHelpText(argsSave, "Available commands").toString());
+                    return -1;
+                }
+
+                writefln("ERROR: Unknown command '%s'.", argsSave.front.value);
                 writefln(this.createAvailableCommandsHelpText(args).toString());
                 return -1;
             }
 
             string errorMessage;
-            auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage, this._services);
+            auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage, this._services, result.front.helpText);
 
             if(errorMessage !is null)
-            {
                 writefln("ERROR: %s", errorMessage);
-                writefln(result.front.helpText.toString());
-            }
 
             return statusCode;
         }
@@ -284,9 +279,14 @@ final class CommandLineInterface(Modules...)
                    .addContent(
                        new HelpSectionArgInfoContent(
                            this._commands
-                                 .filter!(c => args.empty || matchSpacefullPattern(c.pattern.pattern, /*ref*/ args, AllowPartialMatch.yes))
+                                 .filter!((c)
+                                 {
+                                     auto argsSave = args;
+                                     return argsSave.empty 
+                                         || matchSpacefullPattern(c.pattern.pattern, /*ref*/ argsSave, AllowPartialMatch.yes);
+                                 })
                                  .map!(c => HelpSectionArgInfoContent.ArgInfo(
-                                     c.pattern.pattern.splitter('|').array,
+                                     [c.pattern.pattern],
                                      c.pattern.description,
                                      ArgIsOptional.no
                                  ))
@@ -372,8 +372,15 @@ final class CommandLineInterface(Modules...)
             import std.exception : enforce;
 
             // This is expecting the parser to have already read in the command's name, leaving only the args.
-            return (ArgPullParser parser, ref string executionError, ServiceProvider services)
+            return (ArgPullParser parser, ref string executionError, ServiceProvider services, HelpTextBuilderSimple helpText)
             {
+                if(containsHelpArgument(parser))
+                {
+                    import std.stdio : writeln;
+                    writeln(helpText.toString());
+                    return 0;
+                }
+
                 T commandInstance = Injector.construct!T(services.defaultScope);
                 static if(is(T == class))
                     assert(commandInstance !is null, "Dependency injection failed somehow.");
@@ -461,6 +468,14 @@ final class CommandLineInterface(Modules...)
                     return -1;
                 }
             };
+        }
+
+        static bool containsHelpArgument(ArgPullParser args)
+        {
+            import std.algorithm : any;
+
+            return args.any!(t => t.type == ArgTokenType.ShortHandArgument && t.value == "h"
+                                || t.type == ArgTokenType.LongHandArgument && t.value == "help");
         }
 
         static bool matchSpacelessPattern(string pattern, string toTestAgainst)
@@ -553,63 +568,66 @@ final class CommandLineInterface(Modules...)
 
             static foreach(symbolName; MemberNames)
             {{
-                // The postfix is necessary so the below `if` works, without forcing the user to not use the name 'symbol' in their code.
-                alias symbol_SOME_RANDOM_CRAP = NameToMember!symbolName; 
-                
-                // Skip over aliases, nested types, and enums.
-                static if(!isType!symbol_SOME_RANDOM_CRAP
-                       && !is(symbol_SOME_RANDOM_CRAP == enum)
-                       && __traits(identifier, symbol_SOME_RANDOM_CRAP) != "symbol_SOME_RANDOM_CRAP"
-                )
+                static if(__traits(compiles, NameToMember!symbolName))
                 {
-                    // I wish there were a convinent way to 'continue' a static foreach...
-
-                    alias Symbol     = symbol_SOME_RANDOM_CRAP;
-                    alias SymbolType = typeof(Symbol);
-                    const SymbolName = __traits(identifier, Symbol);
-
-                    // I feel I'm overthinking this entire thing.
-                    const IS_FIELD_MIXIN = format("%s a; a = %s.init;", SymbolType.stringof, SymbolType.stringof);
-                    static if(__traits(compiles, { mixin(IS_FIELD_MIXIN); })
-                           && (hasUDA!(Symbol, CommandNamedArg) || hasUDA!(Symbol, CommandPositionalArg))
-                    ) 
+                    // The postfix is necessary so the below `if` works, without forcing the user to not use the name 'symbol' in their code.
+                    alias symbol_SOME_RANDOM_CRAP = NameToMember!symbolName; 
+                    
+                    // Skip over aliases, nested types, and enums.
+                    static if(!isType!symbol_SOME_RANDOM_CRAP
+                        && !is(symbol_SOME_RANDOM_CRAP == enum)
+                        && __traits(identifier, symbol_SOME_RANDOM_CRAP) != "symbol_SOME_RANDOM_CRAP"
+                    )
                     {
-                        static if(hasUDA!(Symbol, CommandNamedArg))
-                        {
-                            NamedArgInfo!T arg;
-                            arg.uda = getSingleUDA!(Symbol, CommandNamedArg);
-                        }
-                        else static if(hasUDA!(Symbol, CommandPositionalArg))
-                        {
-                            PositionalArgInfo!T arg;
-                            arg.uda = getSingleUDA!(Symbol, CommandPositionalArg);
-                        }
-                        else static assert(false, "Bug with parent if statement.");
+                        // I wish there were a convinent way to 'continue' a static foreach...
 
-                        arg.setter = (ArgToken tok, ref T commandInstance)
-                        {
-                            import std.exception : enforce;
-                            import std.conv : to;
-                            assert(tok.type == ArgTokenType.Text, tok.to!string);
+                        alias Symbol     = symbol_SOME_RANDOM_CRAP;
+                        alias SymbolType = typeof(Symbol);
+                        const SymbolName = __traits(identifier, Symbol);
 
-                            static if(isInstanceOf!(Nullable, SymbolType))
+                        // I feel I'm overthinking this entire thing.
+                        const IS_FIELD_MIXIN = format("%s a; a = %s.init;", SymbolType.stringof, SymbolType.stringof);
+                        static if(__traits(compiles, { mixin(IS_FIELD_MIXIN); })
+                            && (hasUDA!(Symbol, CommandNamedArg) || hasUDA!(Symbol, CommandPositionalArg))
+                        ) 
+                        {
+                            static if(hasUDA!(Symbol, CommandNamedArg))
                             {
-                                // The Unqual removes the `inout` that `get` uses.
-                                alias SymbolUnderlyingType = Unqual!(ReturnType!(SymbolType.get));
-
-                                SymbolUnderlyingType proxy;
-                                ArgBinderInstance.bind(tok.value, /*ref*/ proxy);
-
-                                mixin("commandInstance.%s = proxy;".format(SymbolName));
+                                NamedArgInfo!T arg;
+                                arg.uda = getSingleUDA!(Symbol, CommandNamedArg);
                             }
-                            else
-                                ArgBinderInstance.bind(tok.value, /*ref*/ mixin("commandInstance.%s".format(SymbolName)));
-                        };
-                        arg.isNullable = isInstanceOf!(Nullable, SymbolType);
-                        arg.isBool     = is(SymbolType == bool) || is(SymbolType == Nullable!bool);
+                            else static if(hasUDA!(Symbol, CommandPositionalArg))
+                            {
+                                PositionalArgInfo!T arg;
+                                arg.uda = getSingleUDA!(Symbol, CommandPositionalArg);
+                            }
+                            else static assert(false, "Bug with parent if statement.");
 
-                        static if(hasUDA!(Symbol, CommandNamedArg)) namedArgs ~= arg;
-                        else                                        positionalArgs ~= arg;
+                            arg.setter = (ArgToken tok, ref T commandInstance)
+                            {
+                                import std.exception : enforce;
+                                import std.conv : to;
+                                assert(tok.type == ArgTokenType.Text, tok.to!string);
+
+                                static if(isInstanceOf!(Nullable, SymbolType))
+                                {
+                                    // The Unqual removes the `inout` that `get` uses.
+                                    alias SymbolUnderlyingType = Unqual!(ReturnType!(SymbolType.get));
+
+                                    SymbolUnderlyingType proxy;
+                                    ArgBinderInstance.bind(tok.value, /*ref*/ proxy);
+
+                                    mixin("commandInstance.%s = proxy;".format(SymbolName));
+                                }
+                                else
+                                    ArgBinderInstance.bind(tok.value, /*ref*/ mixin("commandInstance.%s".format(SymbolName)));
+                            };
+                            arg.isNullable = isInstanceOf!(Nullable, SymbolType);
+                            arg.isBool     = is(SymbolType == bool) || is(SymbolType == Nullable!bool);
+
+                            static if(hasUDA!(Symbol, CommandNamedArg)) namedArgs ~= arg;
+                            else                                        positionalArgs ~= arg;
+                        }
                     }
                 }
             }}
