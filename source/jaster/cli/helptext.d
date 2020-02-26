@@ -431,13 +431,10 @@ unittest
        ~"\n"
        ~"Positional Args:\n"
        ~"    0,InputFile                  - The input file.\n"
-       ~"\n"
        ~"    1,OutputFile                 - The output file.\n"
        ~"\n"
-       ~"\n"
        ~"Named Args:\n"
-       ~"    -v,--verbose                 - Verbose output\n"
-       ~"\n",
+       ~"    -v,--verbose                 - Verbose output\n",
 
         "\n"~builder.toString()
     );
@@ -600,7 +597,7 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
                 descriptionText = descriptionText[descriptionOptions.linePrefix.length..$]; // Remove the padding from the first line.
 
             // Then create our output line-by-line
-            auto nameLines = nameText.splitter('\n');
+            auto nameLines = nameText.splitter('\n').filter!(l => l.length > 0);
             auto descriptionLines = descriptionText.splitter('\n').filter!(l => l.length > 0);
 
             bool isFirstLine = true;
@@ -614,6 +611,8 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
                     output ~= nameLines.front;
                     nameLines.popFront();
                 }
+                else
+                    nameLength = 0;
 
                 if(isFirstLine)
                 {
@@ -699,10 +698,8 @@ unittest
         "    -v,--verbose       - Display detailed information about what the program is\n"
        ~"                         doing.\n"
        ~"    -f,--file          - The input file.\n"
-       ~"\n"
        ~"    --super,--longer,  - Some unusuable command with long names and a long desc\n"
-       ~"    --names              ription.\n"
-       ~"\n",
+       ~"    --names              ription.\n",
 
         "\n"~content.getContent(options)
     );
