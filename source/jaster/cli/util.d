@@ -25,16 +25,6 @@ static final abstract class Shell
     {
         bool useVerboseOutput = false;
 
-        void logf(Args...)(string format, Args args)
-        {
-            writef(format, args);
-        }
-
-        void logfln(Args...)(string format, Args args)
-        {
-            Shell.logf(format ~ "\n", args);
-        }
-
         void verboseLogfln(Args...)(string format, Args args)
         {
             if(Shell.useVerboseOutput)
