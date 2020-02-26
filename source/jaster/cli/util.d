@@ -1,5 +1,7 @@
 module jaster.cli.util;
 
+import std.experimental.logger : Logger;
+
 /++
  + Contains utility functions regarding the Shell/process execution.
  + ++/
@@ -23,7 +25,17 @@ static final abstract class Shell
     {
         bool useVerboseOutput = false;
 
-        void verboseLogf(Args...)(string format, Args args)
+        void logf(Args...)(string format, Args args)
+        {
+            writef(format, args);
+        }
+
+        void logfln(Args...)(string format, Args args)
+        {
+            Shell.logf(format ~ "\n", args);
+        }
+
+        void verboseLogfln(Args...)(string format, Args args)
         {
             if(Shell.useVerboseOutput)
                 writefln(format, args);
@@ -37,9 +49,9 @@ static final abstract class Shell
         {
             import std.process : executeShell;
             
-            Shell.verboseLogf("execute: %s", command);
+            Shell.verboseLogfln("execute: %s", command);
             auto result = executeShell(command);
-            Shell.verboseLogf(result.output);
+            Shell.verboseLogfln(result.output);
 
             return Result(result.output, result.status);
         }
@@ -88,7 +100,7 @@ static final abstract class Shell
         {
             import std.file : chdir, getcwd;
 
-            Shell.verboseLogf("pushLocation: %s", dir);
+            Shell.verboseLogfln("pushLocation: %s", dir);
             this._locationStack ~= getcwd();
             chdir(dir);
         }
@@ -101,7 +113,7 @@ static final abstract class Shell
                 "The location stack is empty. This indicates a bug as there is a mis-match between `pushLocation` and `popLocation` calls."
             );
 
-            Shell.verboseLogf("popLocation: [dir after pop] %s", this._locationStack[$-1]);
+            Shell.verboseLogfln("popLocation: [dir after pop] %s", this._locationStack[$-1]);
             chdir(this._locationStack[$-1]);
             this._locationStack.length -= 1;
         }
