@@ -69,7 +69,7 @@ struct CompileCommand
 }
 ```
 
-Create an instance of `CommandLineInterface`, passing it any modules containing commands or `@ArgBinder` functions into its template argument; call `parseAndExecute` #
+Create an instance of `CommandLineInterface`, passing it any modules containing commands or `@ArgBinder` functions into its template argument; call `parseAndExecute`
 with the main function's `args`; return the resulting status code:
 
 ```d
