@@ -24,7 +24,7 @@ I'll refer to the 'individual parts' as 'components', as that makes sense to me:
 
 * Shell - Contains a set of helper functions related to the shell. Highlights include `pushLocation` and `popLocation` (if you're familiar with Powershell's `Push-Location`,              etc.); check if a command exists; toggleable logging functions, and several functions to execute commands.
 
-It's best to refer to the documentation of each comment, as they go into much more detail than this brief overview.
+It's best to refer to the documentation of each component, as they go into much more detail than this brief overview.
 
 Should `CommandLineInterface` not work to your expectations, then as mentioned the other components can be used to help you create your own solution.
 
@@ -49,7 +49,7 @@ import jaster.cli;
 struct CompileCommand
 {
     // Use `Nullable` for optional arguments.
-    // `std.nullable` is publicly imported by JCLI for ease-of-use.
+    // `Nullable` is publicly imported by JCLI for ease-of-use.
     @CommandNamedArg("o|output", "Where to place the compiled output")
     Nullable!string output;
 
