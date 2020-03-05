@@ -40,6 +40,8 @@ private
  +  One may ask "Won't that be confusing? How do I know which binder is being used?". My answer, while not perfect, is in non-release builds, 
  +  the binder will output a `debug pragma` to give detailed information on which binders are used for which types, and which ones are skipped over (and why they were skipped).
  +
+ +  Note that you must also add "JCLI_Verbose" as a version (either in your dub file, or cli, or whatever) for these messages to show up.
+ +
  +  While not perfect, this does go over the entire process the arg binder is doing to select which `@ArgBinderFunc` it will use.
  +
  + Notes:

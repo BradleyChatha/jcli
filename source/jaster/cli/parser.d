@@ -47,7 +47,7 @@ struct ArgToken
  +
  +  The former is given back as a single token containing the entire string. The latter will return 4 tokens, containing the individual strings.
  +
- +  This behaviour is used because this parser is designed to take it's input directly from the main function's args, which have already been
+ +  This behaviour is used because this parser is designed to take its input directly from the main function's args, which have already been
  +  processed by a shell.
  +
  + Argument Formats:

@@ -279,20 +279,20 @@ final class CommandLineInterface(Modules...)
                    .addContent(
                        new HelpSectionArgInfoContent(
                            this._commands
-                                 .filter!((c)
-                                 {
-                                     auto argsSave = args;
-                                     return argsSave.empty 
-                                         || matchSpacefullPattern(c.pattern.pattern, /*ref*/ argsSave, AllowPartialMatch.yes);
-                                 })
-                                 .map!(c => HelpSectionArgInfoContent.ArgInfo(
-                                     [c.pattern.pattern],
-                                     c.pattern.description,
-                                     ArgIsOptional.no
-                                 ))
-                                 .array
-                                 .sort!"a.names[0] < b.names[0]"
-                                 .array, // eww...
+                               .filter!((c)
+                               {
+                                    auto argsSave = args;
+                                    return argsSave.empty 
+                                        || matchSpacefullPattern(c.pattern.pattern, /*ref*/ argsSave, AllowPartialMatch.yes);
+                               })
+                               .map!(c => HelpSectionArgInfoContent.ArgInfo(
+                                    [c.pattern.pattern],
+                                    c.pattern.description,
+                                    ArgIsOptional.no
+                               ))
+                               .array
+                               .sort!"a.names[0] < b.names[0]"
+                               .array, // eww...
                             AutoAddArgDashes.no
                        )
             );
