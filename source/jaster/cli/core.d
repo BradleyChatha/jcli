@@ -16,6 +16,35 @@ public
 /// 
 alias IgnoreFirstArg = Flag!"ignoreFirst";
 
+interface ICommandLineInterface
+{
+    /// See: `CommandLineInterface.parseAndExecute`
+    int parseAndExecute(string[] args, IgnoreFirstArg ignoreFirst = IgnoreFirstArg.yes);
+}
+
+private final class ICommandLineInterfaceImpl : ICommandLineInterface
+{
+    alias ParseAndExecuteT = int delegate(string[], IgnoreFirstArg);
+
+    private ParseAndExecuteT _func;
+
+    override int parseAndExecute(string[] args, IgnoreFirstArg ignoreFirst = IgnoreFirstArg.yes)
+    {
+        return this._func(args, ignoreFirst);
+    }
+}
+
+ServiceInfo addCommandLineInterfaceService()
+{
+    return ServiceInfo.asSingleton!(ICommandLineInterface, ICommandLineInterfaceImpl);
+}
+
+ServiceInfo[] addCommandLineInterfaceService(ServiceInfo[] services)
+{
+    services ~= addCommandLineInterfaceService();
+    return services;
+}
+
 // Needs to be a class for a default ctor.
 /++
  + Provides the functionality of parsing command line arguments, and then calling a command.
@@ -186,7 +215,7 @@ final class CommandLineInterface(Modules...)
             import std.algorithm : sort;
 
             if(services is null)
-                services = new ServiceProvider(null);
+                services = new ServiceProvider([addCommandLineInterfaceService()]);
             this._services = services;
 
             static foreach(mod; Modules)
@@ -257,6 +286,10 @@ final class CommandLineInterface(Modules...)
             }
 
             string errorMessage;
+            auto proxy = cast(ICommandLineInterfaceImpl)this._services.defaultScope.getServiceOrNull!ICommandLineInterface();
+            if(proxy !is null)
+                proxy._func = &this.parseAndExecute;
+
             auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage, this._services, result.front.helpText);
 
             if(errorMessage !is null)
@@ -639,6 +672,7 @@ version(unittest)
 {
     private alias InstansiationTest = CommandLineInterface!(jaster.cli.core);
 
+    // NOTE: The only reason it can see and use private @Commands is because they're in the same module.
     @Command("execute t|execute test|et|e test", "This is a test command")
     private struct CommandTest
     {
@@ -669,6 +703,24 @@ version(unittest)
         }
     }
 
+    // Should always return 1 via `CommandTest`
+    @Command("test injection")
+    private struct CallCommandTest
+    {
+        private ICommandLineInterface _cli;
+        this(ICommandLineInterface cli)
+        {
+            this._cli = cli;
+            assert(cli !is null);
+        }
+
+        int onExecute()
+        {
+            return this._cli.parseAndExecute(["et", "20", "-a 20"], IgnoreFirstArg.no);
+        }
+    }
+
+    // General test
     unittest
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
@@ -676,5 +728,16 @@ version(unittest)
         assert(cli.parseAndExecute(["execute", "test", "20", "--avar 21"], IgnoreFirstArg.no) == -1); // a and b don't match
         assert(cli.parseAndExecute(["et", "20", "-a 20"],                  IgnoreFirstArg.no) == 1); // a and b match
         assert(cli.parseAndExecute(["e", "test", "20", "-a 20", "-c"],     IgnoreFirstArg.no) == 0); // -c is used
+    }
+
+    // Test ICommandLineInterface injection
+    unittest
+    {
+        auto provider = new ServiceProvider([
+            addCommandLineInterfaceService()
+        ]);
+
+        auto cli = new CommandLineInterface!(jaster.cli.core)(provider);
+        assert(cli.parseAndExecute(["test", "injection"], IgnoreFirstArg.no) == 1);
     }
 }
