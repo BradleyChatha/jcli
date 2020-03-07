@@ -16,6 +16,15 @@ public
 /// 
 alias IgnoreFirstArg = Flag!"ignoreFirst";
 
+/++
+ + A service that allows commands to access the `CommandLineInterface.parseAndExecute` function of the command's `CommandLineInterface`.
+ +
+ + Notes:
+ +  You **must** use `addCommandLineInterfaceService` to add the default implementation of this service into your `ServiceProvider`, you can of course
+ +  create your own implementation, but note that `CommandLineInterface` has special support for the default implementation.
+ +
+ +  Alternatively, don't pass a `ServiceProvider` into your `CommandLineInterface`, and it'll create this service by itself.
+ + ++/
 interface ICommandLineInterface
 {
     /// See: `CommandLineInterface.parseAndExecute`
@@ -34,11 +43,16 @@ private final class ICommandLineInterfaceImpl : ICommandLineInterface
     }
 }
 
+/++
+ + Returns:
+ +  A Singleton `ServiceInfo` providing the default implementation for `ICommandLineInterface`.
+ + ++/
 ServiceInfo addCommandLineInterfaceService()
 {
     return ServiceInfo.asSingleton!(ICommandLineInterface, ICommandLineInterfaceImpl);
 }
 
+/// ditto.
 ServiceInfo[] addCommandLineInterfaceService(ServiceInfo[] services)
 {
     services ~= addCommandLineInterfaceService();
@@ -209,7 +223,11 @@ final class CommandLineInterface(Modules...)
     /+ PUBLIC INTERFACE +/
     public final
     {
-        ///
+        /++
+         + Params:
+         +  services = The `ServiceProvider` to use for dependency injection.
+         +             If this value is `null`, then a new `ServiceProvider` will be created containing an `ICommandLineInterface` service.
+         + ++/
         this(ServiceProvider services = null)
         {
             import std.algorithm : sort;
