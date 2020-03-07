@@ -110,6 +110,8 @@ ServiceInfo[] addCommandLineInterfaceService(ServiceInfo[] services)
  + Dependency_Injection:
  +  Whenever a command object is created, it is created using dependency injection (via the `jioc` library).
  +
+ +  Each command is given its own service scope, even when a command calls another command.
+ +
  + Positional_Arguments:
  +  A positional arg is an argument that appears in a certain 'position'. For example, imagine we had a command that we wanted to
  +  execute by using `"myTool create SomeFile.txt \"This is some content\""`.
@@ -170,7 +172,7 @@ ServiceInfo[] addCommandLineInterfaceService(ServiceInfo[] services)
  + +/
 final class CommandLineInterface(Modules...)
 {
-    alias CommandExecuteFunc    = int function(ArgPullParser, ref string errorMessageIfThereWasOne, ServiceProvider, HelpTextBuilderSimple);
+    alias CommandExecuteFunc    = int function(ArgPullParser, ref string errorMessageIfThereWasOne, scope ref ServiceScope, HelpTextBuilderSimple);
     alias ArgValueSetterFunc(T) = void function(ArgToken, ref T);
     alias ArgBinderInstance     = ArgBinder!Modules;
     alias AllowPartialMatch     = Flag!"partialMatch";
@@ -303,12 +305,15 @@ final class CommandLineInterface(Modules...)
                 return -1;
             }
 
-            string errorMessage;
-            auto proxy = cast(ICommandLineInterfaceImpl)this._services.defaultScope.getServiceOrNull!ICommandLineInterface();
+            auto commandScope = this._services.createScope(); // Reminder: ServiceScope uses RAII.
+
+            // Special support: For our default implementation of `ICommandLineInterface`, set its value.
+            auto proxy = cast(ICommandLineInterfaceImpl)commandScope.getServiceOrNull!ICommandLineInterface();
             if(proxy !is null)
                 proxy._func = &this.parseAndExecute;
 
-            auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage, this._services, result.front.helpText);
+            string errorMessage;
+            auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage, commandScope, result.front.helpText);
 
             if(errorMessage !is null)
                 writefln("ERROR: %s", errorMessage);
@@ -423,7 +428,7 @@ final class CommandLineInterface(Modules...)
             import std.exception : enforce;
 
             // This is expecting the parser to have already read in the command's name, leaving only the args.
-            return (ArgPullParser parser, ref string executionError, ServiceProvider services, HelpTextBuilderSimple helpText)
+            return (ArgPullParser parser, ref string executionError, scope ref ServiceScope services, HelpTextBuilderSimple helpText)
             {
                 if(containsHelpArgument(parser))
                 {
@@ -432,7 +437,7 @@ final class CommandLineInterface(Modules...)
                     return 0;
                 }
 
-                T commandInstance = Injector.construct!T(services.defaultScope);
+                T commandInstance = Injector.construct!T(services);
                 static if(is(T == class))
                     assert(commandInstance !is null, "Dependency injection failed somehow.");
                 
