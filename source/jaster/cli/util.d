@@ -195,8 +195,15 @@ static final abstract class Shell
          +
          +  The `Binder` is only used to convert the user's input from a string into another string, in case there's any transformations
          +  you'd like to perform on it.
+         +
+         + Prompt:
+         +  The prompt layout for this variant is a bit different than other variants.
+         +
+         +  `$prompt[$list[0], $list[1], ...]$promptPostfix`
+         +
+         +  For example `Choose colour[red, blue, green]: `
          + ++/
-        T getInputFromList(T, Binder = ArgBinder!())(string prompt, T[] list, string promptPostfix = ":")
+        T getInputFromList(T, Binder = ArgBinder!())(string prompt, T[] list, string promptPostfix = ": ")
         {
             import std.stdio     : write;
             import std.conv      : to;
