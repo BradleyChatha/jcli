@@ -247,7 +247,9 @@ static final abstract class Shell
     {
         bool isInPowershell()
         {
-            return Shell.executeHasNonEmptyOutput("$verbosePreference");
+            // Seems on Windows, powershell isn't used when using `execute`, even if the program itself is launched in powershell.
+            version(Windows) return false;
+            else return Shell.executeHasNonEmptyOutput("$verbosePreference");
         }
 
         bool doesCommandExist(string command)
@@ -258,7 +260,18 @@ static final abstract class Shell
             version(linux)
                 return Shell.executeHasNonEmptyOutput("which "~command);
             else version(Windows)
-                return Shell.executeHasNonEmptyOutput("where "~command);
+            {
+                import std.algorithm : startsWith;
+
+                auto result = Shell.execute("where "~command);
+                if(result.output.length == 0)
+                    return false;
+
+                if(result.output.startsWith("INFO: Could not find files"))
+                    return false;
+
+                return true;
+            }
             else
                 static assert(false, "`doesCommandExist` is not implemented for this platform. Feel free to make a PR!");
         }
@@ -266,9 +279,7 @@ static final abstract class Shell
         void enforceCommandExists(string command)
         {
             import std.exception : enforce;
-            enforce(Shell.doesCommandExist(command),
-                "The command '"~command~"' does not exist or is not on the PATH."
-            );
+            enforce(Shell.doesCommandExist(command), "The command '"~command~"' does not exist or is not on the PATH.");
         }
     }
 }
