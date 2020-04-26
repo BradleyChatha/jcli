@@ -179,7 +179,7 @@ struct HelpSectionOptions
 final class HelpTextBuilderTechnical
 {
     /// The default options for a section.
-    static const DEFAULT_SECTION_OPTIONS = HelpSectionOptions("\t", 120);
+    static const DEFAULT_SECTION_OPTIONS = HelpSectionOptions("    ", 120);
 
     private
     {
@@ -441,7 +441,7 @@ unittest
         "Usage: MyCommand {0/InputFile} {1/OutputFile} <[v|verbose]> \n"
        ~"\n"
        ~"Description:\n"
-       ~"\tThis is a command that transforms the InputFile into an OutputFile\n"
+       ~"    This is a command that transforms the InputFile into an OutputFile\n"
        ~"\n"
        ~"Positional Args:\n"
        ~"    0,InputFile                  - The input file.\n"
@@ -552,17 +552,13 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
         this.addDashes = addDashes;
     }
 
-    string getContent(const HelpSectionOptions badOptions)
+    string getContent(const HelpSectionOptions options)
     {
         import std.array     : array;
         import std.algorithm : map, reduce, count, max, splitter, substitute;
         import std.conv      : to;
         import std.exception : assumeUnique;
         import std.utf       : byChar;
-
-        // Treat tabs as 4 spaces, since otherwise terminal-specificness can ruin the formatting.
-        HelpSectionOptions options = badOptions;
-        options.linePrefix = badOptions.linePrefix.substitute("\t", "    ").byChar.array;
 
         // Calculate some variables.
         const USEABLE_CHARS     = (options.lineCharLimit - options.linePrefix.length) - MIDDLE_AFFIX.length; // How many chars in total we can use.
@@ -706,7 +702,7 @@ unittest
         AutoAddArgDashes.yes
     );
     auto options = HelpSectionOptions(
-        "\t", // Tabs get converted into 4 spaces.
+        "    ",
         80
     );
 
