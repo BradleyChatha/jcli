@@ -301,8 +301,10 @@ final class CommandLineInterface(Modules...)
                 {
                     if(this._defaultCommand != CommandInfo.init)
                         write(this._defaultCommand.helpText.toString()); // writeln adds too much spacing.
-
-                    writeln(this.createAvailableCommandsHelpText(ArgPullParser.init, "Available commands").toString());
+                    
+                    if(this._commands.length > 0)
+                        writeln(this.createAvailableCommandsHelpText(ArgPullParser.init, "Available commands").toString());
+                    
                     return 0;
                 }
 
