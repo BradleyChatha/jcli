@@ -9,18 +9,18 @@ customised core.
 I'll refer to the 'individual parts' as 'components', as that makes sense to me:
 
 * ArgBinder - A simple helper struct which allows the user to define functions that binds a string (the arg) into a value of any type, so long
-              as that type has an `@ArgBinder` available. `ArgBinder` will automatically discover and choose which binders to use for any given type.
+as that type has an `@ArgBinder` available. `ArgBinder` will automatically discover and choose which binders to use for any given type.
 
-* CommandLineInterface - This is the 'core' provided by JCLI, and is built up from every other component. 
-                         It will automatically discover structs/classes decorated with `@Command`; auto-generate help text; auto-bind and parse the command line
-                         args; provides dependency injection (via JIOC), etc.
+* CommandLineInterface - This is the 'core' provided by JCLI, and is built up from every other component.
+It will automatically discover structs/classes decorated with `@Command`; auto-generate help text; auto-bind and parse the command line
+args; provides dependency injection (via JIOC), etc.
 
 * HelpTextBuilder - As the name implies, it is used to create a help text. Comes with a 'technical' version for more fine-grained control, and a 'simple' version
-                    for an easier-to-use, generically layed out help message. Content is provided by classes that inherit the `IHelpSectionContent` class, which
-                    also provides a line-wrap helper function.
+for an easier-to-use, generically layed out help message. Content is provided by classes that inherit the `IHelpSectionContent` class, which
+also provides a line-wrap helper function.
 
 * ArgPullParser - An InputRange that parses the `args` parameter passed to the main function. **Note** that this function expects the data to be provided in the same
-                  way as the main function's `args` parameter. e.g. ["env", "set", "--name=abc", "-v", "yada"] should be passed instead of ["env set --name=abc -v yada"].
+way as the main function's `args` parameter. e.g. ["env", "set", "--name=abc", "-v", "yada"] should be passed instead of ["env set --name=abc -v yada"].
 
 * Shell - Contains a set of helper functions related to the shell. Highlights include `pushLocation` and `popLocation` (if you're familiar with Powershell's `Push-Location`,              etc.); check if a command exists; toggleable logging functions, and several functions to execute commands.
 
@@ -29,6 +29,15 @@ It's best to refer to the documentation of each component, as they go into much 
 Should `CommandLineInterface` not work to your expectations, then as mentioned the other components can be used to help you create your own solution.
 
 I'd like this library to also touch upon other aspects of creating a command line tool (e.g. some of the stuff [scriptlike](https://code.dlang.org/packages/scriptlike) does, which I recommend using alongside this library for certain features such as its `Path` struct), but that's all in the future.
+
+## Default Commands & Subcommands
+
+JCLI has support for both a default command, and multiple sub-commands.
+
+To create a default command - a command that is executed if no other sub-commands are used - make sure that when using `@Command()` that the name (the first parameter) is `null`.
+e.g. `@Command()` or `@Command(null, "Some description")` would both create a default command.
+
+For sub-commands, simply populate the name field of `@Command`, e.g. `@Command("et|execute task")` would create a subcommand that can be used as either `mytool.exe et` or `mytool.exe execute test`.
 
 ## Quick Start
 
@@ -144,10 +153,6 @@ Available commands:
 ```
 
 And of course, if you provide no other arguments other than `-h`, then every command will be listed instead.
-
-## Limitations of CommandLineInterface
-
-* (Will be fixed soon, I'm just lazy) There is no way to specify a 'default' command - an unnamed command that'll run just from the tool being used in the first place.
 
 ## Contribution
 
