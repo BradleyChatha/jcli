@@ -73,7 +73,7 @@ struct ArgPullParser
         string[] _args;
         size_t   _currentArgIndex;  // Current index into _args.
         size_t   _currentCharIndex; // Current index into the current arg.
-        ArgToken _currentToken;
+        ArgToken _currentToken = ArgToken(null, ArgTokenType.EOF);
     }
     
     /++
@@ -305,4 +305,10 @@ unittest
 
     // Plain text.
     assert(tokens[14] == ArgToken("Some Positional Argument",    ArgTokenType.Text));
+}
+
+// Issue: .init.empty must be true
+unittest
+{
+    assert(ArgPullParser.init.empty);
 }

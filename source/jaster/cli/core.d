@@ -218,8 +218,9 @@ final class CommandLineInterface(Modules...)
     /+ VARIABLES +/
     private
     {
-        CommandInfo[] _commands;
+        CommandInfo[]   _commands;
         ServiceProvider _services;
+        CommandInfo     _defaultCommand;
     }
 
     /+ PUBLIC INTERFACE +/
@@ -281,29 +282,41 @@ final class CommandLineInterface(Modules...)
         {
             import std.algorithm : filter, any;
             import std.exception : enforce;
-            import std.stdio     : writefln;
+            import std.stdio     : writefln, writeln, write;
 
-            if(args.empty)
+            if(args.empty && this._defaultCommand == CommandInfo.init)
             {
                 writefln("ERROR: No command was given.");
                 writefln(this.createAvailableCommandsHelpText(args, "Available commands").toString());
                 return -1;
             }
 
+            CommandInfo command;
+
             auto argsSave = args; // If we can't find the exact command, sometimes we can get a partial match when showing help text.
             auto result   = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref*/ args));
             if(result.empty)
             {
-                if(containsHelpArgument(args))
+                if(this.containsHelpArgument(args))
                 {
-                    writefln(this.createAvailableCommandsHelpText(argsSave, "Available commands").toString());
-                    return -1;
+                    if(this._defaultCommand != CommandInfo.init)
+                        write(this._defaultCommand.helpText.toString()); // writeln adds too much spacing.
+
+                    writeln(this.createAvailableCommandsHelpText(ArgPullParser.init, "Available commands").toString());
+                    return 0;
                 }
 
-                writefln("ERROR: Unknown command '%s'.", argsSave.front.value);
-                writefln(this.createAvailableCommandsHelpText(args).toString());
-                return -1;
+                if(this._defaultCommand == CommandInfo.init)
+                {
+                    writefln("ERROR: Unknown command '%s'.", argsSave.front.value);
+                    writeln(this.createAvailableCommandsHelpText(args).toString());
+                    return -1;
+                }
+                else
+                    command = this._defaultCommand;
             }
+            else
+                command = result.front;
 
             auto commandScope = this._services.createScope(); // Reminder: ServiceScope uses RAII.
 
@@ -313,7 +326,7 @@ final class CommandLineInterface(Modules...)
                 proxy._func = &this.parseAndExecute;
 
             string errorMessage;
-            auto statusCode = result.front.doExecute(args, /*ref*/ errorMessage, commandScope, result.front.helpText);
+            auto statusCode = command.doExecute(args, /*ref*/ errorMessage, commandScope, command.helpText);
 
             if(errorMessage !is null)
                 writefln("ERROR: %s", errorMessage);
@@ -374,11 +387,26 @@ final class CommandLineInterface(Modules...)
         void addCommand(alias T)()
         if(is(T == struct) || is(T == class))
         {
+            import std.format    : format;
+            import std.exception : enforce;
+
             CommandInfo info;
             info.helpText  = this.createHelpText!T();
             info.pattern   = getSingleUDA!(T, Command);
             info.doExecute = this.createCommandExecuteFunc!T();
-            this._commands ~= info;
+
+            if(info.pattern.pattern is null)
+            {
+                enforce(
+                    this._defaultCommand == CommandInfo.init, 
+                    "Multiple default commands defined: Second default command is %s"
+                    .format(T.stringof)
+                );
+                info.helpText.setCommandName("DEFAULT");
+                this._defaultCommand = info;
+            }
+            else
+                this._commands ~= info;
         }
 
         HelpTextBuilderSimple createHelpText(alias T)()
@@ -751,6 +779,20 @@ version(unittest)
         }
     }
 
+    @Command(null, "This is the default command.")
+    private struct DefaultCommandTest
+    {
+        @CommandNamedArg("var", "A variable")
+        int a;
+
+        int onExecute()
+        {
+            return a % 2 == 0
+            ? a
+            : 0;
+        }
+    }
+
     // General test
     unittest
     {
@@ -770,5 +812,13 @@ version(unittest)
 
         auto cli = new CommandLineInterface!(jaster.cli.core)(provider);
         assert(cli.parseAndExecute(["test", "injection"], IgnoreFirstArg.no) == 1);
+    }
+
+    // Default command test
+    unittest
+    {
+        auto cli = new CommandLineInterface!(jaster.cli.core);
+        assert(cli.parseAndExecute(["--var 1"], IgnoreFirstArg.no) == 0);
+        assert(cli.parseAndExecute(["--var 2"], IgnoreFirstArg.no) == 2);
     }
 }
