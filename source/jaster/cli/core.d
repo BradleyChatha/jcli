@@ -497,8 +497,16 @@ final class CommandLineInterface(Modules...)
                 // Check for missing args.
                 auto missingNamedArgs      = namedArgs.filter!(a => !a.isNullable && !a.wasFound);
                 auto missingPositionalArgs = positionalArgs.filter!(a => !a.isNullable && !a.wasFound);
-                enforce(missingNamedArgs.empty, "Missing(prelim error message): %s".format(missingNamedArgs.map!(a => a.uda.pattern)));
-                enforce(missingPositionalArgs.empty, "Missing(prelim error message): %s".format(missingNamedArgs.map!(a => a.uda.pattern)));
+                enforce(
+                    missingNamedArgs.empty, 
+                    "The following required named arguments were not provided: %s"
+                    .format(missingNamedArgs.map!(a => a.uda.pattern))
+                );
+                enforce(
+                    missingPositionalArgs.empty, 
+                    "The following required positional arguments were not provided: %s"
+                    .format(missingPositionalArgs.map!(a => format("[%s] %s", a.uda.position, a.uda.name)))
+                );
 
                 // Execute the command.
                 static assert(__traits(compiles, commandInstance.onExecute()),
