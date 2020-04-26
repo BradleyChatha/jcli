@@ -119,7 +119,7 @@ Here is an example of the help text for a specific command:
 Usage: secrets set {0/name} {1/value} <[v|verbose]>
 
 Description:
-        Sets the value of a secret.
+    Sets the value of a secret.
 
 Positional Args:
     0,name                       - The name of the secret to set the value of.
