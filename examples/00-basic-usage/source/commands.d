@@ -33,7 +33,7 @@ struct AssertEvenCommand
                             ? this.number % 2 == 1
                             : this.number % 2 == 0;
 
-        return (passedAssert) ? 0 : -1; // -1 on error.
+        return (passedAssert) ? 0 : 128; // 128 on error.
     }
 
     /++
