@@ -2,8 +2,8 @@
 # I _could_ use JCLI itself, but then I'd have to worry about platform compatibility.
 
 $TEST_CASES = @(
-    @{ loc = "./00-basic-usage/"; params = "20";           expected_status = 0  }
-    @{ loc = "./00-basic-usage/"; params = "20 --reverse"; expected_status = -1 }
+    @{ loc = "./00-basic-usage/"; params = "20";           expected_status = 0    }
+    @{ loc = "./00-basic-usage/"; params = "20 --reverse"; expected_status = 128  }
 )
 
 $AUX_DUB_PARAMS = ""
