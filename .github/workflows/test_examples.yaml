@@ -14,8 +14,6 @@ jobs:
         uses: mihails-strasuns/setup-dlang@v0.3.0
         with:
           compiler: ldc-latest
-      - name: "Change Directory"
-        run: cd examples
       - name: "Run tests"
         shell: pwsh
-        run: ./test_all.ps1
+        run: ./examples/test_all.ps1
