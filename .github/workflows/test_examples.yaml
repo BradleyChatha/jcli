@@ -1,0 +1,21 @@
+on:
+  push
+
+name: Test Examples
+
+jobs:
+  test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Setup LDC
+        uses: mihails-strasuns/setup-dlang@v0.3.0
+        with:
+          compiler: ldc-latest
+      - name: "Change Directory"
+        run: cd examples
+      - name: "Run tests"
+        shell: pwsh
+        run: ./test_all.ps1
