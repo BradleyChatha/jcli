@@ -16,4 +16,4 @@ jobs:
           compiler: ldc-latest
       - name: "Run tests"
         shell: pwsh
-        run: ./examples/test_all.ps1
+        run: cd ./examples/; ./test_all.ps1
