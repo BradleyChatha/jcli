@@ -7,7 +7,7 @@ $TEST_CASES = @(
 )
 
 $AUX_DUB_PARAMS = ""
-$AUX_DUB_PARAMS += "--compiler=ldc2" # For personal needs, since my dmd install is broken.
+#$AUX_DUB_PARAMS += "--compiler=ldc2" # For personal needs, since my dmd install is broken.
 
 # Generic cd -> dub run -> examine status code
 function Invoke-DubTest($options) 
