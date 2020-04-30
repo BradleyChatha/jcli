@@ -5,8 +5,8 @@ $TEST_CASES = @(
     @{ loc = "./00-basic-usage-default-command/"; params = "20";           expected_status = 0    }
     @{ loc = "./00-basic-usage-default-command/"; params = "20 --reverse"; expected_status = 128  }
 
-    @{ loc = "./01-named-sub-commands/"; params = "return 0"; expected_status = 0}
-    @{ loc = "./01-named-sub-commands/"; params = "r 128";    expected_status = 128}
+    @{ loc = "./01-named-sub-commands/"; params = "return 0"; expected_status = 0   }
+    @{ loc = "./01-named-sub-commands/"; params = "r 128";    expected_status = 128 }
 )
 
 $AUX_DUB_PARAMS = ""
