@@ -655,7 +655,7 @@ final class CommandLineInterface(Modules...)
         {
             import std.format : format;
             import std.meta   : staticMap, Filter;
-            import std.traits : isType, hasUDA, isInstanceOf, ReturnType, Unqual;
+            import std.traits : isType, hasUDA, isInstanceOf, ReturnType, Unqual, isBuiltinType;
 
             alias NameToMember(string Name) = __traits(getMember, T, Name);
             alias MemberNames               = __traits(allMembers, T);
@@ -679,9 +679,14 @@ final class CommandLineInterface(Modules...)
                         alias SymbolType = typeof(Symbol);
                         const SymbolName = __traits(identifier, Symbol);
 
-                        // I feel I'm overthinking this entire thing.
-                        const IS_FIELD_MIXIN = format("%s a; a = %s.init;", SymbolType.stringof, SymbolType.stringof);
-                        static if(__traits(compiles, { mixin(IS_FIELD_MIXIN); })
+                        enum IsField = (
+                            isBuiltinType!SymbolType
+                         || is(SymbolType == struct)
+                         || is(SymbolType == class)
+                        );
+
+                        static if(
+                                IsField
                             && (hasUDA!(Symbol, CommandNamedArg) || hasUDA!(Symbol, CommandPositionalArg))
                         ) 
                         {
