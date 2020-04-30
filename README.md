@@ -42,6 +42,10 @@ e.g. `@Command()` or `@Command(null, "Some description")` would both create a de
 
 For sub-commands, simply populate the name field of `@Command`, e.g. `@Command("et|execute task")` would create a subcommand that can be used as either `mytool.exe et` or `mytool.exe execute test`.
 
+## Examples
+
+There are documented examples within the [examples](https://github.com/SealabJaster/jcli/tree/master/examples) folder.
+
 ## Quick Start
 
 Include this library in your project (e.g. `dub add jcli`).
