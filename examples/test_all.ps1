@@ -2,14 +2,17 @@
 # I _could_ use JCLI itself, but then I'd have to worry about platform compatibility.
 
 $TEST_CASES = @(
-    @{ loc = "./00-basic-usage-default-command/"; params = "20";           expected_status = 0    }
-    @{ loc = "./00-basic-usage-default-command/"; params = "20 --reverse"; expected_status = 128  }
+    @{ loc = "./00-basic-usage-default-command/";   params = "20";                  expected_status = 0    }
+    @{ loc = "./00-basic-usage-default-command/";   params = "20 --reverse";        expected_status = 128  }
 
-    @{ loc = "./01-named-sub-commands/"; params = "return 0"; expected_status = 0   }
-    @{ loc = "./01-named-sub-commands/"; params = "r 128";    expected_status = 128 }
+    @{ loc = "./01-named-sub-commands/";            params = "return 0";            expected_status = 0   }
+    @{ loc = "./01-named-sub-commands/";            params = "r 128";               expected_status = 128 }
 
-    @{ loc = "./02-shorthand-longhand-args/"; params = "return --code 0"; expected_status = 0 }
-    @{ loc = "./02-shorthand-longhand-args/"; params = "r -c=128";        expected_status = 128 }
+    @{ loc = "./02-shorthand-longhand-args/";       params = "return --code 0";     expected_status = 0 }
+    @{ loc = "./02-shorthand-longhand-args/";       params = "r -c=128";            expected_status = 128 }
+
+    @{ loc = "./03-inheritence-base-commands/";     params = "add 1 2";             expected_status = 3 }
+    @{ loc = "./03-inheritence-base-commands/";     params = "add 1 2 --offset=7";  expected_status = 10 }
 )
 
 $AUX_DUB_PARAMS = ""
