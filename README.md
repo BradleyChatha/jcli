@@ -7,6 +7,9 @@ JCLI is a library to aid in the creation of command line tooling, with an aim of
 the individual parts of the library to be used on their own, allowing more dedicated users some tools to create their own
 customised core.
 
+**If you are viewing this on code.dlang.org, please note that the README doesn't seem to get updated very often. Please
+view this README on the github page for the most up-to-date version.**
+
 ## Components
 
 I'll refer to the 'individual parts' as 'components', as that makes sense to me:
