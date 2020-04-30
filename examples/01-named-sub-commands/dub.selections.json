@@ -1,0 +1,9 @@
+{
+	"fileVersion": 1,
+	"versions": {
+		"jcli": {
+            "path": "../../"
+        },
+		"jioc": "0.2.0"
+	}
+}

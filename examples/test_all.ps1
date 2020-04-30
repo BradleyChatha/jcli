@@ -2,8 +2,11 @@
 # I _could_ use JCLI itself, but then I'd have to worry about platform compatibility.
 
 $TEST_CASES = @(
-    @{ loc = "./00-basic-usage/"; params = "20";           expected_status = 0    }
-    @{ loc = "./00-basic-usage/"; params = "20 --reverse"; expected_status = 128  }
+    @{ loc = "./00-basic-usage-default-command/"; params = "20";           expected_status = 0    }
+    @{ loc = "./00-basic-usage-default-command/"; params = "20 --reverse"; expected_status = 128  }
+
+    @{ loc = "./01-named-sub-commands/"; params = "return 0"; expected_status = 0}
+    @{ loc = "./01-named-sub-commands/"; params = "r 128";    expected_status = 128}
 )
 
 $AUX_DUB_PARAMS = ""
@@ -15,7 +18,7 @@ function Invoke-DubTest($options)
     Write-Host Running $options.loc '|' $options.params '|' $options.expected_status 
 
     Push-Location $options.loc
-    $build_output = & dub build $AUX_DUB_PARAMS
+    $build_output = & dub build -b debug $AUX_DUB_PARAMS
     Write-Host $build_output
     $run_output = & ./test $options.params.Split(" ")
     Write-Host $run_output
