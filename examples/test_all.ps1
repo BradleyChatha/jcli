@@ -7,6 +7,9 @@ $TEST_CASES = @(
 
     @{ loc = "./01-named-sub-commands/"; params = "return 0"; expected_status = 0   }
     @{ loc = "./01-named-sub-commands/"; params = "r 128";    expected_status = 128 }
+
+    @{ loc = "./02-shorthand-longhand-args/"; params = "return --code 0"; expected_status = 0 }
+    @{ loc = "./02-shorthand-longhand-args/"; params = "r -c=128";        expected_status = 128 }
 )
 
 $AUX_DUB_PARAMS = ""
