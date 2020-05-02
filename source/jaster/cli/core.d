@@ -484,7 +484,12 @@ final class CommandLineInterface(Modules...)
                     final switch(token.type) with(ArgTokenType)
                     {
                         case Text:
-                            enforce(positionalArgIndex < positionalArgs.length, "Stray positional arg found: '"~token.value~"'");
+                            if(positionalArgIndex >= positionalArgs.length)
+                            {
+                                executionError = "Stray positional arg found: '"~token.value~"'";
+                                return -1;
+                            }
+
                             positionalArgs[positionalArgIndex].setter(token, /*ref*/ commandInstance);
                             positionalArgs[positionalArgIndex++].wasFound = true;
                             break;
@@ -501,16 +506,24 @@ final class CommandLineInterface(Modules...)
                                     break;
                                 }
                             }
-                            enforce(result != NamedArgInfo!T.init, "Unknown named argument: '"~token.value~"'");
+
+                            if(result == NamedArgInfo!T.init)
+                            {
+                                executionError = "Unknown named argument: '"~token.value~"'";
+                                return -1;
+                            }
                             
                             if(result.isBool) // Bools don't need to have a value specified, they just have to exist.
                                 result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
                             else
                             {
                                 parser.popFront();
-                                enforce(parser.front.type != ArgTokenType.EOF,
-                                    "Named arg '"~result.uda.pattern~"' was specified, but wasn't given a value."
-                                );
+
+                                if(parser.front.type == ArgTokenType.EOF)
+                                {
+                                    executionError = "Named arg '"~result.uda.pattern~"' was specified, but wasn't given a value.";
+                                    return -1;
+                                }
 
                                 result.setter(parser.front, /*ref*/ commandInstance);
                             }
