@@ -554,7 +554,9 @@ final class CommandLineInterface(Modules...)
                 }
 
                 // Execute the command.
-                static assert(__traits(compiles, commandInstance.onExecute()),
+                static assert(
+                    __traits(compiles, commandInstance.onExecute())
+                 || __traits(compiles, { int code = commandInstance.onExecute(); }),
                     "Unable to call the `onExecute` function for command `"~__traits(identifier, T)~"` please ensure it's signature matches either:"
                    ~"\n\tvoid onExecute();"
                    ~"\n\tint onExecute();"
