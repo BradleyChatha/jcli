@@ -12,7 +12,7 @@ import jaster.cli;
 @Command("return|r", "Returns a specific exit code.")
 struct ReturnCommand
 {
-    @CommandPositionalArg(0, "The code to return.")
+    @CommandPositionalArg(0, "code", "The code to return.")
     int code;
 
     int onExecute()
