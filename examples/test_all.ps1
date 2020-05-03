@@ -16,6 +16,9 @@ $TEST_CASES = @(
 
     @{ loc = "./04-custom-arg-binders/";            params = "./dub.sdl";           expected_status = 0     }
     @{ loc = "./04-custom-arg-binders/";            params = "./lalaland.txt";      expected_status = 1     } # Don't completely know why, but 1 is returned on error.
+    
+    @{ loc = "./05-dependency-injection/";          params = "dman";                expected_status = 0     }
+    @{ loc = "./05-dependency-injection/";          params = "cman";                expected_status = 128   }
 )
 
 $AUX_DUB_PARAMS = ""
