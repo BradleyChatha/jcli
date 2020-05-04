@@ -1,3 +1,4 @@
+/// Contains functions for interacting with the shell.
 module jaster.cli.shell;
 
 /++
@@ -8,10 +9,15 @@ static final abstract class Shell
     import std.stdio : writeln, writefln;
     import std.traits : isInstanceOf;
     import jaster.cli.binder;
+    import jaster.cli.userio : UserIO;
 
+    /// The result of executing a process.
     struct Result
     {
+        /// The output produced by the process.
         string output;
+
+        /// The status code returned by the process.
         int statusCode;
     }
 
@@ -23,8 +29,10 @@ static final abstract class Shell
     /+ LOGGING +/
     public static
     {
+        deprecated("Use UserIO.configure().useVerboseLogging")
         bool useVerboseOutput = false;
 
+        deprecated("Use UserIO.verbosef, or one of its helper functions.")
         void verboseLogfln(Args...)(string format, Args args)
         {
             if(Shell.useVerboseOutput)
@@ -35,17 +43,38 @@ static final abstract class Shell
     /+ COMMAND EXECUTION +/
     public static
     {
+        /++
+         + Executes a command via `std.process.executeShell`, and collects its results.
+         +
+         + Params:
+         +  command = The command string to execute.
+         +
+         + Returns:
+         +  The `Result` of the execution.
+         + ++/
         Result execute(string command)
         {
             import std.process : executeShell;
-            
-            Shell.verboseLogfln("execute: %s", command);
+
+            UserIO.verboseTracef("execute: %s", command);
             auto result = executeShell(command);
-            Shell.verboseLogfln(result.output);
+            UserIO.verboseTracef(result.output);
 
             return Result(result.output, result.status);
         }
 
+        /++
+         + Executes a command via `std.process.executeShell`, enforcing that the process' exit code was 0.
+         +
+         + Throws:
+         +  `Exception` if the process' exit code was anything other than 0.
+         +
+         + Params:
+         +  command = The command string to execute.
+         +
+         + Returns:
+         +  The `Result` of the execution.
+         + ++/
         Result executeEnforceStatusZero(string command)
         {
             import std.format    : format;
@@ -60,6 +89,21 @@ static final abstract class Shell
             return result;
         }
 
+        /++
+         + Executes a command via `std.process.executeShell`, enforcing that the process' exit code was >= 0.
+         +
+         + Notes:
+         +  Positive exit codes may still indicate an error.
+         +
+         + Throws:
+         +  `Exception` if the process' exit code was anything other than 0 or above.
+         +
+         + Params:
+         +  command = The command string to execute.
+         +
+         + Returns:
+         +  The `Result` of the execution.
+         + ++/
         Result executeEnforceStatusPositive(string command)
         {
             import std.format    : format;
@@ -74,6 +118,15 @@ static final abstract class Shell
             return result;
         }
 
+        /++
+         + Executes a command via `std.process.executeShell`, and checks to see if the output was empty.
+         +
+         + Params:
+         +  command = The command string to execute.
+         +
+         + Returns:
+         +  Whether the process' output was either empty, or entirely made up of white space.
+         + ++/
         bool executeHasNonEmptyOutput(string command)
         {
             import std.ascii     : isWhite;
@@ -86,15 +139,35 @@ static final abstract class Shell
     /+ WORKING DIRECTORY +/
     public static
     {
+        /++
+         + Pushes the current working directory onto a stack, and then changes directory.
+         +
+         + Usage:
+         +  Use `Shell.popLocation` to go back to the previous directory.
+         +
+         +  Combining `pushLocation` with `scope(exit) Shell.popLocation` is a good practice.
+         +
+         + See also:
+         +  Powershell's `Push-Location` cmdlet.
+         +
+         + Params:
+         +  dir = The directory to change to.
+         + ++/
         void pushLocation(string dir)
         {
             import std.file : chdir, getcwd;
 
-            Shell.verboseLogfln("pushLocation: %s", dir);
+            UserIO.verboseTracef("pushLocation: %s", dir);
             this._locationStack ~= getcwd();
             chdir(dir);
         }
 
+        /++
+         + Pops the working directory stack, and then changes the current working directory to it.
+         +
+         + Assertions:
+         +  The stack must not be empty.
+         + ++/
         void popLocation()
         {
             import std.file : chdir;
@@ -103,7 +176,7 @@ static final abstract class Shell
                 "The location stack is empty. This indicates a bug as there is a mis-match between `pushLocation` and `popLocation` calls."
             );
 
-            Shell.verboseLogfln("popLocation: [dir after pop] %s", this._locationStack[$-1]);
+            UserIO.verboseTracef("popLocation: [dir after pop] %s", this._locationStack[$-1]);
             chdir(this._locationStack[$-1]);
             this._locationStack.length -= 1;
         }
@@ -140,6 +213,12 @@ static final abstract class Shell
     /+ MISC +/
     public static
     {
+        /++
+         + $(B Tries) to determine if the current shell is Powershell.
+         +
+         + Notes:
+         +  On Windows, this will always be `false` because Windows.
+         + ++/
         bool isInPowershell()
         {
             // Seems on Windows, powershell isn't used when using `execute`, even if the program itself is launched in powershell.
@@ -147,6 +226,22 @@ static final abstract class Shell
             else return Shell.executeHasNonEmptyOutput("$verbosePreference");
         }
 
+        /++
+         + $(B Tries) to determine if the given command exists.
+         +
+         + Notes:
+         +  In Powershell, `Get-Command` is used.
+         +
+         +  On Linux, `which` is used.
+         +
+         +  On Windows, `where` is used.
+         +
+         + Params:
+         +  command = The command/executable to check.
+         +
+         + Returns:
+         +  `true` if the command exists, `false` otherwise.
+         + ++/
         bool doesCommandExist(string command)
         {
             if(Shell.isInPowershell)
@@ -171,6 +266,15 @@ static final abstract class Shell
                 static assert(false, "`doesCommandExist` is not implemented for this platform. Feel free to make a PR!");
         }
 
+        /++
+         + Enforce that the given command/executable exists.
+         +
+         + Throws:
+         +  `Exception` if the given `command` doesn't exist.
+         +
+         + Params:
+         +  command = The command to check for.
+         + ++/
         void enforceCommandExists(string command)
         {
             import std.exception : enforce;
