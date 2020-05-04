@@ -1,6 +1,7 @@
+/// Utilities to create ANSI coloured text.
 module jaster.cli.ansi;
 
-enum AnsiColourType
+private enum AnsiColourType
 {
     none,
     fourBit,
@@ -8,17 +9,25 @@ enum AnsiColourType
     rgb
 }
 
+/++
+ + An enumeration of standard 4-bit colours.
+ +
+ + These colours will have the widest support between platforms.
+ + ++/
 enum Ansi4Bit
 {
     // To get Background code, just add 10
     Black           = 30,
     Red             = 31,
     Green           = 32,
+    /// On Powershell, this is displayed as a very white colour.
     Yellow          = 33,
     Blue            = 34,
     Magenta         = 35,
     Cyan            = 36,
+    /// More gray than true white, use `BrightWhite` for true white.
     White           = 37,
+    /// Grayer than `White`.
     BrightBlack     = 90,
     BrightRed       = 91,
     BrightGreen     = 92,
@@ -53,13 +62,13 @@ private struct AnsiRgbColour
     ubyte b;
 }
 
-struct AnsiColour
+private struct AnsiColour
 {
     AnsiColourType  type;
     AnsiColourUnion value;
     bool            isBg;
 
-    string toString()
+    string toString() const
     {
         import std.format : format;
 
@@ -83,6 +92,22 @@ struct AnsiColour
     }
 }
 
+/++
+ + A struct used to compose together a piece of ANSI text.
+ +
+ + Notes:
+ +  A reset command (`\033[0m`) is automatically appended, so you don't have to worry about that.
+ +
+ + Usage:
+ +  This struct uses the Fluent Builder pattern, so you can easily string together its
+ +  various functions when creating your text.
+ +
+ +  Set the background colour with `AnsiText.bg`
+ +
+ +  Set the foreground/text colour with `AnsiText.fg`
+ +
+ +  AnsiText uses `toString` to provide the final output, making it easily used with the likes of `writeln` and `format`.
+ + ++/
 struct AnsiText
 {
     import std.format : format;
@@ -131,13 +156,22 @@ struct AnsiText
         }
     }
 
+    ///
     this(const char[] text)
     {
         this._text = cast(char[])text; // WE CAST AWAY CONST because otherwise the struct becomes immovable, it is still effectively const though.
         this._bg.isBg = true;
     }
 
-    string toString()
+    /++
+     + Notes:
+     +  If no ANSI escape codes are used, then this function will simply return a `.idup` of the
+     +  text provided to this struct's constructor.
+     +
+     + Returns:
+     +  The ANSI escape-coded text.
+     + ++/
+    string toString() const
     {
         if(this._bg.type == AnsiColourType.none && this._fg.type == AnsiColourType.none)
             return this._text.idup;
@@ -148,15 +182,32 @@ struct AnsiText
         return "\033[%s%s%sm%s\033[0m".format(this._fg, semicolon, this._bg, cast(string)this._text); // cast(string) is so format doesn't format as an array.
     }
 
+    /// Sets the foreground/background as a 4-bit colour. Widest supported option.
     ref AnsiText fg(Ansi4Bit fourBit)         { return this.setColour4  (this._fg, fourBit);  }
-    ref AnsiText fg(ubyte eightBit)           { return this.setColour8  (this._fg, eightBit); }
-    ref AnsiText fg(ubyte r, ubyte g, ubyte b){ return this.setColourRgb(this._fg, r, g, b);  }
+    /// ditto
     ref AnsiText bg(Ansi4Bit fourBit)         { return this.setColour4  (this._bg, fourBit);  }
+
+    /// Sets the foreground/background as an 8-bit colour. Please see this image for reference: https://i.stack.imgur.com/KTSQa.png
+    ref AnsiText fg(ubyte eightBit)           { return this.setColour8  (this._fg, eightBit); }
+    /// ditto
     ref AnsiText bg(ubyte eightBit)           { return this.setColour8  (this._bg, eightBit); }
+
+    /// Sets the forground/background as an RGB colour.
+    ref AnsiText fg(ubyte r, ubyte g, ubyte b){ return this.setColourRgb(this._fg, r, g, b);  }
+    /// ditto
     ref AnsiText bg(ubyte r, ubyte g, ubyte b){ return this.setColourRgb(this._bg, r, g, b);  }
 }
 
+/++
+ + A helper UFCS function used to fluently convert any piece of text into an `AnsiText`.
+ + ++/
 AnsiText ansi(const char[] text)
 {
     return AnsiText(text);
+}
+///
+unittest
+{
+    assert("Hello".ansi.toString() == "Hello");
+    assert("Hello".ansi.fg(Ansi4Bit.Black).toString() == "\033[30mHello\033[0m");
 }
