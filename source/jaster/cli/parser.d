@@ -1,3 +1,4 @@
+/// Contains a pull parser for command line arguments.
 module jaster.cli.parser;
 
 private
