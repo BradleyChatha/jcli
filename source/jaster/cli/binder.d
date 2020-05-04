@@ -1,3 +1,4 @@
+/// Utility for binding a string into arbitrary types, using user-defined functions.
 module jaster.cli.binder;
 
 private
