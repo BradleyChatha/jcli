@@ -1,3 +1,4 @@
+/// Utilities for creating help text.
 module jaster.cli.helptext;
 
 private
@@ -287,7 +288,7 @@ final class HelpTextBuilderTechnical
  +      * A section for positional parameters, which are given a position, description, and an optional display name.
  +      * A section for named parameters, which can have multiple names, and a description.
  +
- + Please see the unittest for an example of it's usage and output.
+ + Please see the unittest for an example of its usage and output.
  + ++/
 final class HelpTextBuilderSimple
 {
@@ -307,18 +308,21 @@ final class HelpTextBuilderSimple
 
     public final
     {
+        ///
         HelpTextBuilderSimple addNamedArg(string[] names, string description, ArgIsOptional isOptional)
         {
             this._namedArgs ~= HelpSectionArgInfoContent.ArgInfo(names, description, isOptional);
             return this;
         }
 
+        ///
         HelpTextBuilderSimple addNamedArg(string name, string description, ArgIsOptional isOptional)
         {
             this.addNamedArg([name], description, isOptional);
             return this;
         }
 
+        ///
         HelpTextBuilderSimple addPositionalArg(size_t position, string description, ArgIsOptional isOptional, string displayName = null)
         {
             import std.conv : to;
@@ -335,24 +339,28 @@ final class HelpTextBuilderSimple
             return this;
         }
 
+        ///
         HelpTextBuilderSimple setDescription(string desc)
         {
             this.description = desc;
             return this;
         }
 
+        ///
         HelpTextBuilderSimple setCommandName(string name)
         {
             this.commandName = name;
             return this;
         }
 
+        ///
         @property
         ref string description()
         {
             return this._description;
         }
-
+        
+        ///
         @property
         ref string commandName()
         {
@@ -464,8 +472,10 @@ unittest
  + ++/
 final class HelpSectionTextContent : IHelpSectionContent
 {
+    ///
     string text;
 
+    ///
     this(string text)
     {
         this.text = text;
@@ -527,7 +537,10 @@ unittest
  + ++/
 final class HelpSectionArgInfoContent : IHelpSectionContent
 {
+    /// The divisor used to determine how many characters to use for the arg's name(s)
     enum NAME_CHAR_LIMIT_DIVIDER = 4;
+
+    /// The string used to split an arg's name(s) from its description.
     const MIDDLE_AFFIX = " - ";
 
     /// The information about the arg.
@@ -543,9 +556,13 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
         ArgIsOptional isOptional;
     }
 
+    /// All registered args.
     ArgInfo[] args;
-    AutoAddArgDashes addDashes;
 
+    /// Whether to add the dash prefix to the args' name(s). e.g. "--option" vs "option"
+    AutoAddArgDashes addDashes;
+    
+    ///
     this(ArgInfo[] args, AutoAddArgDashes addDashes)
     {
         this.args = args;
