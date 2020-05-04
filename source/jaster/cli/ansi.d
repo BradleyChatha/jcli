@@ -89,7 +89,7 @@ struct AnsiText
 
     private
     {
-        const char[] _text;
+        char[]       _text;
         AnsiColour   _fg;
         AnsiColour   _bg;
 
@@ -133,12 +133,15 @@ struct AnsiText
 
     this(const char[] text)
     {
-        this._text = text;
+        this._text = cast(char[])text; // WE CAST AWAY CONST because otherwise the struct becomes immovable, it is still effectively const though.
         this._bg.isBg = true;
     }
 
     string toString()
     {
+        if(this._bg.type == AnsiColourType.none && this._fg.type == AnsiColourType.none)
+            return this._text.idup;
+
         auto semicolon = (this._bg.type == AnsiColourType.none || this._fg.type == AnsiColourType.none)
                          ? null
                          : ";";
