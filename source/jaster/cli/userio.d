@@ -1,7 +1,66 @@
 module jaster.cli.userio;
 
+import jaster.cli.ansi;
+public import std.experimental.logger : LogLevel;
+
 final static class UserIO
 {
+    /++++++++++++++++
+     +++   VARS   +++
+     ++++++++++++++++/
+    private static
+    {
+        UserIOConfig _config;
+    }
+
+    public static
+    {
+        UserIOConfigBuilder configure()
+        {
+            return UserIOConfigBuilder();
+        }
+    }
+
+    /++++++++++++++++
+     +++  OUTPUT  +++
+     ++++++++++++++++/
+    public static
+    {
+        void log(const char[] output, LogLevel level)
+        {
+            import std.stdio : writeln;
+
+            if(cast(int)level < UserIO._config.global.minLogLevel)
+                return;
+
+            if(!UserIO._config.global.useColouredText)
+            {
+                writeln(output);
+                return;
+            }
+
+            AnsiText colouredOutput;
+            switch(level) with(LogLevel)
+            {
+                case trace:     colouredOutput = output.ansi.fg(Ansi4Bit.BrightBlack); break;
+                case warning:   colouredOutput = output.ansi.fg(Ansi4Bit.Yellow);      break;
+                case error:     colouredOutput = output.ansi.fg(Ansi4Bit.Red);         break;
+                case critical:  
+                case fatal:     colouredOutput = output.ansi.fg(Ansi4Bit.BrightRed);   break;
+
+                default: break;
+            }
+
+            if(colouredOutput == colouredOutput.init)
+                colouredOutput = output.ansi;
+
+            writeln(colouredOutput);
+        }
+    }
+
+    /+++++++++++++++
+     +++  INPUT  +++
+     +++++++++++++++/
     public static
     {
         /++
@@ -10,7 +69,7 @@ final static class UserIO
          +
          + Notes:
          +  Because `ArgBinder` is responsible for the conversion, if for example you wanted `T` to be a custom struct,
-         +  then you could create an `@ArgBinderFunc` to perform the conversion, and then this function (and all `Shell.getInput` variants)
+         +  then you could create an `@ArgBinderFunc` to perform the conversion, and then this function (and all `UserIO.getInput` variants)
          +  will be able to convert the user's input to that type.
          +
          +  See also the documentation for `ArgBinder`.
@@ -38,7 +97,7 @@ final static class UserIO
         }
 
         /++
-         + A variant of `Shell.getInput` that'll constantly prompt the user until they enter a non-null, non-whitespace-only string.
+         + A variant of `UserIO.getInput` that'll constantly prompt the user until they enter a non-null, non-whitespace-only string.
          +
          + Notes:
          +  The `Binder` is only used to convert a string to a string, in case there's some weird voodoo you want to do with it.
@@ -50,20 +109,20 @@ final static class UserIO
 
             string value;
             while(value.length == 0 || value.all!isWhite)
-                value = Shell.getInput!(string, Binder)(prompt);
+                value = UserIO.getInput!(string, Binder)(prompt);
 
             return value;
         }
 
         /++
-         + A variant of `Shell.getInput` that'll constantly prompt the user until they enter a value that doesn't cause an
+         + A variant of `UserIO.getInput` that'll constantly prompt the user until they enter a value that doesn't cause an
          + exception (of type `Ex`) to be thrown by the `Binder`.
          + ++/
         T getInputCatchExceptions(T, Ex: Exception = Exception, Binder = ArgBinder!())(string prompt, void delegate(Ex) onException = null)
         {
             while(true)
             {
-                try return Shell.getInput!(T, Binder)(prompt);
+                try return UserIO.getInput!(T, Binder)(prompt);
                 catch(Ex ex)
                 {
                     if(onException !is null)
@@ -73,7 +132,7 @@ final static class UserIO
         }
 
         /++
-         + A variant of `Shell.getInput` that'll constantly prompt the user until they enter a value from the given `list`.
+         + A variant of `UserIO.getInput` that'll constantly prompt the user until they enter a value from the given `list`.
          +
          + Behaviour:
          +  All items of `list` are converted to a string (via `std.conv.to`), and the user must enter the *exact* value of one of these
@@ -122,7 +181,7 @@ final static class UserIO
             prompt = promptBuilder.assumeUnique;
             while(true)
             {
-                const input = Shell.getInput!(string, Binder)(prompt);
+                const input = UserIO.getInput!(string, Binder)(prompt);
                 foreach(i, str; listAsStrings)
                 {
                     if(input == str)
@@ -130,5 +189,37 @@ final static class UserIO
                 }
             }
         }
+    }
+}
+
+private struct UserIOConfigScope
+{
+    bool useColouredText;
+    LogLevel minLogLevel;
+}
+
+private struct UserIOConfig
+{
+    UserIOConfigScope global;
+}
+
+struct UserIOConfigBuilder
+{
+    private ref UserIOConfigScope getScope()
+    {
+        // For future purposes.
+        return UserIO._config.global;
+    }
+
+    UserIOConfigBuilder useColouredText(bool value = true)
+    {
+        this.getScope().useColouredText = value;
+        return this;
+    }
+
+    UserIOConfigBuilder useMinimumLogLevel(LogLevel level)
+    {
+        this.getScope().minLogLevel = level;
+        return this;
     }
 }
