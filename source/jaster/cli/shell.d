@@ -1,6 +1,4 @@
-module jaster.cli.util;
-
-import std.experimental.logger : Logger;
+module jaster.cli.shell;
 
 /++
  + Contains utility functions regarding the Shell/process execution.
