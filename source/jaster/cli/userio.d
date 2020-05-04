@@ -1,7 +1,7 @@
 module jaster.cli.userio;
 
 import jaster.cli.ansi;
-public import std.experimental.logger : LogLevel;
+import std.experimental.logger : LogLevel;
 
 final static class UserIO
 {
@@ -21,9 +21,9 @@ final static class UserIO
         }
     }
 
-    /++++++++++++++++
-     +++  OUTPUT  +++
-     ++++++++++++++++/
+    /+++++++++++++++++
+     +++  LOGGING  +++
+     +++++++++++++++++/
     public static
     {
         void log(const char[] output, LogLevel level)
@@ -56,6 +56,64 @@ final static class UserIO
 
             writeln(colouredOutput);
         }
+
+        void logf(Args...)(const char[] format, LogLevel level, Args args)
+        {
+            import std.format : format;
+
+            UserIO.log(format(format, args), level);
+        }
+
+        void debugf(Args...)(const char[] format, LogLevel level, Args args)
+        {
+            debug UserIO.logf(format, level, args);
+        }
+
+        void verbosef(Args...)(const char[] format, LogLevel level, Args args)
+        {
+            if(UserIO._config.global.useVerboseLogging)
+                UserIO.logf(format, level, args);
+        }
+
+        /// Used for the helper aliases.
+        void logfTemplate(LogLevel level, Args...)(const char[] format, Args args)
+        {
+            UserIO.logf(format, level, args);
+        }
+
+        /// ditto.
+        void debugfTemplate(LogLevel level, Args...)(const char[] format, Args args)
+        {
+            UserIO.debugf(format, level, args);
+        }
+
+        /// ditto
+        void verbosefTemplate(LogLevel level, Args...)(const char[] format, Args args)
+        {
+            UserIO.verbosef(format, level, args);
+        }
+
+        // I'm not auto-generating these, as I want autocomplete (e.g. vscode) to be able to pick these up.
+        alias logTracef(Args...)    = logfTemplate!(LogLevel.trace, Args);
+        alias logInfof(Args...)     = logfTemplate!(LogLevel.info, Args);
+        alias logWarningf(Args...)  = logfTemplate!(LogLevel.warning, Args);
+        alias logErrorf(Args...)    = logfTemplate!(LogLevel.error, Args);
+        alias logCriticalf(Args...) = logfTemplate!(LogLevel.critical, Args);
+        alias logFatalf(Args...)    = logfTemplate!(LogLevel.fatal, Args);
+
+        alias debugTracef(Args...)    = debugfTemplate!(LogLevel.trace, Args);
+        alias debugInfof(Args...)     = debugfTemplate!(LogLevel.info, Args);
+        alias debugWarningf(Args...)  = debugfTemplate!(LogLevel.warning, Args);
+        alias debugErrorf(Args...)    = debugfTemplate!(LogLevel.error, Args);
+        alias debugCriticalf(Args...) = debugfTemplate!(LogLevel.critical, Args);
+        alias debugFatalf(Args...)    = debugfTemplate!(LogLevel.fatal, Args);
+
+        alias verboseTracef(Args...)    = verbosefTemplate!(LogLevel.trace, Args);
+        alias verboseInfof(Args...)     = verbosefTemplate!(LogLevel.info, Args);
+        alias verboseWarningf(Args...)  = verbosefTemplate!(LogLevel.warning, Args);
+        alias verboseErrorf(Args...)    = verbosefTemplate!(LogLevel.error, Args);
+        alias verboseCriticalf(Args...) = verbosefTemplate!(LogLevel.critical, Args);
+        alias verboseFatalf(Args...)    = verbosefTemplate!(LogLevel.fatal, Args);
     }
 
     /+++++++++++++++
@@ -194,6 +252,7 @@ final static class UserIO
 
 private struct UserIOConfigScope
 {
+    bool useVerboseLogging;
     bool useColouredText;
     LogLevel minLogLevel;
 }
@@ -214,6 +273,12 @@ struct UserIOConfigBuilder
     UserIOConfigBuilder useColouredText(bool value = true)
     {
         this.getScope().useColouredText = value;
+        return this;
+    }
+
+    UserIOConfigBuilder useVerboseLogging(bool value = true)
+    {
+        this.getScope().useVerboseLogging = value;
         return this;
     }
 
