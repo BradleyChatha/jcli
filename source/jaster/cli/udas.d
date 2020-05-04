@@ -50,7 +50,7 @@ struct CommandPositionalArg
     /// The name of this argument. This is only used for the generated help text, and can be left null.
     string name;
 
-    // The description of this argument.
+    /// The description of this argument.
     string description;
 }
 
