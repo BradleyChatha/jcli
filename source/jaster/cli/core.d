@@ -1,3 +1,4 @@
+/// The default core provided by JCLI, the 'heart' of your command line tool.
 module jaster.cli.core;
 
 private
@@ -177,7 +178,7 @@ final class CommandLineInterface(Modules...)
     alias ArgBinderInstance     = ArgBinder!Modules;
     alias AllowPartialMatch     = Flag!"partialMatch";
 
-    struct CommandInfo
+    private struct CommandInfo
     {
         Command pattern;
         HelpTextBuilderSimple helpText;
@@ -197,7 +198,7 @@ final class CommandLineInterface(Modules...)
     // alias PositionalArgInfo(T) = ArgInfo!(CommandPositionalArg, T);
 
     // TODO: REMOVE THESE ONCE THE ABOVE CODE ACTUALLY WORKS.
-    struct NamedArgInfo(T)
+    private struct NamedArgInfo(T)
     {
         CommandNamedArg uda;
         ArgValueSetterFunc!T setter;
@@ -206,7 +207,7 @@ final class CommandLineInterface(Modules...)
         bool isBool;
     }
 
-    struct PositionalArgInfo(T)
+    private struct PositionalArgInfo(T)
     {
         CommandPositionalArg uda;
         ArgValueSetterFunc!T setter;
