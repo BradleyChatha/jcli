@@ -109,6 +109,34 @@ static final abstract class Shell
         }
     }
 
+    public static
+    {
+        deprecated("Moved to UserIO - use UserIO.getInput")
+        T getInput(T, Binder = ArgBinder!())(string prompt)
+        if(isInstanceOf!(ArgBinder, Binder))
+        {
+            assert(false, "Use UserIO.getInput");
+        }
+
+        deprecated("Moved to UserIO - use UserIO.getInputNonEmptyString")
+        string getInputNonEmptyString(Binder = ArgBinder!())(string prompt)
+        {
+            assert(false, "Use UserIO.getInputNonEmptyString");
+        }
+
+        deprecated("Moved to UserIO - use UserIO.getInputCatchExceptions")
+        T getInputCatchExceptions(T, Ex: Exception = Exception, Binder = ArgBinder!())(string prompt, void delegate(Ex) onException = null)
+        {
+            assert(false, "Use UserIO.getInputCatchExceptions");
+        }
+
+        deprecated("Moved to UserIO - use UserIO.getInputFromList")
+        T getInputFromList(T, Binder = ArgBinder!())(string prompt, T[] list, string promptPostfix = ": ")
+        {
+            assert(false, "Use UserIO.getInputFromList");
+        }
+    }
+
     /+ MISC +/
     public static
     {
