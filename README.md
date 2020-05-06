@@ -9,10 +9,16 @@ customised core.
 
 ## Components
 
-I'll refer to the 'individual parts' as 'components', as that makes sense to me:
+As mentioned, this library aims to also serve as a base for anyone who might need a more specialised 'core' for their application in the event that
+the one provided by JCLI (via `CommandLineInterface`) doesn't live up to their needs, so the individual components are useable on their own:
+
+* AnsiText - Fluently build up a piece of text containing Ansi escape codes, for the likes of colouring and styling your console output.
 
 * ArgBinder - A simple helper struct which allows the user to define functions that binds a string (the arg) into a value of any type, so long
 as that type has an `@ArgBinder` available. `ArgBinder` will automatically discover and choose which binders to use for any given type.
+
+* ArgPullParser - An InputRange that parses the `args` parameter passed to the main function. **Note** that this function expects the data to be provided in the same
+way as the main function's `args` parameter. e.g. ["env", "set", "--name=abc", "-v", "yada"] should be passed instead of ["env set --name=abc -v yada"].
 
 * CommandLineInterface - This is the 'core' provided by JCLI, and is built up from every other component.
 It will automatically discover structs/classes decorated with `@Command`; auto-generate help text; auto-bind and parse the command line
@@ -22,10 +28,10 @@ args; provides dependency injection (via JIOC), etc.
 for an easier-to-use, generically layed out help message. Content is provided by classes that inherit the `IHelpSectionContent` class, which
 also provides a line-wrap helper function.
 
-* ArgPullParser - An InputRange that parses the `args` parameter passed to the main function. **Note** that this function expects the data to be provided in the same
-way as the main function's `args` parameter. e.g. ["env", "set", "--name=abc", "-v", "yada"] should be passed instead of ["env set --name=abc -v yada"].
-
 * Shell - Contains a set of helper functions related to the shell. Highlights include `pushLocation` and `popLocation` (if you're familiar with Powershell's `Push-Location`,              etc.); check if a command exists; toggleable logging functions, and several functions to execute commands.
+
+* UserIO - Get input and show output to the user. Optional colourful logging; debug-only and toggleable verbose logging; functions such as `getInput` and `getInputFromList` which
+can make use of `ArgBinder` to perform conversions.
 
 It's best to refer to the documentation of each component, as they go into much more detail than this brief overview.
 
