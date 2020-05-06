@@ -13,6 +13,7 @@ As mentioned, this library aims to also serve as a base for anyone who might nee
 the one provided by JCLI (via `CommandLineInterface`) doesn't live up to their needs, so the individual components are useable on their own:
 
 * AnsiText - Fluently build up a piece of text containing Ansi escape codes, for the likes of colouring and styling your console output.
+             **Windows ANSI support is automatically turned on.**
 
 * ArgBinder - A simple helper struct which allows the user to define functions that binds a string (the arg) into a value of any type, so long
 as that type has an `@ArgBinder` available. `ArgBinder` will automatically discover and choose which binders to use for any given type.
