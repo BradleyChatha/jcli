@@ -1,8 +1,16 @@
+/// Contains functions for getting input, and sending output to the user.
 module jaster.cli.userio;
 
 import jaster.cli.ansi;
 import std.experimental.logger : LogLevel;
 
+/++
+ + Provides various utilities:
+ +  - Program-wide configuration via `UserIO.configure`
+ +  - Logging, including debug-only and verbose-only logging via `logf`, `debugf`, and `verbosef`
+ +  - Logging helpers, for example `logTracef`, `debugInfof`, and `verboseErrorf`.
+ +  - Easily getting input from the user via `getInput`, `getInputNonEmptyString`, `getInputFromList`, and more.
+ + ++/
 final static class UserIO
 {
     /++++++++++++++++
@@ -15,6 +23,12 @@ final static class UserIO
 
     public static
     {
+        /++
+         + Configure the settings for `UserIO`, can be called multiple times.
+         +
+         + Returns:
+         +  A `UserIOConfigBuilder`, which is a fluent-builder based struct used to set configuration options.
+         + ++/
         UserIOConfigBuilder configure()
         {
             return UserIOConfigBuilder();
@@ -26,6 +40,25 @@ final static class UserIO
      +++++++++++++++++/
     public static
     {
+        /++
+         + Logs the given `output` to the console, as long as `level` is >= the configured minimum log level.
+         +
+         + Configuration:
+         +  If `UserIOConfigBuilder.useColouredText` (see `UserIO.configure`) is set to `true`, then the text will be coloured
+         +  according to its log level.
+         +
+         +  trace - gray;
+         +  info - default;
+         +  warning - yellow;
+         +  error - red;
+         +  critical & fatal - bright red.
+         +
+         +  If `level` is lower than `UserIOConfigBuilder.useMinimumLogLevel`, then no output is logged.
+         +
+         + Params:
+         +  output = The output to display.
+         +  level  = The log level of this log.
+         + ++/
         void log(const char[] output, LogLevel level)
         {
             import std.stdio : writeln;
@@ -57,6 +90,7 @@ final static class UserIO
             writeln(colouredOutput);
         }
 
+        /// Variant of `UserIO.log` that uses `std.format.format` to format the final output.
         void logf(Args...)(const char[] fmt, LogLevel level, Args args)
         {
             import std.format : format;
@@ -64,11 +98,13 @@ final static class UserIO
             UserIO.log(format(fmt, args), level);
         }
 
+        /// Variant of `UserIO.logf` that only shows output in non-release builds.
         void debugf(Args...)(const char[] format, LogLevel level, Args args)
         {
             debug UserIO.logf(format, level, args);
         }
 
+        /// Variant of `UserIO.logf` that only shows output if `UserIOConfigBuilder.useVerboseLogging` is set to `true`.
         void verbosef(Args...)(const char[] format, LogLevel level, Args args)
         {
             if(UserIO._config.global.useVerboseLogging)
@@ -76,25 +112,44 @@ final static class UserIO
         }
 
         // I'm not auto-generating these, as I want autocomplete (e.g. vscode) to be able to pick these up.
+
+        /// Helper functions for `logf`, to easily use a specific log level.
         void logTracef   (Args...)(const char[] format, Args args){ UserIO.logf(format, LogLevel.trace, args);    }
+        /// ditto
         void logInfof    (Args...)(const char[] format, Args args){ UserIO.logf(format, LogLevel.info, args);     }
+        /// ditto
         void logWarningf (Args...)(const char[] format, Args args){ UserIO.logf(format, LogLevel.warning, args);  }
+        /// ditto
         void logErrorf   (Args...)(const char[] format, Args args){ UserIO.logf(format, LogLevel.error, args);    }
+        /// ditto
         void logCriticalf(Args...)(const char[] format, Args args){ UserIO.logf(format, LogLevel.critical, args); }
+        /// ditto
         void logFatalf   (Args...)(const char[] format, Args args){ UserIO.logf(format, LogLevel.fatal, args);    }
 
+        /// Helper functions for `debugf`, to easily use a specific log level.
         void debugTracef   (Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.trace, args);    }
+        /// ditto
         void debugInfof    (Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.info, args);     }
+        /// ditto
         void debugWarningf (Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.warning, args);  }
+        /// ditto
         void debugErrorf   (Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.error, args);    }
+        /// ditto
         void debugCriticalf(Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.critical, args); }
+        /// ditto
         void debugFatalf   (Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.fatal, args);    }
 
+        /// Helper functions for `verbosef`, to easily use a specific log level.
         void verboseTracef   (Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.trace, args);    }
+        /// ditto
         void verboseInfof    (Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.info, args);     }
+        /// ditto
         void verboseWarningf (Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.warning, args);  }
+        /// ditto
         void verboseErrorf   (Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.error, args);    }
+        /// ditto
         void verboseCriticalf(Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.critical, args); }
+        /// ditto
         void verboseFatalf   (Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.fatal, args);    }
     }
 
@@ -244,6 +299,9 @@ private struct UserIOConfig
     UserIOConfigScope global;
 }
 
+/++
+ + A struct that provides an easy and fluent way to configure how `UserIO` works.
+ + ++/
 struct UserIOConfigBuilder
 {
     private ref UserIOConfigScope getScope()
@@ -252,18 +310,27 @@ struct UserIOConfigBuilder
         return UserIO._config.global;
     }
 
+    /++
+     + Determines whether `UserIO.log` uses coloured output based on log level.
+     + ++/
     UserIOConfigBuilder useColouredText(bool value = true)
     {
         this.getScope().useColouredText = value;
         return this;
     }
 
+    /++
+     + Determines whether `UserIO.verbosef` and friends are allowed to output anything at all.
+     + ++/
     UserIOConfigBuilder useVerboseLogging(bool value = true)
     {
         this.getScope().useVerboseLogging = value;
         return this;
     }
 
+    /++
+     + Sets the minimum log level. Any logs must be >= this `level` in order to be printed out on screen.
+     + ++/
     UserIOConfigBuilder useMinimumLogLevel(LogLevel level)
     {
         this.getScope().minLogLevel = level;
