@@ -211,3 +211,19 @@ unittest
     assert("Hello".ansi.toString() == "Hello");
     assert("Hello".ansi.fg(Ansi4Bit.Black).toString() == "\033[30mHello\033[0m");
 }
+
+/// On windows - enable ANSI support.
+version(Windows)
+{
+    static this()
+    {
+        import core.sys.windows.windows;
+
+        HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        DWORD mode = 0;
+
+        GetConsoleMode(stdOut, &mode);
+        mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+        SetConsoleMode(stdOut, mode);
+    }
+}
