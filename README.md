@@ -105,7 +105,7 @@ with the main function's `args`; return the resulting status code:
 import jaster.cli;
 import mytool.commands;
 
-void main(string[] args)
+int main(string[] args)
 {
     auto runner = new CommandLineInterface!(
         mytool.commands
