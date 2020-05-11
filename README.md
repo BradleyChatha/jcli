@@ -7,6 +7,8 @@ JCLI is a library to aid in the creation of command line tooling, with an aim of
 the individual parts of the library to be used on their own, allowing more dedicated users some tools to create their own
 customised core.
 
+![Example gif](https://i.imgur.com/n5kCLVW.gif)
+
 ## Components
 
 As mentioned, this library aims to also serve as a base for anyone who might need a more specialised 'core' for their application in the event that
