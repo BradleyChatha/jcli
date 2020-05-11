@@ -3,6 +3,10 @@
 ![Tests](https://github.com/SealabJaster/jcli/workflows/Test%20LDC%20x64/badge.svg)
 ![Examples](https://github.com/SealabJaster/jcli/workflows/Test%20Examples/badge.svg)
 
+<p align="center">
+    <img src="https://i.imgur.com/nbQPhO9.png"/>
+</p>
+
 JCLI is a library to aid in the creation of command line tooling, with an aim of being easy to use, while also allowing
 the individual parts of the library to be used on their own, allowing more dedicated users some tools to create their own
 customised core.
