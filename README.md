@@ -35,6 +35,9 @@ args; provides dependency injection (via JIOC), etc.
 for an easier-to-use, generically layed out help message. Content is provided by classes that inherit the `IHelpSectionContent` class, which
 also provides a line-wrap helper function.
 
+* IConfig & friends - Customisable configuration with selectable backends. For example, you could use the `AdaptableFileConfig` alongside the
+`AsdfConfigAdapter` to serialise/deserialise your configuration using files and the asdf library.
+
 * Shell - Contains a set of helper functions related to the shell. Highlights include `pushLocation` and `popLocation` (if you're familiar with Powershell's `Push-Location`,              etc.); check if a command exists, and several functions to execute commands.
 
 * UserIO - Get input and show output to the user. Optional colourful logging; debug-only and toggleable verbose logging; functions such as `getInput` and `getInputFromList` which
