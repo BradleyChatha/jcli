@@ -1,3 +1,4 @@
+/// An adapter for the asdf library.
 module jaster.cli.adapters.config.asdf;
 
 version(Have_asdf)
