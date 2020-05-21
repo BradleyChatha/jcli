@@ -54,7 +54,7 @@ ServiceInfo addCommandLineInterfaceService()
 }
 
 /// ditto.
-ServiceInfo[] addCommandLineInterfaceService(ServiceInfo[] services)
+ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
 {
     services ~= addCommandLineInterfaceService();
     return services;
