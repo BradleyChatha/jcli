@@ -75,11 +75,11 @@ final static class UserIO
             AnsiText colouredOutput;
             switch(level) with(LogLevel)
             {
-                case trace:     colouredOutput = output.ansi.fg(Ansi4Bit.BrightBlack); break;
-                case warning:   colouredOutput = output.ansi.fg(Ansi4Bit.Yellow);      break;
-                case error:     colouredOutput = output.ansi.fg(Ansi4Bit.Red);         break;
+                case trace:     colouredOutput = output.ansi.fg(Ansi4Bit.brightBlack); break;
+                case warning:   colouredOutput = output.ansi.fg(Ansi4Bit.yellow);      break;
+                case error:     colouredOutput = output.ansi.fg(Ansi4Bit.red);         break;
                 case critical:  
-                case fatal:     colouredOutput = output.ansi.fg(Ansi4Bit.BrightRed);   break;
+                case fatal:     colouredOutput = output.ansi.fg(Ansi4Bit.brightRed);   break;
 
                 default: break;
             }
