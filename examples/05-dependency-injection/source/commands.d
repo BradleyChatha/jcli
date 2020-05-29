@@ -15,7 +15,6 @@ class PasswordCommand
     // JIOC uses constructor injection primarily, so here we're asking it to inject our `IPasswordManager` service.
     this(IPasswordManager passwords)
     {
-
         this._passwords = passwords;
     }
 
