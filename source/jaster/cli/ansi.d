@@ -279,6 +279,8 @@ struct AnsiText
     ref AnsiText slowBlink(bool isSet = true) return { return this.setFlag(AnsiTextFlags.slowBlink, isSet); }
     /// Sets whether the text should blink rapidly.
     ref AnsiText fastBlink(bool isSet = true) return { return this.setFlag(AnsiTextFlags.fastBlink, isSet); }
+    /// Sets whether the text should have its fg and bg colours inverted.
+    ref AnsiText invert   (bool isSet = true) return { return this.setFlag(AnsiTextFlags.invert,    isSet); }
     /// Sets whether the text should have a strike through it.
     ref AnsiText strike   (bool isSet = true) return { return this.setFlag(AnsiTextFlags.strike,    isSet); }
 
