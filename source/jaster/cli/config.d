@@ -87,6 +87,9 @@ if(is(T == struct) || is(T == class))
             }
             catch(Exception ex)
             {
+                import jaster.cli.userio : UserIO;
+                UserIO.verboseException(ex);
+
                 this.value = (rollback) ? uneditedValue : value;
                 return WasExceptionThrown.yes;
             }

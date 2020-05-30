@@ -111,6 +111,22 @@ final static class UserIO
                 UserIO.logf(format, level, args);
         }
 
+        /// Logs an exception, using the given `LogFunc`, as an error.
+        ///
+        /// Prefer the use of `logException`, `debugException`, and `verboseException`.
+        void exception(alias LogFunc)(Exception ex)
+        {
+            LogFunc(
+                "----EXCEPTION----\nFile: %s\nLine: %s\nType: %s\nMessage: '%s'\nTrace: %s", 
+                LogLevel.error,
+                ex.file,
+                ex.line,
+                ex.classinfo,
+                ex.msg,
+                ex.info
+            );
+        }
+
         // I'm not auto-generating these, as I want autocomplete (e.g. vscode) to be able to pick these up.
 
         /// Helper functions for `logf`, to easily use a specific log level.
@@ -125,6 +141,8 @@ final static class UserIO
         void logCriticalf(Args...)(const char[] format, Args args){ UserIO.logf(format, LogLevel.critical, args); }
         /// ditto
         void logFatalf   (Args...)(const char[] format, Args args){ UserIO.logf(format, LogLevel.fatal, args);    }
+        /// ditto
+        alias logException = exception!logf;
 
         /// Helper functions for `debugf`, to easily use a specific log level.
         void debugTracef   (Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.trace, args);    }
@@ -138,6 +156,8 @@ final static class UserIO
         void debugCriticalf(Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.critical, args); }
         /// ditto
         void debugFatalf   (Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.fatal, args);    }
+        /// ditto
+        alias debugException = exception!debugf;
 
         /// Helper functions for `verbosef`, to easily use a specific log level.
         void verboseTracef   (Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.trace, args);    }
@@ -151,6 +171,8 @@ final static class UserIO
         void verboseCriticalf(Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.critical, args); }
         /// ditto
         void verboseFatalf   (Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.fatal, args);    }
+        /// ditto
+        alias verboseException = exception!verbosef;
     }
 
     /+++++++++++++++
