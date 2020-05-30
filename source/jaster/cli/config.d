@@ -263,6 +263,14 @@ ServiceInfo[] addInMemoryConfig(For)()
 /++
  + An `IConfig` with adapter support that uses the filesystem to store/retrieve its configuration value.
  +
+ + Notes:
+ +  This class will ensure the directory for the file exists.
+ +
+ +  This class will always create a backup ".bak" before every write attempt. It however does not
+ +  attempt to restore this file in the event of an error.
+ +
+ +  If this class' config file doesn't exist, then `load` is no-op, leaving the `value` as `For.init`
+ +
  + See_Also:
  +  The docs for `isConfigAdapterFor`.
  +
@@ -275,8 +283,11 @@ if(isConfigAdapterFor!(Adapter, For) && isCopyable!For)
     private string _path;
 
     /++
+     + Throws:
+     +  `Exception` if the given `path` is invalid, after being converted into an absolute path.
+     +
      + Params:
-     +  path = The file path to store the configuration file at.
+     +  path = The file path to store the configuration file at. This can be relative or absolute.
      + ++/
     this(string path)
     {
