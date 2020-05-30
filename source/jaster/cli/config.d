@@ -272,7 +272,7 @@ ServiceInfo[] addInMemoryConfig(For)()
  +  If this class' config file doesn't exist, then `load` is no-op, leaving the `value` as `For.init`
  +
  + See_Also:
- +  The docs for `isConfigAdapterFor`.
+ +  The docs for `isConfigAdapterFor` to learn more about configs with adapter support.
  +
  +  `addFileConfig`
  + ++/
