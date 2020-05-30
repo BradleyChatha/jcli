@@ -3,9 +3,14 @@ module jaster.cli.config;
 
 private
 {
-    import std.traits : isCopyable;
+    import std.typecons : Flag;
+    import std.traits   : isCopyable;
     import jaster.ioc;
 }
+
+alias WasExceptionThrown  = Flag!"wasAnExceptionThrown?";
+alias SaveOnSuccess       = Flag!"configSaveOnSuccess";
+alias RollbackOnFailure   = Flag!"configRollbackOnError";
 
 /++
  + The simplest interface for configuration.
@@ -18,32 +23,132 @@ if(is(T == struct) || is(T == class))
 {
     public
     {
-        /// Saves the configuration. Location, format, etc. all completely depends on the implementation.
+        /// Loads the configuration. This should overwrite any unsaved changes.
+        void load();
+
+        /// Saves the configuration.
         void save();
 
-        /// Loads the configuration.
-        void load();
-        
-        /++
-         + Returns:
-         +  The configuration's value.
-         + ++/
+        /// Returns: The current value for this configuration.
         @property
         T value();
 
-        /++
-         + Sets the configuration's value.
-         + ++/
+        /// Sets the configuration's value.
         @property
-        void value(T newValue);
-
-        /++
-         + Returns:
-         +  A reference to the configuration's value.
-         + ++/
-        @property
-        ref T valueRef();
+        void value(T value);
     }
+
+    public final
+    {
+        /++
+         + Edit the value of this configuration using the provided `editFunc`, optionally
+         + saving if no exceptions are thrown, and optionally rolling back any changes in the case an exception $(B is) thrown.
+         +
+         + Notes:
+         +  Exceptions can be caught during either `editFunc`, or a call to `save`.
+         +
+         +  Functionally, "rolling back on success" simply means the configuration's `value[set]` property is never used.
+         +
+         +  This has a consequence - if your `editFunc` modifies the internal state of the value in a way that takes immediate effect on
+         +  the original value (e.g. the value is a class type, so all changes will affect the origina value), then "rolling back" won't
+         +  be able to prevent any data changes.
+         +
+         +  Therefor, its best to use structs for your configuration types if you're wanting to make use of "rolling back".
+         +
+         +  If an error occurs, then `UserIO.verboseException` is used to display the exception.
+         +
+         +  $(Ensure your lambda parameter is marked `scope ref`, otherwise you'll get a compiler error.)
+         +
+         + Params:
+         +  editFunc = The function that will edit the configuration's value.
+         +  rollback = If `RollbackOnFailure.yes`, then should an error occur, the configuration's value will be left unchanged.
+         +  save     = If `SaveOnSuccess.yes`, then if no errors occur, a call to `save` will be made.
+         +
+         + Returns:
+         +  `WasExceptionThrown` to denote whether an error occured or not.
+         + ++/
+        WasExceptionThrown edit(
+            void delegate(scope ref T value) editFunc,
+            RollbackOnFailure rollback = RollbackOnFailure.yes,
+            SaveOnSuccess save = SaveOnSuccess.no
+        )
+        {
+            auto uneditedValue = this.value;
+            auto value         = uneditedValue; // So we can update the value in the event of `rollback.no`.
+            try
+            {
+                editFunc(value); // Pass a temporary, so in the event of an error, changes shouldn't be half-committed.
+
+                this.value = value;                
+                if(save)
+                    this.save();
+
+                return WasExceptionThrown.no;
+            }
+            catch(Exception ex)
+            {
+                this.value = (rollback) ? uneditedValue : value;
+                return WasExceptionThrown.yes;
+            }
+        }
+
+        /// Exactly the same as `edit`, except with the `save` parameter set to `yes`.
+        void editAndSave(void delegate(scope ref T value) editFunc)
+        {
+            this.edit(editFunc, RollbackOnFailure.yes, SaveOnSuccess.yes);
+        }
+
+        /// Exactly the same as `edit`, except with the `save` parameter set to `yes`, and `rollback` set to `no`.
+        void editAndSaveNoRollback(void delegate(scope ref T value) editFunc)
+        {
+            this.edit(editFunc, RollbackOnFailure.no, SaveOnSuccess.yes);
+        }
+
+        /// Exactly the same as `edit`, except with the `rollback` paramter set to `no`.
+        void editNoRollback(void delegate(scope ref T value) editFunc)
+        {
+            this.edit(editFunc, RollbackOnFailure.no, SaveOnSuccess.no);
+        }
+    }
+}
+///
+unittest
+{
+    // This is mostly a unittest for testing, not as an example, but may as well show it as an example anyway.
+    static struct Conf
+    {
+        string str;
+        int num;
+    }
+
+    auto config = new InMemoryConfig!Conf();
+
+    // Default: Rollback on failure, don't save on success.
+    // First `edit` fails, so no data should be commited.
+    // Second `edit` passes, so data is edited.
+    // Test to ensure only the second `edit` committed changes.
+    assert(config.edit((scope ref v) { v.str = "Hello"; v.num = 420; throw new Exception(""); }) == WasExceptionThrown.yes);
+    assert(config.edit((scope ref v) { v.num = 21; })                                            == WasExceptionThrown.no);
+    assert(config.value == Conf(null, 21));
+
+    // Reset value, check that we didn't actually call `save` yet.
+    config.load();
+    assert(config.value == Conf.init);
+
+    // Test editAndSave. Save on success, rollback on failure.
+    // No longer need to test rollback's pass case, as that's now proven to work.
+    config.editAndSave((scope ref v) { v.str = "Lalafell"; });
+    config.value = Conf.init;
+    config.load();
+    assert(config.value.str == "Lalafell");
+
+    // Reset value
+    config.value = Conf.init;
+    config.save();
+
+    // Test editNoRollback, and then we'll have tested the pass & fail cases for saving and rollbacks.
+    config.editNoRollback((scope ref v) { v.str = "Grubby"; throw new Exception(""); });
+    assert(config.value.str == "Grubby", config.value.str);
 }
 
 /++
@@ -104,6 +209,55 @@ private void showAdapterCompilerErrors(Adapter, For)()
 {
     const ubyte[] data = Adapter.serialise!For(For.init);
     For value = Adapter.deserialise!For(data);
+}
+
+/// A very simple `IConfig` that simply stores the value in memory. This is mostly only useful for testing.
+final class InMemoryConfig(For) : IConfig!For
+if(isCopyable!For)
+{
+    private For _savedValue;
+    private For _value;
+
+    public override
+    {
+        void save()
+        {
+            this._savedValue = this._value;
+        }
+
+        void load()
+        {
+            this._value = this._savedValue;
+        }
+
+        @property
+        For value()
+        {
+            return this._value;
+        }
+
+        @property
+        void value(For newValue)
+        {
+            this._value = newValue;
+        }
+    }
+}
+
+/++
+ + Returns:
+ +  A Singleton `ServiceInfo` describing an `InMemoryConfig` that stores the `For` type.
+ + ++/
+ServiceInfo addInMemoryConfig(For)()
+{
+    return ServiceInfo.asSingleton!(IConfig!For, InMemoryConfig!For);
+}
+
+/// ditto.
+ServiceInfo[] addInMemoryConfig(For)()
+{
+    services ~= addInMemoryConfig!For();
+    return services;
 }
 
 /++
@@ -173,12 +327,6 @@ if(isConfigAdapterFor!(Adapter, For) && isCopyable!For)
         void value(For newValue)
         {
             this._value = newValue;
-        }
-
-        @property
-        ref For valueRef()
-        {
-            return this._value;
         }
     }
 }
