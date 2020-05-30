@@ -73,8 +73,8 @@ if(is(T == struct) || is(T == class))
             SaveOnSuccess save = SaveOnSuccess.no
         )
         {
-            auto uneditedValue = this.value;
-            auto value         = uneditedValue; // So we can update the value in the event of `rollback.no`.
+            const uneditedValue = this.value;
+            T     value         = uneditedValue; // So we can update the value in the event of `rollback.no`.
             try
             {
                 editFunc(value); // Pass a temporary, so in the event of an error, changes shouldn't be half-committed.
