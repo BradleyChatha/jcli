@@ -1,5 +1,4 @@
 # Used by CI to test that all examples compile and pass.
-# I _could_ use JCLI itself, but then I'd have to worry about platform compatibility.
 
 $TEST_CASES = @(
     @{ loc = "./00-basic-usage-default-command/";   params = "20";                  expected_status = 0      }
