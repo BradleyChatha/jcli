@@ -13,4 +13,4 @@ test-test-*
 *.o
 *.obj
 *.lst
-config.*
+config.js*
