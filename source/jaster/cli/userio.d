@@ -66,6 +66,8 @@ final static class UserIO
             if(cast(int)level < UserIO._config.global.minLogLevel)
                 return;
 
+                writeln(UserIO._config.global.useColouredText);
+
             if(!UserIO._config.global.useColouredText)
             {
                 writeln(output);
@@ -117,8 +119,7 @@ final static class UserIO
         void exception(alias LogFunc)(Exception ex)
         {
             LogFunc(
-                "----EXCEPTION----\nFile: %s\nLine: %s\nType: %s\nMessage: '%s'\nTrace: %s", 
-                LogLevel.error,
+                "----EXCEPTION----\nFile: %s\nLine: %s\nType: %s\nMessage: '%s'\nTrace: %s",
                 ex.file,
                 ex.line,
                 ex.classinfo,
@@ -142,7 +143,7 @@ final static class UserIO
         /// ditto
         void logFatalf   (Args...)(const char[] format, Args args){ UserIO.logf(format, LogLevel.fatal, args);    }
         /// ditto
-        alias logException = exception!logf;
+        alias logException = exception!logErrorf;
 
         /// Helper functions for `debugf`, to easily use a specific log level.
         void debugTracef   (Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.trace, args);    }
@@ -157,7 +158,7 @@ final static class UserIO
         /// ditto
         void debugFatalf   (Args...)(const char[] format, Args args){ UserIO.debugf(format, LogLevel.fatal, args);    }
         /// ditto
-        alias debugException = exception!debugf;
+        alias debugException = exception!debugErrorf;
 
         /// Helper functions for `verbosef`, to easily use a specific log level.
         void verboseTracef   (Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.trace, args);    }
@@ -172,7 +173,7 @@ final static class UserIO
         /// ditto
         void verboseFatalf   (Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.fatal, args);    }
         /// ditto
-        alias verboseException = exception!verbosef;
+        alias verboseException = exception!verboseErrorf;
     }
 
     /+++++++++++++++
@@ -312,7 +313,7 @@ final static class UserIO
 private struct UserIOConfigScope
 {
     bool useVerboseLogging;
-    bool useColouredText;
+    bool useColouredText = true;
     LogLevel minLogLevel;
 }
 
