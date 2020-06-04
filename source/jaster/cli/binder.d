@@ -123,7 +123,7 @@ static struct ArgBinder(Modules...)
                     {
                         debugPragma!("Skipping arg binder `"~BinderFQN~"` for type `"~T.stringof~"` because `isFunction` is returning false.");
                         static if(IsTemplated)
-                            debugPragma!("\nThis binder is templated, so it is likely that the binder's contract fails, or its code doesn't compile for this given type.");
+                            debugPragma!("This binder is templated, so it is likely that the binder's contract fails, or its code doesn't compile for this given type.");
                     }
                 }
             }
