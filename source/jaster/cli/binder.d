@@ -89,13 +89,15 @@ static struct ArgBinder(Modules...)
                 {
                     static if(__traits(compiles, binder!T))
                     {
-                        alias Binder = binder!T;
-                        const BinderFQN = fullyQualifiedName!mod~"."~fullyQualifiedName!Binder~"!("~T.stringof~")";
+                        alias Binder      = binder!T;
+                        const BinderFQN   = fullyQualifiedName!mod~"."~fullyQualifiedName!Binder~"!("~T.stringof~")";
+                        const IsTemplated = true;
                     }
                     else
                     {
-                        alias Binder = binder;
-                        const BinderFQN = fullyQualifiedName!Binder;
+                        alias Binder      = binder;
+                        const BinderFQN   = fullyQualifiedName!Binder;
+                        const IsTemplated = false;
                     }
 
                     static if(isFunction!Binder)
@@ -119,10 +121,9 @@ static struct ArgBinder(Modules...)
                     }
                     else
                     {
-                        debugPragma!(
-                            "Skipping arg binder `"~BinderFQN~"` for type `"~T.stringof~"` because `isFunction` is returning false."
-                           ~"\nIf the binder is a template function, then this error is occuring because the function's contract fails, or it's code doesn't compile for the given type."
-                        );
+                        debugPragma!("Skipping arg binder `"~BinderFQN~"` for type `"~T.stringof~"` because `isFunction` is returning false.");
+                        static if(IsTemplated)
+                            debugPragma!("\nThis binder is templated, so it is likely that the binder's contract fails, or its code doesn't compile for this given type.");
                     }
                 }
             }
