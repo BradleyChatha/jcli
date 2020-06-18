@@ -57,7 +57,7 @@ if(is(T == struct) || is(T == class))
          +
          +  If an error occurs, then `UserIO.verboseException` is used to display the exception.
          +
-         +  $(Ensure your lambda parameter is marked `scope ref`, otherwise you'll get a compiler error.)
+         +  $(B Ensure your lambda parameter is marked `scope ref`, otherwise you'll get a compiler error.)
          +
          + Params:
          +  editFunc = The function that will edit the configuration's value.

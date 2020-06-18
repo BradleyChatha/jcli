@@ -31,74 +31,14 @@ interface IHelpSectionContent
      + ++/
     string getContent(const HelpSectionOptions options);
 
-    /+ UTILITY FUNCTIONS +/
+    // Utility functions
     protected final
     {
-        /++
-         + Wraps a piece of text into seperate lines, based on the given options.
-         +
-         + Throws:
-         +  `Exception` if the char limit is too small to show any text.
-         +
-         + Notes:
-         +  Currently, this performs character-wrapping instead of word-wrapping, so words
-         +  can be split between multiple lines. There is no technical reason for this outside of I'm lazy.
-         +
-         +  For every line created from the given `text`, the starting and ending spaces (not whitespace, just spaces)
-         +  are stripped off. This is so the user doesn't have to worry about random leading/trailling spaces, making it
-         +  easier to format for the general case (though specific cases might find this undesirable, I'm sorry).
-         +
-         +  For every line created from the given `text`, the line prefix defined in the `options` is prefixed onto every newly made line.
-         + ++/
-        string lineWrap(const HelpSectionOptions options, const(char)[] text) const
+        string lineWrap(const HelpSectionOptions options, const(char)[] value)
         {
-            import std.exception : assumeUnique, enforce;
+            import jaster.cli.text : lineWrap, LineWrapOptions;
 
-            char[] actualText;
-            const charsPerLine = options.lineCharLimit - (options.linePrefix.length + 1); // '+ 1' is for the new line char.
-            size_t offset      = 0;
-            
-            enforce(charsPerLine > 0, "The lineCharLimit is too low. There's not enough space for any text (after factoring the prefix and ending new line characters).");
-            actualText.reserve(text.length + (options.linePrefix.length * (text.length / charsPerLine)));
-            
-            while(offset < text.length)
-            {
-                size_t end = (offset + charsPerLine);
-                if(end > text.length)
-                    end = text.length;
-                
-                // Strip off whitespace, so things format properly.
-                while(offset < text.length && text[offset] == ' ')
-                {
-                    offset++;
-                    if(end < text.length)
-                        end++;
-                }
-                
-                actualText ~= options.linePrefix;
-                actualText ~= text[offset..(end >= text.length) ? text.length : end];
-                actualText ~= "\n";
-
-                offset += charsPerLine;
-            }
-
-            // Don't keep the new line for the last line.
-            if(actualText.length > 0 && actualText[$-1] == '\n')
-                actualText = actualText[0..$-1];
-
-            return actualText.assumeUnique;
-        }
-        
-        // issue #2
-        unittest
-        {
-            const obj = new HelpSectionTextContent(""); // Just so I can access the line wrap function.
-
-            const options = HelpSectionOptions("", 4);
-            const text = obj.lineWrap(options, "abcdefgh");
-
-            assert(text[$-1] != '\n', "lineWrap is inserting a new line at the end again.");
-            assert(text == "abc\ndef\ngh", text);
+            return value.lineWrap(LineWrapOptions(options.lineCharLimit, options.linePrefix));
         }
     }
 }
