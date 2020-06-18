@@ -7,7 +7,7 @@ struct LineWrapOptions
     /++
      + How many characters per line, in total, are allowed.
      +
-     + Do note that the `linePrefix`, as well as leading new line characters are subtracted from this limit,
+     + Do note that the `linePrefix`, `lineSuffix`, as well as leading new line characters are subtracted from this limit,
      + to find the acutal total amount of characters that can be shown on each line.
      + ++/
     size_t lineCharLimit;
@@ -16,6 +16,11 @@ struct LineWrapOptions
      + A string to prefix each line with, helpful for automatic tabulation of each newly made line.
      + ++/
     string linePrefix;
+
+    /++
+     + Same as `linePrefix`, except it's a suffix.
+     + ++/
+    string lineSuffix;
 }
 
 /++
@@ -31,6 +36,7 @@ struct LineWrapOptions
  +  For every line created from the given `text`, the starting and ending spaces (not whitespace, just spaces)
  +  are stripped off. This is so the user doesn't have to worry about random leading/trailling spaces, making it
  +  easier to format for the general case (though specific cases might find this undesirable, I'm sorry).
+ +  $(B This does not apply to prefixes and suffixes).
  +
  +  For every line created from the given `text`, the line prefix defined in the `options` is prefixed onto every newly made line.
  +
@@ -38,16 +44,18 @@ struct LineWrapOptions
  +  This function calculates, and reserves all required memory using a single allocation (barring bugs ;3), so it shouldn't
  +  be overly bad to use.
  + ++/
-string lineWrap(const(char)[] text, const LineWrapOptions options = LineWrapOptions(120, null))
+string lineWrap(const(char)[] text, const LineWrapOptions options = LineWrapOptions(120))
 {
     import std.exception : assumeUnique, enforce;
 
     char[] actualText;
-    const charsPerLine = options.lineCharLimit - (options.linePrefix.length + 1); // '+ 1' is for the new line char.
+    const charsPerLine = options.lineCharLimit - (options.linePrefix.length + + options.lineSuffix.length + 1); // '+ 1' is for the new line char.
     size_t offset      = 0;
     
-    enforce(charsPerLine > 0, "The lineCharLimit is too low. There's not enough space for any text (after factoring the prefix and ending new line characters).");
-    actualText.reserve(text.length + (options.linePrefix.length * (text.length / charsPerLine)));
+    enforce(charsPerLine > 0, "The lineCharLimit is too low. There's not enough space for any text (after factoring the prefix, suffix, and ending new line characters).");
+
+    const estimatedLines = (text.length / charsPerLine);
+    actualText.reserve(text.length + (options.linePrefix.length * estimatedLines) + (options.lineSuffix.length * estimatedLines));
     
     while(offset < text.length)
     {
@@ -65,6 +73,7 @@ string lineWrap(const(char)[] text, const LineWrapOptions options = LineWrapOpti
         
         actualText ~= options.linePrefix;
         actualText ~= text[offset..(end >= text.length) ? text.length : end];
+        actualText ~= options.lineSuffix;
         actualText ~= "\n";
 
         offset += charsPerLine;
@@ -79,9 +88,9 @@ string lineWrap(const(char)[] text, const LineWrapOptions options = LineWrapOpti
 ///
 unittest
 {
-    const options = LineWrapOptions(7, "\t");
+    const options = LineWrapOptions(8, "\t", "-");
     const text    = "Hello world".lineWrap(options);
-    assert(text == "\tHello\n\tworld", cast(char[])text);
+    assert(text == "\tHello-\n\tworld-", cast(char[])text);
 }
 
 // issue #2
