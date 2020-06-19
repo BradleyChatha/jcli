@@ -201,36 +201,16 @@ final class CommandLineInterface(Modules...)
         CommandExecuteFunc doExecute;
     }
 
-    // BUG?: Apparently the below code causes param mis-match errors. Compiler bug?
-    // struct ArgInfo(UDA, T)
-    // {
-    //     UDA uda;
-    //     ArgValueSetterFunc!T setter;
-    //     bool wasFound; // For nullables, this is ignore. Otherwise, anytime this is false we need to throw.
-    //     bool isNullable;
-    //     bool isBool;
-    // }
-    // alias NamedArgInfo(T) = ArgInfo!(CommandNamedArg, T);
-    // alias PositionalArgInfo(T) = ArgInfo!(CommandPositionalArg, T);
-
-    // TODO: REMOVE THESE ONCE THE ABOVE CODE ACTUALLY WORKS.
-    private struct NamedArgInfo(T)
+    struct ArgInfo(UDA, T)
     {
-        CommandNamedArg uda;
+        UDA uda;
         ArgValueSetterFunc!T setter;
         bool wasFound; // For nullables, this is ignore. Otherwise, anytime this is false we need to throw.
         bool isNullable;
         bool isBool;
     }
-
-    private struct PositionalArgInfo(T)
-    {
-        CommandPositionalArg uda;
-        ArgValueSetterFunc!T setter;
-        bool wasFound; // For nullables, this is ignore. Otherwise, anytime this is false we need to throw.
-        bool isNullable;
-        bool isBool;
-    }
+    alias NamedArgInfo(T) = ArgInfo!(CommandNamedArg, T);
+    alias PositionalArgInfo(T) = ArgInfo!(CommandPositionalArg, T);
 
     /+ VARIABLES +/
     private
@@ -436,7 +416,7 @@ final class CommandLineInterface(Modules...)
             // Get arg info.
             NamedArgInfo!T[] namedArgs;
             PositionalArgInfo!T[] positionalArgs;
-            /*static member*/ getArgs(/*ref*/ namedArgs, /*ref*/ positionalArgs);
+            /*static member*/ getArgs!T(/*ref*/ namedArgs, /*ref*/ positionalArgs);
 
             // Get UDA
             enum UDA = getSingleUDA!(T, Command);
@@ -491,7 +471,7 @@ final class CommandLineInterface(Modules...)
                 // Get arg info.
                 NamedArgInfo!T[] namedArgs;
                 PositionalArgInfo!T[] positionalArgs;
-                /*static member*/ getArgs(/*ref*/ namedArgs, /*ref*/ positionalArgs);
+                /*static member*/ getArgs!T(/*ref*/ namedArgs, /*ref*/ positionalArgs);
 
                 // Parse args.
                 size_t positionalArgIndex = 0;
