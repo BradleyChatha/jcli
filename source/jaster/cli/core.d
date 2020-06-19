@@ -60,7 +60,6 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
     return services;
 }
 
-// Needs to be a class for a default ctor.
 /++
  + Provides the functionality of parsing command line arguments, and then calling a command.
  +
@@ -68,7 +67,8 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +  The `Modules` template parameter is used directly with `jaster.cli.binder.ArgBinder` to provide the arg binding functionality.
  +  Please refer to `ArgBinder`'s documentation if you are wanting to use custom made binder funcs.
  +
- +  Commands are detected by looking over every module in `Modules`, and within each module looking for types marked with `@Command`.
+ +  Commands are detected by looking over every module in `Modules`, and within each module looking for types marked with `@Command` and matching their patterns
+ +  to the given input.
  +
  + Patterns:
  +  Patterns are pretty simple.
@@ -104,7 +104,7 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +
  +  The signature that returns an `int` is used to return a custom status code.
  +
- +  If a command has it's pattern matched, then it's arguments will be parsed before `onExecute` is called.
+ +  If a command has its pattern matched, then its arguments will be parsed before `onExecute` is called.
  +
  +  Arguments are either positional (`@CommandPositionalArg`) or named (`@CommandNamedArg`).
  +
@@ -120,9 +120,9 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +  The shell will pass `["create", "SomeFile.txt", "This is some content"]` to our program. We will assume we already have a command that will match with "create".
  +  We are then left with the other two strings.
  +
- +  `"SomeFile.txt"` is in the 0th position, so it's value will be binded to the field marked with `@CommandPositionalArg(0)`.
+ +  `"SomeFile.txt"` is in the 0th position, so its value will be binded to the field marked with `@CommandPositionalArg(0)`.
  +
- +  `"This is some content"` is in the 1st position, so it's value will be binded to the field marked with `@CommandNamedArg(1)`.
+ +  `"This is some content"` is in the 1st position, so its value will be binded to the field marked with `@CommandPositionalArg(1)`.
  +
  + Named_Arguments:
  +  A named arg is an argument that follows a name. Names are either in long-hand form ("--file") or short-hand form ("-f").
@@ -131,29 +131,45 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +
  +  The shell will pass `["create", "-f=SomeFile.txt", "--content", "This is some content"]`. Notice how the '-f' uses an '=' sign, but '--content' doesn't.
  +  This is because the `ArgPullParser` supports various different forms of named arguments (e.g. ones that use '=', and ones that don't).
- +  Please refer to it's documentation for more information.
+ +  Please refer to its documentation for more information.
  +
  +  Imagine we already have a command made that matches with "create". We are then left with the rest of the arguments.
  +
  +  "-f=SomeFile.txt" is parsed as an argument called "f" with the value "SomeFile.txt". Using the logic specified in the "Binding Arguments" section (below), 
  +  we perform the binding of "SomeFile.txt" to whichever field marked with `@CommandNamedArg` matches with the name "f".
  +
- +  ["--content", "This is some content"] is parsed as an argument called "content" with the value "This is some content". We apply the same logic as above.
+ +  `["--content", "This is some content"]` is parsed as an argument called "content" with the value "This is some content". We apply the same logic as above.
  +
  + Binding_Arguments:
  +  Once we have matched a field marked with either `@CommandPositionalArg` or `@CommandNamedArg` with a position or name (respectively), then we
  +  need to bind the value to the field.
  +
- +  This is where the `ArgBinder` is used. First of all, please refer to it's documentation as it's kind of important.
+ +  This is where the `ArgBinder` is used. First of all, please refer to its documentation as it's kind of important.
  +  Second of all, we esentially generate a call similar to: `ArgBinderInstance.bind(myCommandInstance.myMatchedField, valueToBind)`
  +
- +  So imagine we have this field inside a command - `@CommandPositionalArg(0) myIntField;`
+ +  So imagine we have this field inside a command - `@CommandPositionalArg(0) int myIntField;`
  +
  +  Now imagine we have the value "200" in the 0th position. This means it'll be matchd with `myIntField`.
  +
  +  This will esentially generate this call: `ArgBinderInstance.bind(myCommandInstance.myIntField, "200")`
  +
- +  From there, ArgBinder will do it's thing of binding/converting the string "200" into the integer 200
+ +  From there, ArgBinder will do its thing of binding/converting the string "200" into the integer 200
+ +
+ + Boolean_Binding:
+ +  Bool arguments have special logic in place.
+ +
+ +  By only passing the name of a boolean argument (e.g. "--verbose"), this is treated as setting "verbose" to "true" using the `ArgBinder`.
+ +
+ +  By passing a value alongside a boolean argument that is either "true" or "false" (e.g. "--verbose true", "--verbose=false"), then the resulting
+ +  value is passed to the `ArgBinder` as usual. In other words, "--verbose" is equivalent to "--verbose true".
+ +
+ +  By passing a value alongside a boolean argument that $(B isn't) one of the preapproved words then: The value will be treated as a positional argument;
+ +  the boolean argument will be set to true.
+ +
+ +  For example, "--verbose" sets "verbose" to "true". Passing "--verbose=false/true" will set "verbose" to "false" or "true" respectively. Passing
+ +  "--verbose push" would leave "push" as a positional argument, and then set "verbose" to "true".
+ +
+ +  These special rules are made so that boolean arguments can be given an explicit value, without them 'randomly' treating positional arguments as their value.
  +
  + Optional_And_Required_Arguments:
  +  By default, all arguments are required.
@@ -162,7 +178,7 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +
  +  Note that `Nullable` is publicly imported by this module, for ease of use.
  +
- +  Before a nullable argument is binded, it is first lowered down into it's base type before being passed to the `ArgBinder`.
+ +  Before a nullable argument is binded, it is first lowered down into its base type before being passed to the `ArgBinder`.
  +  In other words, a `Nullable!int` argument will be treated as a normal `int` by the ArgBinder.
  +
  +  If there is a single required argument that is not provided by the user, then an exception is thrown (which in turn ends up showing an error message).
@@ -514,8 +530,27 @@ final class CommandLineInterface(Modules...)
                                 return -1;
                             }
                             
-                            if(result.isBool) // Bools don't need to have a value specified, they just have to exist.
-                                result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
+                            if(result.isBool)
+                            {
+                                import std.algorithm : canFind;
+                                // Bools have special support:
+                                //  If they are defined, they are assumed to be true, however:
+                                //      If the next token is Text, and its value is one of a predefined list, then it is then sent to the ArgBinder instead of defaulting to true.
+                                
+                                auto parserCopy = parser;
+                                parserCopy.popFront();
+                                
+                                if(parserCopy.empty 
+                                || parserCopy.front.type != ArgTokenType.Text
+                                || !["true", "false"].canFind(parserCopy.front.value))
+                                {
+                                    result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
+                                    break;
+                                }
+
+                                result.setter(parserCopy.front, /*ref*/ commandInstance);
+                                parser.popFront(); // Keep the main parser up to date.
+                            }
                             else
                             {
                                 parser.popFront();
@@ -845,5 +880,45 @@ version(unittest)
         auto cli = new CommandLineInterface!(jaster.cli.core);
         assert(cli.parseAndExecute(["--var 1"], IgnoreFirstArg.no) == 0);
         assert(cli.parseAndExecute(["--var 2"], IgnoreFirstArg.no) == 2);
+    }
+
+    @Command("booltest", "Bool test")
+    private struct BoolTestCommand
+    {
+        @CommandNamedArg("a")
+        bool definedNoValue;
+
+        @CommandNamedArg("b")
+        bool definedFalseValue;
+
+        @CommandNamedArg("c")
+        bool definedTrueValue;
+
+        @CommandNamedArg("d")
+        bool definedNoValueWithArg;
+
+        @CommandPositionalArg(0)
+        string comesAfterD;
+
+        void onExecute()
+        {
+            assert(this.definedNoValue,            "-a doesn't equal true.");
+            assert(!this.definedFalseValue,        "-b=false doesn't equal false");
+            assert(this.definedTrueValue,          "-c true doesn't equal true");
+            assert(this.definedNoValueWithArg,     "-d Lalafell doesn't equal true");
+            assert(this.comesAfterD == "Lalafell", "Lalafell was eaten incorrectly.");
+        }
+    }
+    ///
+    unittest
+    {
+        auto cli = new CommandLineInterface!(jaster.cli.core);
+        assert(
+            cli.parseAndExecute(
+                ["booltest", "-a", "-b=false", "-c", "true", "-d", "Lalafell"],
+                // Unforunately due to ArgParser discarding some info, "-d=Lalafell" won't become an error as its treated the same as "-d Lalafell".
+                IgnoreFirstArg.no
+            ) == 0
+        );
     }
 }
