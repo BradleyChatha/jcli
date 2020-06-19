@@ -119,6 +119,15 @@ struct ArgPullParser
 
             return parser;
         }
+
+        /// Returns: The args that have yet to be parsed.
+        @property
+        string[] unparsedArgs()
+        {
+            return (this._currentArgIndex + 1 < this._args.length)
+                   ? this._args[this._currentArgIndex + 1..$]
+                   : null;
+        }
     }
 
     /// Parsing ///
@@ -180,7 +189,10 @@ struct ArgPullParser
             if(this._currentCharIndex == 0 && !orSpace && !orEqualSign)
             {
                 auto arg = this.currentArg;
-                this.nextArg();
+
+                // Force skipWhitespace to call nextArg on its next call.
+                // We can't call nextArg here, as it breaks assumptions that unparsedArgs relies on.
+                this._currentCharIndex = this.currentArg.length;
                 return arg;
             }
             
@@ -312,4 +324,23 @@ unittest
 unittest
 {
     assert(ArgPullParser.init.empty);
+}
+
+// Test: unparsedArgs
+unittest
+{
+    auto args = 
+    [
+        "one", "-t", "--three", "--unfortunate=edgeCase" // Despite this containing two tokens, they currently both get skipped over, even only one was parsed so far ;/
+    ];
+    auto parser = ArgPullParser(args);
+
+    assert(parser.unparsedArgs == args[1..$]);
+    foreach(i; 0..3)
+    {
+        parser.popFront();
+        assert(parser.unparsedArgs == args[2 + i..$]);
+    }
+
+    assert(parser.unparsedArgs is null);
 }
