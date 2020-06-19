@@ -66,6 +66,15 @@ struct CommandPositionalArg
 }
 
 /++
+ + Attach this onto a `string[]` member field to mark it as the "raw arg list".
+ +
+ + TLDR; Given the command `"tool.exe command value1 value2 --- value3 value4 value5"`, the member field this UDA is attached to
+ + will be populated as `["value3", "value4", "value5"]`
+ + ++/
+struct CommandRawArg
+{}
+
+/++
  + A service that allows commands to access the `CommandLineInterface.parseAndExecute` function of the command's `CommandLineInterface`.
  +
  + Notes:
@@ -231,6 +240,18 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +
  +  If there is a single required argument that is not provided by the user, then an exception is thrown (which in turn ends up showing an error message).
  +  This does not occur with missing optional arguments.
+ +
+ + Raw_Arguments:
+ +  For some applications, they may allow the ability for the user to provide a set of unparsed arguments. For example, dub allows the user
+ +  to provide a set of arguments to the resulting output, when using the likes of `dub run`, e.g. `dub run -- value1 value2 etc.`
+ +
+ +  `CommandLineInterface` also provides this ability. While in the dub example, a double dash ("--") is used, `CommandLineInterface` requires a triple dash ("---").
+ +
+ +  After that, as long as your command contains a `string[]` field marked with `@CommandRawArg`, then any args after the triple dash are treated as "raw args" - they
+ +  won't be parsed, passed to the ArgBinder, etc. they'll just be passed into the variable as-is.
+ +
+ +  For example, you have this member in a command `@CommandRawArg string[] rawList;`, and you are given the following command - 
+ +  `["command", "value1", "---", "rawValue1", "rawValue2"]`, which will result in `rawList`'s value becoming `["rawValue1", "rawValue2"]`
  +
  + Params:
  +  Modules = The modules that contain the commands and/or binder funcs to use.
@@ -523,7 +544,9 @@ final class CommandLineInterface(Modules...)
 
                 // Parse args.
                 size_t positionalArgIndex = 0;
-                for(; !parser.empty; parser.popFront())
+                bool processRawList = false;
+                string[] rawList;
+                for(; !parser.empty && !processRawList; parser.popFront())
                 {
                     const token = parser.front;
                     final switch(token.type) with(ArgTokenType)
@@ -540,6 +563,13 @@ final class CommandLineInterface(Modules...)
                             break;
 
                         case LongHandArgument:
+                            if(token.value == "-") // ---
+                            {
+                                processRawList = true;
+                                rawList = parser.unparsedArgs;
+                                break;
+                            }
+                            goto case;
                         case ShortHandArgument:
                             NamedArgInfo!T result;
                             foreach(ref arg; namedArgs)
@@ -616,6 +646,10 @@ final class CommandLineInterface(Modules...)
                                       .format(missingPositionalArgs.map!(a => format("[%s] %s", a.uda.position, a.uda.name)));
                     return -1;
                 }
+
+                // Process the raw list if we can
+                if(processRawList)
+                    insertRawList!T(/*ref*/ commandInstance, rawList);
 
                 // Execute the command.
                 static assert(
@@ -730,6 +764,28 @@ final class CommandLineInterface(Modules...)
             assert(matchSpacefullPattern("lel|v|verbose", parser));
             assert(matchSpacefullPattern("lel|v|verbose", parser));
             assert(parser.empty);
+        }
+
+        static void insertRawList(T)(ref T command, string[] rawList)
+        {
+            import std.traits : getSymbolsByUDA;
+
+            alias RawListArgs = getSymbolsByUDA!(T, CommandRawArg);
+            static assert(RawListArgs.length < 2, "Only a single `@CommandRawArg` can exist for command "~T.stringof);
+
+            static if(RawListArgs.length > 0)
+            {
+                alias RawListArg = RawListArgs[0];
+                static assert(
+                    is(typeof(RawListArg) == string[]), 
+                    "`@CommandRawArg` can ONLY be used with `string[]`, not `" ~ typeof(RawListArg).stringof ~ "` in command " ~ T.stringof
+                );
+
+                const RawListName = __traits(identifier, RawListArg);
+                static assert(RawListName != "RawListName", "__traits(identifier) failed.");
+
+                mixin("command."~RawListName~" = rawList;");
+            }
         }
 
         static void getArgs(T)(ref NamedArgInfo!T[] namedArgs, ref PositionalArgInfo!T[] positionalArgs)
@@ -945,6 +1001,32 @@ version(unittest)
             cli.parseAndExecute(
                 ["booltest", "-a", "-b=false", "-c", "true", "-d", "Lalafell"],
                 // Unforunately due to ArgParser discarding some info, "-d=Lalafell" won't become an error as its treated the same as "-d Lalafell".
+                IgnoreFirstArg.no
+            ) == 0
+        );
+    }
+
+    @Command("rawListTest", "Test raw lists")
+    private struct RawListTestCommand
+    {
+        @CommandNamedArg("a")
+        bool dummyThicc;
+
+        @CommandRawArg
+        string[] rawList;
+
+        void onExecute()
+        {
+            assert(rawList.length == 2);
+        }
+    }
+    ///
+    unittest
+    {
+        auto cli = new CommandLineInterface!(jaster.cli.core);
+        assert(
+            cli.parseAndExecute(
+                ["rawListTest", "-a", "---", "raw1", "raw2"],
                 IgnoreFirstArg.no
             ) == 0
         );
