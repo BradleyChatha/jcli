@@ -4,8 +4,15 @@ module jaster.cli.binder;
 private
 {
     import std.traits : isNumeric;
-    import jaster.cli.udas : ArgBinderFunc; // Compiler can't see this for some reason when the import is nested.
 }
+
+/++
+ + Attach this to any free-standing function to mark it as an argument binder.
+ +
+ + See_Also:
+ +  `jaster.cli.binder.ArgBinder` for more details.
+ + ++/
+struct ArgBinderFunc {}
 
 /++
  + A static struct providing functionality for binding a string (the argument) to a value.

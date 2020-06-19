@@ -18,6 +18,54 @@ public
 alias IgnoreFirstArg = Flag!"ignoreFirst";
 
 /++
+ + Attach this to any struct/class that represents a command.
+ +
+ + See_Also:
+ +  `jaster.cli.core.CommandLineInterface` for more details.
+ + +/
+struct Command
+{
+    /// The pattern to match against.
+    string pattern;
+
+    /// The description of this command.
+    string description;
+}
+
+/++
+ + Attach this to any member field to mark it as a named argument.
+ +
+ + See_Also:
+ +  `jaster.cli.core.CommandLineInterface` for more details.
+ + +/
+struct CommandNamedArg
+{
+    /// The pattern/"name" to match against.
+    string pattern;
+
+    /// The description of this argument.
+    string description;
+}
+
+/++
+ + Attach this to any member field to mark it as a positional argument.
+ +
+ + See_Also:
+ +  `jaster.cli.core.CommandLineInterface` for more details.
+ + +/
+struct CommandPositionalArg
+{
+    /// The position this argument appears at.
+    size_t position;
+
+    /// The name of this argument. This is only used for the generated help text, and can be left null.
+    string name;
+
+    /// The description of this argument.
+    string description;
+}
+
+/++
  + A service that allows commands to access the `CommandLineInterface.parseAndExecute` function of the command's `CommandLineInterface`.
  +
  + Notes:

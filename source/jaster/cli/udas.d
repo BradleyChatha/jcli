@@ -1,66 +1,5 @@
-/// Contains UDAs and helpful templates.
+/// Contains helpful templates relating to UDAs.
 module jaster.cli.udas;
-
-private
-{
-    import std.typecons : Flag;
-}
-
-/++
- + Attach this to any struct/class that represents a command.
- +
- + See_Also:
- +  `jaster.cli.core.CommandLineInterface` for more details.
- + +/
-struct Command
-{
-    /// The pattern to match against.
-    string pattern;
-
-    /// The description of this command.
-    string description;
-}
-
-/++
- + Attach this to any member field to mark it as a named argument.
- +
- + See_Also:
- +  `jaster.cli.core.CommandLineInterface` for more details.
- + +/
-struct CommandNamedArg
-{
-    /// The pattern/"name" to match against.
-    string pattern;
-
-    /// The description of this argument.
-    string description;
-}
-
-/++
- + Attach this to any member field to mark it as a positional argument.
- +
- + See_Also:
- +  `jaster.cli.core.CommandLineInterface` for more details.
- + +/
-struct CommandPositionalArg
-{
-    /// The position this argument appears at.
-    size_t position;
-
-    /// The name of this argument. This is only used for the generated help text, and can be left null.
-    string name;
-
-    /// The description of this argument.
-    string description;
-}
-
-/++
- + Attach this to any free-standing function to mark it as an argument binder.
- +
- + See_Also:
- +  `jaster.cli.binder.ArgBinder` for more details.
- + ++/
-struct ArgBinderFunc {}
 
 /++
  + Gets a single specified `UDA` from the given `Symbol`.
@@ -83,6 +22,8 @@ template getSingleUDA(alias Symbol, alias UDA)
 ///
 unittest
 {
+    import jaster.cli.core : Command;
+    
     struct A {}
 
     @Command("One")
