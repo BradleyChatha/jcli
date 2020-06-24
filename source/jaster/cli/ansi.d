@@ -123,8 +123,63 @@ private immutable FLAG_AS_ANSI_CODE_MAP =
     "7", // 6
     "9"  // 7
 ];
-
 static assert(FLAG_AS_ANSI_CODE_MAP.length == FLAG_COUNT);
+
+/// An alias for a string[] containing exactly enough elements for the following ANSI strings:
+///
+/// * [0]    = Foreground ANSI code.
+/// * [1]    = Background ANSI code.
+/// * [2..n] = The code for any `AnsiTextFlags` that are set.
+alias AnsiComponents = string[2 + FLAG_COUNT]; // fg + bg + all supported flags.
+
+/++
+ + Populates an `AnsiComponents` with all the strings required to construct a full ANSI command string.
+ +
+ + Params:
+ +  components = The `AnsiComponents` to populate. $(B All values will be set to null before hand).
+ +  fg         = The `AnsiColour` representing the foreground.
+ +  bg         = The `AnsiColour` representing the background.
+ +  flags      = The `AnsiTextFlags` to apply.
+ +
+ + Returns:
+ +  How many components in total are active.
+ +
+ + See_Also:
+ +  `createAnsiCommandString` to create an ANSI command string from an `AnsiComponents`.
+ + ++/
+size_t populateActiveAnsiComponents(ref scope AnsiComponents components, AnsiColour fg, AnsiColour bg, AnsiTextFlags flags)
+{
+    size_t componentIndex;
+    components[] = null;
+
+    components[componentIndex++] = fg.type == AnsiColourType.none ? null : fg.toString();
+    components[componentIndex++] = bg.type == AnsiColourType.none ? null : bg.toString();
+
+    foreach(i; 0..FLAG_COUNT)
+    {
+        if((flags & (1 << i)) > 0)
+            components[componentIndex++] = FLAG_AS_ANSI_CODE_MAP[i];
+    }
+
+    return componentIndex;
+}
+
+/++
+ + Creates an ANSI command string using the given active `components`.
+ +
+ + Params:
+ +  components = An `AnsiComponents` that has been populated with flags, ideally from `populateActiveAnsiComponents`.
+ +
+ + Returns:
+ +  All of the component strings inside of `components`, formatted as a valid ANSI command string.
+ + ++/
+string createAnsiCommandString(ref scope AnsiComponents components)
+{
+    import std.algorithm : joiner, filter;
+    import std.format    : format;
+
+    return "\033[%sm".format(components[].filter!(s => s !is null).joiner(";")); 
+}
 
 /++
  + A struct used to compose together a piece of ANSI text.
@@ -145,6 +200,9 @@ static assert(FLAG_AS_ANSI_CODE_MAP.length == FLAG_COUNT);
 struct AnsiText
 {
     import std.format : format;
+
+    /// The ANSI command to reset all styling.
+    public static const RESET_COMMAND = "\033[0m";
 
     private
     {
@@ -221,8 +279,6 @@ struct AnsiText
      + ++/
     string toString()
     {
-        import std.algorithm : joiner, filter;
-
         if(this._bg.type == AnsiColourType.none 
         && this._fg.type == AnsiColourType.none
         && this._flags   == AnsiTextFlags.none)
@@ -232,22 +288,14 @@ struct AnsiText
             return this._cachedText;
 
         // Find all 'components' that have been enabled
-        string[2 + FLAG_COUNT] components; // fg + bg + all supported flags.
-        size_t componentIndex;
-
-        components[componentIndex++] = this._fg.type == AnsiColourType.none ? null : this._fg.toString();
-        components[componentIndex++] = this._bg.type == AnsiColourType.none ? null : this._bg.toString();
-
-        foreach(i; 0..FLAG_COUNT)
-        {
-            if((this._flags & (1 << i)) > 0)
-                components[componentIndex++] = FLAG_AS_ANSI_CODE_MAP[i];
-        }
+        AnsiComponents components;
+        components.populateActiveAnsiComponents(this._fg, this._bg, this._flags);
 
         // Then join them together.
-        this._cachedText = "\033[%sm%s\033[0m".format(
-            components[].filter!(s => s !is null).joiner(";"), 
-            cast(string)this._text // cast(string) is so format doesn't format as an array.
+        this._cachedText = "%s%s%s".format(
+            components.createAnsiCommandString(), 
+            cast(string)this._text, // cast(string) is so format doesn't format as an array.
+            AnsiText.RESET_COMMAND
         ); 
         return this._cachedText;
     }
