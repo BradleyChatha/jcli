@@ -297,6 +297,20 @@ struct AnsiText
     {
         return this._flags;
     }
+
+    /// Gets the `AnsiColour` used as the foreground (text colour).
+    @property
+    AnsiColour getFg() const
+    {
+        return this._fg;
+    }
+
+    /// Gets the `AnsiColour` used as the background.
+    @property
+    AnsiColour getBg() const
+    {
+        return this._bg;
+    }
 }
 
 /++
