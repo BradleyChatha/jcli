@@ -282,7 +282,7 @@ struct AnsiText
         if(this._bg.type == AnsiColourType.none 
         && this._fg.type == AnsiColourType.none
         && this._flags   == AnsiTextFlags.none)
-            return this._text.idup;
+            this._cachedText = this._text.idup;
 
         if(this._cachedText !is null)
             return this._cachedText;
