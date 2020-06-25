@@ -102,3 +102,339 @@ unittest
     assert(text[$-1] != '\n', "lineWrap is inserting a new line at the end again.");
     assert(text == "abc\ndef\ngh", text);
 }
+
+struct TextBufferChar
+{
+    import jaster.cli.ansi : AnsiColour, AnsiTextFlags;
+
+    /// foreground
+    AnsiColour    fg;
+    /// background
+    AnsiColour    bg;
+    /// flags
+    AnsiTextFlags flags;
+    /// character
+    char          value;
+
+    /++
+     + Returns:
+     +  Whether this character needs an ANSI control code or not.
+     + ++/
+    @property
+    bool usesAnsi() const
+    {
+        return this.fg    != AnsiColour.init
+            || this.bg    != AnsiColour.init
+            || this.flags != AnsiTextFlags.none;
+    }
+}
+
+/++
+ + A basic rectangle struct, used to specify the bounds of a `TextBufferWriter`.
+ + ++/
+struct TextBufferBounds
+{
+    /// x offset
+    size_t left;
+    /// y offset
+    size_t top;
+    /// width
+    size_t width;
+    /// height
+    size_t height;
+
+    /// 2D point to 1D array index.
+    private size_t pointToIndex(size_t x, size_t y)
+    {
+        return (x + this.left) + ((this.width + this.left) * y);
+    }
+    ///
+    unittest
+    {
+        import std.format : format;
+        auto b = TextBufferBounds(0, 0, 5, 5);
+        assert(b.pointToIndex(0, 0) == 0);
+        assert(b.pointToIndex(4, 4) == 24);
+
+        b = TextBufferBounds(1, 1, 2, 2);
+        assert(b.pointToIndex(0, 0) == 1);
+        assert(b.pointToIndex(1, 0) == 2);
+        assert(b.pointToIndex(0, 1) == 4);
+        assert(b.pointToIndex(1, 1) == 5);
+    }
+
+    private void assertPointInBounds(size_t x, size_t y, size_t bufferSize)
+    {
+        assert(x < this.width,  "X is larger than width.");
+        assert(y < this.height, "Y is larger than height.");
+
+        const maxIndex   = this.pointToIndex(this.width - 1, this.height - 1);
+        const pointIndex = this.pointToIndex(x, y);
+        assert(pointIndex <= maxIndex,  "Index is outside alloted bounds.");
+        assert(pointIndex < bufferSize, "Index is outside of the TextBuffer's bounds.");
+    }
+}
+
+/++
+ + The main way to modify and read data into/from a `TextBuffer`.
+ + ++/
+struct TextBufferWriter
+{
+    import jaster.cli.ansi : AnsiColour, AnsiTextFlags;
+
+    private
+    {
+        TextBuffer       _buffer;
+        TextBufferBounds _bounds;
+        AnsiColour       _fg;
+        AnsiColour       _bg;
+        AnsiTextFlags    _flags;
+
+        this(TextBuffer buffer, TextBufferBounds bounds)
+        {
+            this._buffer = buffer;
+            this._bounds = bounds;
+        }
+    }
+
+    /++
+     + 
+     + ++/
+    void set(size_t x, size_t y, char ch)
+    {
+        const index = this._bounds.pointToIndex(x, y);
+        this._bounds.assertPointInBounds(x, y, this._buffer._chars.length);
+
+        scope value = &this._buffer._chars[index];
+        value.value = ch;
+        value.fg    = this._fg;
+        value.bg    = this._bg;
+        value.flags = this._flags;
+
+        this._buffer.makeDirty();
+    }
+
+    @property
+    TextBufferBounds bounds() const
+    {
+        return this._bounds;
+    }
+    
+    @property
+    void fg(AnsiColour fg) { this._fg = fg; }
+    @property
+    void bg(AnsiColour bg) { this._bg = bg; }
+    @property
+    void flags(AnsiTextFlags flags) { this._flags = flags; }
+
+    @property
+    AnsiColour fg() { return this._fg; }
+    @property
+    AnsiColour bg() { return this._bg; }
+    @property
+    AnsiTextFlags flags() { return this._flags; }
+}
+
+// Testing that basic operations work
+unittest
+{
+    import std.format : format;
+
+    auto buffer = new TextBuffer(3, 3);
+    auto writer = buffer.createWriter(1, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    foreach(ref ch; buffer._chars)
+        ch.value = '0';
+
+    writer.set(0, 0, 'A');
+    writer.set(1, 0, 'B');
+    writer.set(0, 1, 'C');
+    writer.set(1, 1, 'D');
+    writer.set(1, 2, 'E');
+
+    assert(buffer.toStringNoDupe() == 
+         "0AB"
+        ~"0CD"
+        ~"00E"
+    , "%s".format(buffer.toStringNoDupe()));
+}
+
+// Testing that ANSI works (but only when the entire thing is a single ANSI command)
+unittest
+{
+    import std.format : format;
+    import jaster.cli.ansi : AnsiText, Ansi4BitColour, AnsiColour;
+
+    auto buffer = new TextBuffer(3, 1);
+    auto writer = buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    writer.fg = AnsiColour(Ansi4BitColour.green);
+    writer.set(0, 0, 'A');
+    writer.set(1, 0, 'B');
+    writer.set(2, 0, 'C');
+
+    assert(buffer.toStringNoDupe() == 
+         "\033[%smABC%s".format(cast(int)Ansi4BitColour.green, AnsiText.RESET_COMMAND)
+    , "%s".format(buffer.toStringNoDupe()));
+}
+
+// Testing that a mix of ANSI and plain text works.
+unittest
+{
+    import std.format : format;
+    import jaster.cli.ansi : AnsiText, Ansi4BitColour, AnsiColour;
+
+    auto buffer = new TextBuffer(3, 3);
+    auto writer = buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    writer.fg = AnsiColour(Ansi4BitColour.green);
+    writer.set(0, 0, 'A');
+    writer.set(1, 0, 'B');
+    writer.set(2, 0, 'C');
+    
+    writer.fg = AnsiColour.init;
+    writer.set(0, 1, 'D');
+    writer.set(1, 1, 'E');
+    writer.set(2, 1, 'F');
+
+    writer.fg = AnsiColour(Ansi4BitColour.green);
+    writer.set(0, 2, 'G');
+    writer.set(1, 2, 'H');
+    writer.set(2, 2, 'I');
+
+    assert(buffer.toStringNoDupe() == 
+         "\033[%smABC%s".format(cast(int)Ansi4BitColour.green, AnsiText.RESET_COMMAND)
+        ~"DEF"
+        ~"\033[%smGHI%s".format(cast(int)Ansi4BitColour.green, AnsiText.RESET_COMMAND)
+    , "%s".format(buffer.toStringNoDupe()));
+}
+
+// I want reference semantics.
+final class TextBuffer
+{
+    enum USE_REMAINING_SPACE = size_t.max;
+
+    private
+    {
+        TextBufferChar[] _chars;
+        size_t           _width;
+        size_t           _height;
+
+        char[] _output;
+        char[] _cachedOutput;
+
+        void makeDirty()
+        {
+            this._cachedOutput = null;
+        }
+    }
+
+    this(size_t width, size_t height)
+    {
+        this._width        = width;
+        this._height       = height;
+        this._chars.length = width * height;
+    }
+    
+    TextBufferWriter createWriter(TextBufferBounds bounds)
+    {
+        if(bounds.width == USE_REMAINING_SPACE)
+            bounds.width = this._width - bounds.left;
+
+        if(bounds.height == USE_REMAINING_SPACE)
+            bounds.height = this._height - bounds.top;
+
+        return TextBufferWriter(this, bounds);
+    }
+
+    TextBufferWriter createWriter(size_t left, size_t top, size_t width, size_t height)
+    {
+        return this.createWriter(TextBufferBounds(left, top, width, height));
+    }
+
+    // This is a very slow (well, I assume, tired code is usually slow code), very naive function, but as long as it works for now, then it can be rewritten later.
+    const(char[]) toStringNoDupe()
+    {
+        import std.algorithm   : joiner;
+        import std.utf         : byChar;
+        import jaster.cli.ansi : AnsiComponents, populateActiveAnsiComponents, AnsiText;
+
+        if(this._output is null)
+            this._output = new char[this._chars.length * 2]; // Optimistic overallocation, to lower amount of resizes
+
+        if(this._cachedOutput !is null)
+            return this._cachedOutput;
+
+        size_t outputCursor;
+        size_t ansiCharCursor;
+
+        // Auto-increments outputCursor while auto-resizing the output buffer.
+        void putChar(char c)
+        {
+            if(outputCursor >= this._output.length)
+                this._output.length *= 2;
+
+            this._output[outputCursor++] = c;
+        }
+        
+        // Finds the next sequence of characters that have the same foreground, background, and flags.
+        // e.g. the next sequence of characters that can be used with the same ANSI command.
+        // Returns `null` once we reach the end.
+        TextBufferChar[] getNextAnsiRange()
+        {
+            if(ansiCharCursor >= this._chars.length)
+                return null;
+
+            const startCursor = ansiCharCursor;
+            const start       = this._chars[ansiCharCursor++];
+            while(ansiCharCursor < this._chars.length)
+            {
+                auto current  = this._chars[ansiCharCursor++];
+                current.value = start.value; // cheeky way to test equality.
+                if(start != current)
+                {
+                    ansiCharCursor--;
+                    break;
+                }
+            }
+
+            return this._chars[startCursor..ansiCharCursor];
+        }
+
+        auto sequence = getNextAnsiRange();
+        while(sequence.length > 0)
+        {
+            const first = sequence[0]; // Get the first character so we can get the ANSI settings for the entire sequence.
+            if(first.usesAnsi)
+            {
+                AnsiComponents components;
+                const activeCount = components.populateActiveAnsiComponents(first.fg, first.bg, first.flags);
+
+                putChar('\033');
+                putChar('[');
+                foreach(ch; components[0..activeCount].joiner(";").byChar)
+                    putChar(ch);
+                putChar('m');
+            }
+
+            foreach(ansiChar; sequence)
+                putChar(ansiChar.value);
+
+            if(first.usesAnsi)
+            {
+                foreach(ch; AnsiText.RESET_COMMAND)
+                    putChar(ch);
+            }
+
+            sequence = getNextAnsiRange();
+        }
+
+        this._cachedOutput = this._output[0..outputCursor];
+        return this._cachedOutput;
+    }
+
+    override string toString()
+    {
+        return this.toStringNoDupe().idup;
+    }
+}

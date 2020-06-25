@@ -275,8 +275,11 @@ size_t populateActiveAnsiComponents(ref scope AnsiComponents components, AnsiCol
     size_t componentIndex;
     components[] = null;
 
-    components[componentIndex++] = fg.type == AnsiColourType.none ? null : fg.toString();
-    components[componentIndex++] = bg.type == AnsiColourType.none ? null : bg.toString();
+    if(fg.type != AnsiColourType.none)
+        components[componentIndex++] = fg.toString();
+
+    if(bg.type != AnsiColourType.none)
+        components[componentIndex++] = bg.toString();
 
     foreach(i; 0..FLAG_COUNT)
     {
