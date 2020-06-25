@@ -310,6 +310,9 @@ string createAnsiCommandString(ref scope AnsiComponents components)
  + Notes:
  +  A reset command (`\033[0m`) is automatically appended, so you don't have to worry about that.
  +
+ +  This struct is simply a wrapper around `AnsiColour`, `AnsiTextFlags` types, and the `populateActiveAnsiComponents` and
+ +  `createAnsiCommandString` functions.
+ +
  + Usage:
  +  This struct uses the Fluent Builder pattern, so you can easily string together its
  +  various functions when creating your text.
