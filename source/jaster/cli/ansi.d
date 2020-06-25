@@ -2,12 +2,25 @@
 module jaster.cli.ansi;
 
 import std.traits : EnumMembers;
+import std.typecons : Flag;
 
-private enum AnsiColourType
+alias IsBgColour = Flag!"isBackgroundAnsi";
+
+/++
+ + Defines what type of colour an `AnsiColour` stores.
+ + ++/
+enum AnsiColourType
 {
+    /// Default, failsafe.
     none,
+
+    /// 4-bit colours.
     fourBit,
+
+    /// 8-bit colours.
     eightBit,
+
+    /// 24-bit colours.
     rgb
 }
 
@@ -16,7 +29,7 @@ private enum AnsiColourType
  +
  + These colours will have the widest support between platforms.
  + ++/
-enum Ansi4Bit
+enum Ansi4BitColour
 {
     // To get Background code, just add 10
     black           = 30,
@@ -43,54 +56,164 @@ enum Ansi4Bit
 private union AnsiColourUnion
 {
     Ansi4BitColour fourBit;
-    Ansi8BitColour eightBit;
+    ubyte          eightBit;
     AnsiRgbColour  rgb;
 }
 
-private struct Ansi4BitColour
+/// A very simple RGB struct, used to store an RGB value.
+struct AnsiRgbColour
 {
-    Ansi4Bit colour;
-}
-
-private struct Ansi8BitColour
-{
-    ubyte colour;
-}
-
-private struct AnsiRgbColour
-{
+    /// The red component.
     ubyte r;
+    
+    /// The green component.
     ubyte g;
+
+    /// The blue component.
     ubyte b;
 }
 
-private struct AnsiColour
+/++
+ + Contains either a 4-bit, 8-bit, or 24-bit colour, which can then be turned into
+ + an its ANSI form (not a valid command, just the actual values needed to form the final command).
+ + ++/
+struct AnsiColour
 {
-    AnsiColourType  type;
-    AnsiColourUnion value;
-    bool            isBg;
+    private 
+    {
+        AnsiColourUnion _value;
+        AnsiColourType  _type;
+        IsBgColour      _isBg;
+    }
 
+    /// Ctor for an `AnsiColourType.fourBit`.
+    this(Ansi4BitColour fourBit, IsBgColour isBg = IsBgColour.no)
+    {
+        this._value.fourBit = fourBit;
+        this._type          = AnsiColourType.fourBit;
+        this._isBg          = isBg;
+    }
+
+    /// Ctor for an `AnsiColourType.eightBit`
+    this(ubyte eightBit, IsBgColour isBg = IsBgColour.no)
+    {
+        this._value.eightBit = eightBit;
+        this._type           = AnsiColourType.eightBit;
+        this._isBg           = isBg;
+    }
+
+    /// Ctor for an `AnsiColourType.rgb`.
+    this(ubyte r, ubyte g, ubyte b, IsBgColour isBg = IsBgColour.no)
+    {        
+        this._value.rgb = AnsiRgbColour(r, g, b);
+        this._type      = AnsiColourType.eightBit;
+        this._isBg      = isBg;
+    }
+
+    /// ditto
+    this(AnsiRgbColour rgb, IsBgColour isBg = IsBgColour.no)
+    {
+        this(rgb.r, rgb.g, rgb.b, isBg);
+    }
+
+    /++
+     + Notes:
+     +  To create a valid ANSI command from these values, prefix it with "\033[" and suffix it with "m", then place your text after it.
+     +
+     + Returns:
+     +  This `AnsiColour` as an incomplete ANSI command.
+     + ++/
     string toString() const
     {
         import std.format : format;
 
-        final switch(this.type) with(AnsiColourType)
+        final switch(this._type) with(AnsiColourType)
         {
             case none: return null;
             case fourBit:
-                auto value = cast(int)this.value.fourBit.colour;
-                return "%s".format(this.isBg ? value + 10 : value);
+                auto value = cast(int)this._value.fourBit;
+                return "%s".format(this._isBg ? value + 10 : value);
 
             case eightBit:
-                auto marker = (this.isBg) ? "48" : "38";
-                auto value  = this.value.eightBit.colour;
+                auto marker = (this._isBg) ? "48" : "38";
+                auto value  = this._value.eightBit;
                 return "%s;5;%s".format(marker, value);
 
             case rgb:
-                auto marker = (this.isBg) ? "48" : "38";
-                auto value  = this.value.rgb;
+                auto marker = (this._isBg) ? "48" : "38";
+                auto value  = this._value.rgb;
                 return "%s;2;%s;%s;%s".format(marker, value.r, value.g, value.b);
         }
+    }
+    
+    /// Returns: The `AnsiColourType` of this `AnsiColour`.
+    @property
+    AnsiColourType type() const
+    {
+        return this._type;
+    }
+
+    /// Returns: Whether this `AnsiColour` is for a background or not (it affects the output!).
+    @property
+    IsBgColour isBg() const
+    {
+        return this._isBg;
+    }
+
+    /// ditto
+    @property
+    void isBg(IsBgColour bg)
+    {
+        this._isBg = bg;
+    }
+
+    /// ditto
+    @property
+    void isBg(bool bg)
+    {
+        this._isBg = cast(IsBgColour)bg;
+    }
+
+    /++
+     + Assertions:
+     +  This colour's type must be `AnsiColourType.fourBit`
+     +
+     + Returns:
+     +  This `AnsiColour` as an `Ansi4BitColour`.
+     + ++/
+    @property
+    Ansi4BitColour asFourBit()
+    {
+        assert(this.type == AnsiColourType.fourBit);
+        return this._value.fourBit;
+    }
+
+    /++
+     + Assertions:
+     +  This colour's type must be `AnsiColourType.eightBit`
+     +
+     + Returns:
+     +  This `AnsiColour` as a `ubyte`.
+     + ++/
+    @property
+    ubyte asEightBit()
+    {
+        assert(this.type == AnsiColourType.eightBit);
+        return this._value.eightBit;
+    }
+
+    /++
+     + Assertions:
+     +  This colour's type must be `AnsiColourType.rgb`
+     +
+     + Returns:
+     +  This `AnsiColour` as an `AnsiRgbColour`.
+     + ++/
+    @property
+    AnsiRgbColour asRgb()
+    {
+        assert(this.type == AnsiColourType.rgb);
+        return this._value.rgb;
     }
 }
 
@@ -214,35 +337,19 @@ struct AnsiText
 
         ref AnsiText setColour(T)(ref AnsiColour colour, T value) return
         {
-            static if(is(T == Ansi4BitColour))
-            {
-                colour.type = AnsiColourType.fourBit;
-                colour.value.fourBit = value;
-            }
-            else static if(is(T == Ansi8BitColour))
-            {
-                colour.type = AnsiColourType.eightBit;
-                colour.value.eightBit = value;
-            }
-            else static if(is(T == AnsiRgbColour))
-            {
-                colour.type = AnsiColourType.rgb;
-                colour.value.rgb = value;
-            }
-            else static assert(false);
-
+            colour = AnsiColour(value);
             this._cachedText = null;
             return this;
         }
 
-        ref AnsiText setColour4(ref AnsiColour colour, Ansi4Bit value) return
+        ref AnsiText setColour4(ref AnsiColour colour, Ansi4BitColour value) return
         {
             return this.setColour(colour, Ansi4BitColour(value));
         }
 
         ref AnsiText setColour8(ref AnsiColour colour, ubyte value) return
         {
-            return this.setColour(colour, Ansi8BitColour(value));
+            return this.setColour(colour, value);
         }
 
         ref AnsiText setColourRgb(ref AnsiColour colour, ubyte r, ubyte g, ubyte b) return
@@ -301,9 +408,9 @@ struct AnsiText
     }
 
     /// Sets the foreground/background as a 4-bit colour. Widest supported option.
-    ref AnsiText fg(Ansi4Bit fourBit) return          { return this.setColour4  (this._fg, fourBit);  }
+    ref AnsiText fg(Ansi4BitColour fourBit) return    { return this.setColour4  (this._fg, fourBit);  }
     /// ditto
-    ref AnsiText bg(Ansi4Bit fourBit) return          { return this.setColour4  (this._bg, fourBit);  }
+    ref AnsiText bg(Ansi4BitColour fourBit) return    { return this.setColour4  (this._bg, fourBit);  }
 
     /// Sets the foreground/background as an 8-bit colour. Please see this image for reference: https://i.stack.imgur.com/KTSQa.png
     ref AnsiText fg(ubyte eightBit) return            { return this.setColour8  (this._fg, eightBit); }
@@ -372,7 +479,7 @@ AnsiText ansi(const char[] text)
 unittest
 {
     assert("Hello".ansi.toString() == "Hello");
-    assert("Hello".ansi.fg(Ansi4Bit.black).toString() == "\033[30mHello\033[0m");
+    assert("Hello".ansi.fg(Ansi4BitColour.black).toString() == "\033[30mHello\033[0m");
     assert("Hello".ansi.bold.strike.bold(false).italic.toString() == "\033[3;9mHello\033[0m");
 }
 
