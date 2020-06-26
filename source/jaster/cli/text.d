@@ -145,32 +145,33 @@ struct TextBufferBounds
     size_t height;
 
     /// 2D point to 1D array index.
-    private size_t pointToIndex(size_t x, size_t y)
+    private size_t pointToIndex(size_t x, size_t y, size_t bufferWidth)
     {
-        return (x + this.left) + ((this.width + this.left) * y);
+        return (x + this.left) + (bufferWidth * (y + this.top));
     }
     ///
     unittest
     {
         import std.format : format;
         auto b = TextBufferBounds(0, 0, 5, 5);
-        assert(b.pointToIndex(0, 0) == 0);
-        assert(b.pointToIndex(4, 4) == 24);
+        assert(b.pointToIndex(0, 0, 5) == 0);
+        assert(b.pointToIndex(0, 1, 5) == 5);
+        assert(b.pointToIndex(4, 4, 5) == 24);
 
-        b = TextBufferBounds(1, 1, 2, 2);
-        assert(b.pointToIndex(0, 0) == 1);
-        assert(b.pointToIndex(1, 0) == 2);
-        assert(b.pointToIndex(0, 1) == 4);
-        assert(b.pointToIndex(1, 1) == 5);
+        b = TextBufferBounds(1, 1, 3, 2);
+        assert(b.pointToIndex(0, 0, 5) == 6);
+        assert(b.pointToIndex(1, 0, 5) == 7);
+        assert(b.pointToIndex(0, 1, 5) == 11);
+        assert(b.pointToIndex(1, 1, 5) == 12);
     }
 
-    private void assertPointInBounds(size_t x, size_t y, size_t bufferSize)
+    private void assertPointInBounds(size_t x, size_t y, size_t bufferWidth, size_t bufferSize)
     {
         assert(x < this.width,  "X is larger than width.");
         assert(y < this.height, "Y is larger than height.");
 
-        const maxIndex   = this.pointToIndex(this.width - 1, this.height - 1);
-        const pointIndex = this.pointToIndex(x, y);
+        const maxIndex   = this.pointToIndex(this.width - 1, this.height - 1, bufferWidth);
+        const pointIndex = this.pointToIndex(x, y, bufferWidth);
         assert(pointIndex <= maxIndex,  "Index is outside alloted bounds.");
         assert(pointIndex < bufferSize, "Index is outside of the TextBuffer's bounds.");
     }
@@ -196,10 +197,28 @@ struct TextBufferWriter
             this._buffer = buffer;
             this._bounds = bounds;
         }
+
+        void setSingleChar(size_t index, char ch)
+        {
+            scope value = &this._buffer._chars[index];
+            value.value = ch;
+            value.fg    = this._fg;
+            value.bg    = this._bg;
+            value.flags = this._flags;
+        }
+
+        void fixSize(ref size_t size, const size_t offset, const size_t maxSize)
+        {
+            if(size == TextBuffer.USE_REMAINING_SPACE)
+                size = maxSize - offset;
+        }
     }
 
     /++
      + Sets a character at a specific point.
+     +
+     + Assertions:
+     +  The point (x, y) must be in bounds.
      +
      + Params:
      +  x  = The x position of the point.
@@ -208,14 +227,41 @@ struct TextBufferWriter
      + ++/
     void set(size_t x, size_t y, char ch)
     {
-        const index = this._bounds.pointToIndex(x, y);
-        this._bounds.assertPointInBounds(x, y, this._buffer._chars.length);
+        const index = this._bounds.pointToIndex(x, y, this._buffer._width);
+        this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
 
-        scope value = &this._buffer._chars[index];
-        value.value = ch;
-        value.fg    = this._fg;
-        value.bg    = this._bg;
-        value.flags = this._flags;
+        this.setSingleChar(index, ch);
+        this._buffer.makeDirty();
+    }
+
+    /++
+     + Fills an area with a specific character.
+     +
+     + Params:
+     +  x      = The starting x position.
+     +  y      = The starting y position.
+     +  width  = How many characters to fill.
+     +  height = How many lines to fill.
+     +  ch     = The character to place.
+     + ++/
+    void fill(size_t x, size_t y, size_t width, size_t height, char ch)
+    {
+        this.fixSize(/*ref*/ width, x, this.bounds.width);
+        this.fixSize(/*ref*/ height, y, this.bounds.height);
+
+        const bufferLength = this._buffer._chars.length;
+        const bufferWidth  = this._buffer._width;
+        foreach(line; 0..height)
+        {
+            foreach(column; 0..width)
+            {
+                const newX  = x + column;
+                const newY  = y + line;
+                const index = this._bounds.pointToIndex(newX, newY, bufferWidth);
+                this._bounds.assertPointInBounds(newX, newY, bufferWidth, bufferLength);
+                this.setSingleChar(index, ch);
+            }
+        }
 
         this._buffer.makeDirty();
     }
@@ -246,6 +292,42 @@ struct TextBufferWriter
     /// Get the foreground.
     @property
     AnsiTextFlags flags() { return this._flags; }
+}
+///
+unittest
+{
+    import std.format : format;
+    import jaster.cli.ansi;
+
+    auto buffer         = new TextBuffer(5, 4);
+    auto writer         = buffer.createWriter(1, 1, 3, 2); // Offset X, Offset Y, Width, Height.
+    auto fullGridWriter = buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    // Clear grid to be just spaces.
+    fullGridWriter.fill(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE, ' ');
+
+    // Write some stuff in the center.
+    with(writer)
+    {
+        set(0, 0, 'A');
+        set(1, 0, 'B');
+        set(2, 0, 'C');
+
+        fg = AnsiColour(Ansi4BitColour.green);
+
+        set(0, 1, 'D');
+        set(1, 1, 'E');
+        set(2, 1, 'F');
+    }
+
+    assert(buffer.toStringNoDupe() == 
+        "     "
+       ~" ABC "
+       ~" \033[32mDEF\033[0m " // \033 stuff is of course, the ANSI codes. In this case, green foreground, as we set above.
+       ~"     ",
+
+       buffer.toStringNoDupe() ~ "\n%s".format(cast(ubyte[])buffer.toStringNoDupe())
+    );
 }
 
 // Testing that basic operations work
@@ -297,8 +379,10 @@ unittest
     import std.format : format;
     import jaster.cli.ansi : AnsiText, Ansi4BitColour, AnsiColour;
 
-    auto buffer = new TextBuffer(3, 3);
-    auto writer = buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+    auto buffer = new TextBuffer(3, 4);
+    auto writer = buffer.createWriter(0, 1, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    buffer.createWriter(0, 0, 3, 1).fill(0, 0, 3, 1, ' '); // So we can also test that the y-offset works.
 
     writer.fg = AnsiColour(Ansi4BitColour.green);
     writer.set(0, 0, 'A');
@@ -316,7 +400,8 @@ unittest
     writer.set(2, 2, 'I');
 
     assert(buffer.toStringNoDupe() == 
-         "\033[%smABC%s".format(cast(int)Ansi4BitColour.green, AnsiText.RESET_COMMAND)
+         "   "
+        ~"\033[%smABC%s".format(cast(int)Ansi4BitColour.green, AnsiText.RESET_COMMAND)
         ~"DEF"
         ~"\033[%smGHI%s".format(cast(int)Ansi4BitColour.green, AnsiText.RESET_COMMAND)
     , "%s".format(buffer.toStringNoDupe()));
