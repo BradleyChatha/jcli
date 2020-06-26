@@ -341,7 +341,7 @@ unittest
     );
 }
 
-// Testing that basic operations work
+@("Testing that basic operations work")
 unittest
 {
     import std.format : format;
@@ -365,7 +365,7 @@ unittest
     , "%s".format(buffer.toStringNoDupe()));
 }
 
-// Testing that ANSI works (but only when the entire thing is a single ANSI command)
+@("Testing that ANSI works (but only when the entire thing is a single ANSI command)")
 unittest
 {
     import std.format : format;
@@ -384,7 +384,7 @@ unittest
     , "%s".format(buffer.toStringNoDupe()));
 }
 
-// Testing that a mix of ANSI and plain text works.
+@("Testing that a mix of ANSI and plain text works")
 unittest
 {
     import std.format : format;
@@ -416,6 +416,27 @@ unittest
         ~"DEF"
         ~"\033[%smGHI%s".format(cast(int)Ansi4BitColour.green, AnsiText.RESET_COMMAND)
     , "%s".format(buffer.toStringNoDupe()));
+}
+
+@("Various fill tests")
+unittest
+{
+    auto buffer = new TextBuffer(5, 4);
+    auto writer = buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    writer.fill(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE, ' '); // Entire grid fill
+    auto spaces = new char[buffer._chars.length];
+    spaces[] = ' ';
+    assert(buffer.toStringNoDupe() == spaces);
+
+    writer.fill(0, 0, TextBuffer.USE_REMAINING_SPACE, 1, 'A'); // Entire line fill
+    assert(buffer.toStringNoDupe()[0..5] == "AAAAA");
+
+    writer.fill(1, 1, TextBuffer.USE_REMAINING_SPACE, 1, 'B'); // Partial line fill with X-offset and automatic width.
+    assert(buffer.toStringNoDupe()[5..10] == " BBBB", buffer.toStringNoDupe()[5..10]);
+
+    writer.fill(1, 2, 3, 2, 'C'); // Partial line fill, across multiple lines.
+    assert(buffer.toStringNoDupe()[10..20] == " CCC  CCC ");
 }
 
 // I want reference semantics.

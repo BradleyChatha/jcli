@@ -1,6 +1,7 @@
 {
 	"fileVersion": 1,
 	"versions": {
-		"jioc": "0.2.0"
+		"jioc": "0.2.0",
+		"silly": "1.0.2"
 	}
 }

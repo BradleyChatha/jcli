@@ -4,6 +4,7 @@ authors "Sealab"
 copyright "Copyright © 2020, Sealab"
 license "MIT"
 dependency "jioc" version=">=0.2.0"
+dependency "silly" version="~>1.0.2"
 dependency "asdf" version="~>0.5.7" optional=true
 targetType "library"
 targetPath "bin"
