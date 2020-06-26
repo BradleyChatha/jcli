@@ -36,7 +36,7 @@ struct SetNameCommand
         });
         
         UserIO.configure().useVerboseLogging(this._config.value.verbose); // Ideally this is done in a base class or something, but trying to keep things simple.
-        UserIO.verboseInfof("Operation was a %s", "Success!".ansi.fg(Ansi4Bit.green));
+        UserIO.verboseInfof("Operation was a %s", "Success!".ansi.fg(Ansi4BitColour.green));
     }
 }
 
