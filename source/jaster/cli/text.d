@@ -103,6 +103,7 @@ unittest
     assert(text == "abc\ndef\ngh", text);
 }
 
+/// Contains a single character, with ANSI styling.
 struct TextBufferChar
 {
     import jaster.cli.ansi : AnsiColour, AnsiTextFlags;
