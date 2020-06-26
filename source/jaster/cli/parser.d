@@ -320,13 +320,13 @@ unittest
     assert(tokens[14] == ArgToken("Some Positional Argument",    ArgTokenType.Text));
 }
 
-// Issue: .init.empty must be true
+@("Issue: .init.empty must be true")
 unittest
 {
     assert(ArgPullParser.init.empty);
 }
 
-// Test: unparsedArgs
+@("Test unparsedArgs")
 unittest
 {
     auto args = 

@@ -93,7 +93,7 @@ unittest
     assert(text == "\tHello-\n\tworld-", cast(char[])text);
 }
 
-// issue #2
+@("issue #2")
 unittest
 {
     const options = LineWrapOptions(4, "");

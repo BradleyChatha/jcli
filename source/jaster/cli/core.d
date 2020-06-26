@@ -937,7 +937,7 @@ version(unittest)
         }
     }
 
-    // General test
+    @("General test")
     unittest
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
@@ -947,7 +947,7 @@ version(unittest)
         assert(cli.parseAndExecute(["e", "test", "20", "-a 20", "-c"],     IgnoreFirstArg.no) == 0); // -c is used
     }
 
-    // Test ICommandLineInterface injection
+    @("Test ICommandLineInterface injection")
     unittest
     {
         auto provider = new ServiceProvider([
@@ -958,7 +958,7 @@ version(unittest)
         assert(cli.parseAndExecute(["test", "injection"], IgnoreFirstArg.no) == 1);
     }
 
-    // Default command test
+    @("Default command test")
     unittest
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
@@ -993,7 +993,7 @@ version(unittest)
             assert(this.comesAfterD == "Lalafell", "Lalafell was eaten incorrectly.");
         }
     }
-    ///
+    @("Test that booleans are handled properly")
     unittest
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
@@ -1020,7 +1020,7 @@ version(unittest)
             assert(rawList.length == 2);
         }
     }
-    ///
+    @("Test that raw lists work")
     unittest
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
