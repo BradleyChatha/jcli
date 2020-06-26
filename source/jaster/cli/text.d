@@ -167,13 +167,24 @@ struct TextBufferBounds
 
     private void assertPointInBounds(size_t x, size_t y, size_t bufferWidth, size_t bufferSize)
     {
-        assert(x < this.width,  "X is larger than width.");
-        assert(y < this.height, "Y is larger than height.");
+        import std.format : format;
+
+        assert(x < this.width,  "X is larger than width. Width = %s, X = %s".format(this.width, x));
+        assert(y < this.height, "Y is larger than height. Height = %s, Y = %s".format(this.height, y));
 
         const maxIndex   = this.pointToIndex(this.width - 1, this.height - 1, bufferWidth);
         const pointIndex = this.pointToIndex(x, y, bufferWidth);
-        assert(pointIndex <= maxIndex,  "Index is outside alloted bounds.");
-        assert(pointIndex < bufferSize, "Index is outside of the TextBuffer's bounds.");
+        assert(pointIndex <= maxIndex,  "Index is outside alloted bounds. Max = %s, given = %s".format(maxIndex, pointIndex));
+        assert(pointIndex < bufferSize, "Index is outside of the TextBuffer's bounds. Max = %s, given = %s".format(bufferSize, pointIndex));
+    }
+    ///
+    unittest
+    {
+        // Testing what error messages look like.
+        auto b = TextBufferBounds(5, 5, 5, 5);
+        //b.assertPointInBounds(6, 0, 0, 0);
+        //b.assertPointInBounds(0, 6, 0, 0);
+        //b.assertPointInBounds(1, 0, 0, 0);
     }
 }
 
