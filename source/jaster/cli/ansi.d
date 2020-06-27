@@ -472,6 +472,13 @@ struct AnsiText
     {
         return this._bg;
     }
+
+    /// Returns: The raw text of this `AnsiText`.
+    @property
+    const(char[]) rawText() const
+    {
+        return this._text;
+    }
 }
 
 /++
