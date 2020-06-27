@@ -188,6 +188,30 @@ struct TextBufferBounds
     }
 }
 
+/++
+ + A mutable random-access range of `TextBufferChar`s that belongs to a certain bounded area (`TextBufferBound`) within a `TextBuffer`.
+ +
+ + You can use this range to go over a certain rectangular area of characters using the range API; directly index into this rectangular area,
+ + and directly modify elements in this rectangular range.
+ +
+ + Reading:
+ +  Since this is a random-access range, you can either use the normal `foreach`, `popFront` + `front` combo, and you can directly index
+ +  into this range.
+ +
+ +  Note that popping the elements from this range $(B does) affect indexing. So if you `popFront`, then [0] is now what was previous [1], and so on.
+ +
+ + Writing:
+ +  This range implements `opIndexAssign` for both `char` and `TextBufferChar` parameters.
+ +
+ +  You can either index in a 1D way (using 1 index), or a 2D ways (using 2 indicies, $(B not implemented yet)).
+ +
+ +  So if you wanted to set the 7th index to a certain character, then you could do `range[6] = '0'`.
+ +
+ +  You could also do it like so - `range[6] = TextBufferChar(...params here)`
+ +
+ + See_Also:
+ +  `TextBufferWriter.getArea` 
+ + ++/
 struct TextBufferRange
 {
     private
@@ -227,6 +251,7 @@ struct TextBufferRange
         }
     }
 
+    ///
     void popFront()
     {
         if(this._cursorY == this._bounds.height)
@@ -245,30 +270,35 @@ struct TextBufferRange
         }
     }
 
+    ///
     @property
     TextBufferChar front()
     {
         return this._front;
     }
 
+    ///
     @property
     bool empty() const
     {
         return this._buffer is null;
     }
 
+    /// The bounds that this range are constrained to.
     @property
     TextBufferBounds bounds() const
     {
         return this._bounds;
     }
 
+    /// Effectively how many times `popFront` has been called.
     @property
     size_t progressedLength() const
     {
         return (this._cursorX + (this._cursorY * this._bounds.width));
     }
 
+    /// How many elements are left in the range.
     @property
     size_t length() const
     {
@@ -276,12 +306,23 @@ struct TextBufferRange
     }
     alias opDollar = length;
 
+    /// Returns: The character at the specified index.
     @property
     TextBufferChar opIndex(size_t i)
     {
         return this.opIndexImpl(i);
     }
 
+    /++
+     + Sets the character value of the `TextBufferChar` at index `i`.
+     +
+     + Notes:
+     +  This preserves the colouring and styling of the `TextBufferChar`, as we're simply changing its value.
+     +
+     + Params:
+     +  ch = The character to use.
+     +  i  = The index of the ansi character to change.
+     + ++/
     @property
     void opIndexAssign(char ch, size_t i)
     {
@@ -289,6 +330,7 @@ struct TextBufferRange
         this._buffer.makeDirty();
     }
 
+    /// ditto.
     @property
     void opIndexAssign(TextBufferChar ch, size_t i)
     {
@@ -408,6 +450,19 @@ struct TextBufferWriter
         return this._buffer._chars[index];
     }
 
+    /++
+     + Returns a mutable, random-access (indexable) range (`TextBufferRange`) containing the characters
+     + of the specified area.
+     +
+     + Params:
+     +  x      = The x position to start at.
+     +  y      = The y position to start at.
+     +  width  = How many characters per line.
+     +  height = How many lines.
+     +
+     + Returns:
+     +  A `TextBufferRange` that is configured for the given area.
+     + ++/
     TextBufferRange getArea(size_t x, size_t y, size_t width, size_t height)
     {
         auto bounds = TextBufferBounds(this._bounds.left + x, this._bounds.top + y);
