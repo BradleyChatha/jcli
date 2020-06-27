@@ -209,13 +209,13 @@ struct TextBufferWriter
             this._bounds = bounds;
         }
 
-        void setSingleChar(size_t index, char ch)
+        void setSingleChar(size_t index, char ch, AnsiColour fg, AnsiColour bg, AnsiTextFlags flags)
         {
             scope value = &this._buffer._chars[index];
             value.value = ch;
-            value.fg    = this._fg;
-            value.bg    = this._bg;
-            value.flags = this._flags;
+            value.fg    = fg;
+            value.bg    = bg;
+            value.flags = flags;
         }
 
         void fixSize(ref size_t size, const size_t offset, const size_t maxSize)
@@ -241,7 +241,7 @@ struct TextBufferWriter
         const index = this._bounds.pointToIndex(x, y, this._buffer._width);
         this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
 
-        this.setSingleChar(index, ch);
+        this.setSingleChar(index, ch, this._fg, this._bg, this._flags);
         this._buffer.makeDirty();
     }
 
@@ -270,12 +270,14 @@ struct TextBufferWriter
                 const newY  = y + line;
                 const index = this._bounds.pointToIndex(newX, newY, bufferWidth);
                 this._bounds.assertPointInBounds(newX, newY, bufferWidth, bufferLength);
-                this.setSingleChar(index, ch);
+                this.setSingleChar(index, ch, this._fg, this._bg, this._flags);
             }
         }
 
         this._buffer.makeDirty();
     }
+
+
 
     /// The bounds that this `TextWriter` is constrained to.
     @property
