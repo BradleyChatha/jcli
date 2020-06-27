@@ -248,6 +248,9 @@ struct TextBufferWriter
     /++
      + Fills an area with a specific character.
      +
+     + Assertions:
+     +  The point (x, y) must be in bounds.
+     +
      + Params:
      +  x      = The starting x position.
      +  y      = The starting y position.
@@ -277,7 +280,24 @@ struct TextBufferWriter
         this._buffer.makeDirty();
     }
 
+    /++
+     + Assertions:
+     +  The point (x, y) must be in bounds.
+     +
+     + Params:
+     +  x = The x position.
+     +  y = The y position.
+     +
+     + Returns:
+     +  The `TextBufferChar` at the given point (x, y)
+     + ++/
+    TextBufferChar get(size_t x, size_t y)
+    {
+        const index = this._bounds.pointToIndex(x, y, this._buffer._width);
+        this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
 
+        return this._buffer._chars[index];
+    }
 
     /// The bounds that this `TextWriter` is constrained to.
     @property
@@ -341,6 +361,8 @@ unittest
 
        buffer.toStringNoDupe() ~ "\n%s".format(cast(ubyte[])buffer.toStringNoDupe())
     );
+
+    assert(writer.get(1, 1) == TextBufferChar(AnsiColour(Ansi4BitColour.green), AnsiColour.init, AnsiTextFlags.none, 'E'));
 }
 
 @("Testing that basic operations work")
