@@ -145,7 +145,7 @@ struct TextBufferBounds
     size_t height;
 
     /// 2D point to 1D array index.
-    private size_t pointToIndex(size_t x, size_t y, size_t bufferWidth)
+    private size_t pointToIndex(size_t x, size_t y, size_t bufferWidth) const
     {
         return (x + this.left) + (bufferWidth * (y + this.top));
     }
@@ -165,7 +165,7 @@ struct TextBufferBounds
         assert(b.pointToIndex(1, 1, 5) == 12);
     }
 
-    private void assertPointInBounds(size_t x, size_t y, size_t bufferWidth, size_t bufferSize)
+    private void assertPointInBounds(size_t x, size_t y, size_t bufferWidth, size_t bufferSize) const
     {
         import std.format : format;
 
@@ -185,6 +185,115 @@ struct TextBufferBounds
         //b.assertPointInBounds(6, 0, 0, 0);
         //b.assertPointInBounds(0, 6, 0, 0);
         //b.assertPointInBounds(1, 0, 0, 0);
+    }
+}
+
+struct TextBufferRange
+{
+    private
+    {
+        TextBuffer       _buffer;
+        TextBufferBounds _bounds;
+        size_t           _cursorX;
+        size_t           _cursorY;
+        TextBufferChar   _front;
+
+        this(TextBuffer buffer, TextBufferBounds bounds)
+        {
+            assert(buffer !is null, "Buffer is null.");
+
+            this._buffer = buffer;
+            this._bounds = bounds;
+
+            assert(bounds.width > 0,  "Width is 0");
+            assert(bounds.height > 0, "Height is 0");
+            bounds.assertPointInBounds(bounds.width - 1, bounds.height - 1, buffer._width, buffer._chars.length);
+
+            this.popFront();
+        }
+
+        @property
+        ref TextBufferChar opIndexImpl(size_t i)
+        {
+            import std.format : format;
+            assert(i < this.length, "Index out of bounds. Length = %s, Index = %s.".format(this.length, i));
+
+            i           += this.progressedLength - 1; // Number's always off by 1.
+            const line   = i / this._bounds.width;
+            const column = i % this._bounds.width;
+            const index  = this._bounds.pointToIndex(column, line, this._buffer._width);
+
+            return this._buffer._chars[index];
+        }
+    }
+
+    void popFront()
+    {
+        if(this._cursorY == this._bounds.height)
+        {
+            this._buffer = null;
+            return;
+        }
+
+        const index = this._bounds.pointToIndex(this._cursorX++, this._cursorY, this._buffer._width);
+        this._front = this._buffer._chars[index];
+
+        if(this._cursorX >= this._bounds.width)
+        {
+            this._cursorX = 0;
+            this._cursorY++;
+        }
+    }
+
+    @property
+    TextBufferChar front()
+    {
+        return this._front;
+    }
+
+    @property
+    bool empty() const
+    {
+        return this._buffer is null;
+    }
+
+    @property
+    TextBufferBounds bounds() const
+    {
+        return this._bounds;
+    }
+
+    @property
+    size_t progressedLength() const
+    {
+        return (this._cursorX + (this._cursorY * this._bounds.width));
+    }
+
+    @property
+    size_t length() const
+    {
+        return (this.empty) ? 0 : ((this._bounds.width * this._bounds.height) - this.progressedLength) + 1; // + 1 is to deal with the staggered empty logic, otherwise this is 1 off constantly.
+    }
+    alias opDollar = length;
+
+    @property
+    TextBufferChar opIndex(size_t i)
+    {
+        return this.opIndexImpl(i);
+    }
+
+    @property
+    void opIndexAssign(char ch, size_t i)
+    {
+        this.opIndexImpl(i).value = ch;
+        this._buffer.makeDirty();
+    }
+
+    @property
+    void opIndexAssign(TextBufferChar ch, size_t i)
+    {
+        this.opIndexImpl(i) = ch;
+        this._buffer.makeDirty();
     }
 }
 
@@ -297,6 +406,18 @@ struct TextBufferWriter
         this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
 
         return this._buffer._chars[index];
+    }
+
+    TextBufferRange getArea(size_t x, size_t y, size_t width, size_t height)
+    {
+        auto bounds = TextBufferBounds(this._bounds.left + x, this._bounds.top + y);
+        this.fixSize(/*ref*/ width,  bounds.left, this.bounds.width);
+        this.fixSize(/*ref*/ height, bounds.top,  this.bounds.height);
+
+        bounds.width  = width;
+        bounds.height = height;
+
+        return TextBufferRange(this._buffer, bounds);
     }
 
     /// The bounds that this `TextWriter` is constrained to.
@@ -461,6 +582,67 @@ unittest
 
     writer.fill(1, 2, 3, 2, 'C'); // Partial line fill, across multiple lines.
     assert(buffer.toStringNoDupe()[10..20] == " CCC  CCC ");
+}
+
+@("Issue with TextBufferRange length")
+unittest
+{
+    import std.range : walkLength;
+
+    auto buffer = new TextBuffer(3, 2);
+    auto writer = buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+    auto range  = writer.getArea(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    foreach(i; 0..6)
+    {
+        assert(!range.empty);
+        assert(range.length == 6 - i);
+        range.popFront();
+    }
+    assert(range.empty);
+    assert(range.length == 0);
+}
+
+@("Test TextBufferRange")
+unittest
+{
+    import std.algorithm   : equal;
+    import std.format      : format;
+    import std.range       : walkLength;
+    import jaster.cli.ansi : AnsiColour, AnsiTextFlags;
+
+    auto buffer = new TextBuffer(3, 2);
+    auto writer = buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    with(writer)
+    {
+        set(0, 0, 'A');
+        set(1, 0, 'B');
+        set(2, 0, 'C');
+        set(0, 1, 'D');
+        set(1, 1, 'E');
+        set(2, 1, 'F');
+    }
+    
+    auto range = writer.getArea(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+    assert(range.walkLength == buffer.toStringNoDupe().length, "%s != %s".format(range.walkLength, buffer.toStringNoDupe().length));
+    assert(range.equal!"a.value == b"(buffer.toStringNoDupe()));
+
+    range = writer.getArea(1, 1, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+    assert(range.walkLength == 2);
+
+    range = writer.getArea(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+    range[0] = '1';
+    range[1] = '2';
+    range[2] = '3';
+
+    foreach(i; 0..3)
+        range.popFront();
+
+    // Since the range has been popped, the indicies have moved forward.
+    range[1] = TextBufferChar(AnsiColour.init, AnsiColour.init, AnsiTextFlags.none, '4');
+
+    assert(buffer.toStringNoDupe() == "123D4F", buffer.toStringNoDupe());
 }
 
 // I want reference semantics.
