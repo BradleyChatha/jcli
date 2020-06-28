@@ -885,6 +885,11 @@ struct TextBufferOptions
  +  other ANSI-enabled components such as tables which can otherwise be a pain due to the non-uniform length of ANSI text (e.g. ANSI codes being invisible characters),
  +  and so on.
  +
+ + Examples:
+ +  For now you'll have to explore the source (text.d) and have a look at the module-level unittests to see some testing examples.
+ +
+ +  When I can be bothered, I'll add user-facing examples :)
+ +
  + Limitations:
  +  Currently the buffer must be given a fixed size, but I'm hoping to fix this (at the very least for the y-axis) in the future.
  +  It's probably pretty easy, I just haven't looked into doing it yet.
