@@ -344,7 +344,7 @@ struct TextBufferRange
  + ++/
 struct TextBufferWriter
 {
-    import jaster.cli.ansi : AnsiColour, AnsiTextFlags;
+    import jaster.cli.ansi : AnsiColour, AnsiTextFlags, AnsiText;
 
     private
     {
@@ -420,6 +420,7 @@ struct TextBufferWriter
         {
             foreach(column; 0..width)
             {
+                // OPTIMISATION: We should be able to fill each line in batch, rather than one character at a time.
                 const newX  = x + column;
                 const newY  = y + line;
                 const index = this._bounds.pointToIndex(newX, newY, bufferWidth);
@@ -429,6 +430,97 @@ struct TextBufferWriter
         }
 
         this._buffer.makeDirty();
+    }
+
+    /++
+     + Writes some text starting at the given point.
+     +
+     + Notes:
+     +  If there's too much text to write, it'll simply be left out.
+     +
+     +  Text will automatically overflow onto the next line down, starting at the given `x` position on each new line.
+     +
+     +  New line characters are handled properly.
+     +
+     +  When text overflows onto the next line, any spaces before the next visible character are removed.
+     +
+     +  ANSI text is $(B only) supported by the overload of this function that takes an `AnsiText` instead of a `char[]`.
+     +
+     + Params:
+     +  x    = The starting x position.
+     +  y    = The starting y position.
+     +  text = The text to write.
+     + +/
+    void write(size_t x, size_t y, const char[] text)
+    {
+        const width  = this.bounds.width - x;
+        const height = this.bounds.height - y;
+        
+        const bufferLength = this._buffer._chars.length;
+        const bufferWidth  = this._buffer._width;
+        this.bounds.assertPointInBounds(x,               y,                bufferWidth, bufferLength);
+        this.bounds.assertPointInBounds(x + (width - 1), y + (height - 1), bufferWidth, bufferLength); // - 1 to make the width and height exclusive.
+
+        auto cursorX = x;
+        auto cursorY = y;
+
+        void nextLine(ref size_t i)
+        {
+            cursorX = x;
+            cursorY++;
+
+            // Eat any spaces, similar to how lineWrap functions.
+            // TODO: I think I should make a lineWrap range for situations like this, where I specifically won't use lineWrap due to allocations.
+            //       And then I can just make the original lineWrap function call std.range.array on the range.
+            while(i < text.length - 1 && text[i + 1] == ' ')
+                i++;
+        }
+        
+        for(size_t i = 0; i < text.length; i++)
+        {
+            const ch = text[i];
+            if(ch == '\n')
+            {
+                nextLine(i);
+
+                if(cursorY >= height)
+                    break;
+            }
+
+            const index = this.bounds.pointToIndex(cursorX, cursorY, bufferWidth);
+            this.setSingleChar(index, ch, this._fg, this._bg, this._flags);
+
+            cursorX++;
+            if(cursorX == x + width)
+            {
+                nextLine(i);
+
+                if(cursorY >= height)
+                    break;
+            }
+        }
+
+        this._buffer.makeDirty();
+    }
+
+    /// ditto.
+    void write(size_t x, size_t y, AnsiText text)
+    {
+        const fg    = this.fg;
+        const bg    = this.bg;
+        const flags = this.flags;
+        scope(exit)
+        {
+            this.fg    = fg;
+            this.bg    = bg;
+            this.flags = flags;
+        }
+
+        this.fg    = text.getFg(); // TODO: These names need to become consistant.
+        this.bg    = text.getBg();
+        this.flags = text.flags();
+        
+        this.write(x, y, text.rawText);
     }
 
     /++
@@ -698,6 +790,37 @@ unittest
     range[1] = TextBufferChar(AnsiColour.init, AnsiColour.init, AnsiTextFlags.none, '4');
 
     assert(buffer.toStringNoDupe() == "123D4F", buffer.toStringNoDupe());
+}
+
+@("Test write")
+unittest
+{
+    import std.format      : format;    
+    import jaster.cli.ansi : AnsiColour, AnsiTextFlags, ansi, Ansi4BitColour;
+
+    auto buffer = new TextBuffer(6, 4);
+    auto writer = buffer.createWriter(1, 1, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE)
+          .fill(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE, ' ');
+    writer.write(0, 0, "Hello World!");
+
+    assert(buffer.toStringNoDupe() ==
+        "      "
+       ~" Hello"
+       ~" World"
+       ~" !    ",
+       buffer.toStringNoDupe()
+    );
+
+    writer.write(1, 2, "Pog".ansi.fg(Ansi4BitColour.green));
+    assert(buffer.toStringNoDupe() ==
+        "      "
+       ~" Hello"
+       ~" World"
+       ~" !\033[32mPog\033[0m ",
+       buffer.toStringNoDupe()
+    );
 }
 
 // I want reference semantics.
