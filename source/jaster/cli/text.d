@@ -1,6 +1,8 @@
 /// Contains various utilities for displaying and formatting text.
 module jaster.cli.text;
 
+import std.typecons : Flag;
+
 /// Contains options for the `lineWrap` function.
 struct LineWrapOptions
 {
@@ -823,26 +825,71 @@ unittest
     );
 }
 
-// I want reference semantics.
+@("Test addNewLine mode")
+unittest
+{
+    import jaster.cli.ansi : AnsiColour, Ansi4BitColour;
 
+    auto buffer = new TextBuffer(3, 3, TextBufferOptions(TextBufferLineMode.addNewLine));
+    auto writer = buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    writer.write(0, 0, "ABC DEF GHI");
+    assert(buffer.toStringNoDupe() ==
+        "ABC\n"
+       ~"DEF\n"
+       ~"GHI"
+    );
+
+    writer.fg = AnsiColour(Ansi4BitColour.green);
+    writer.write(0, 0, "ABC DEF GHI");
+    assert(buffer.toStringNoDupe() ==
+        "\033[32mABC\n"
+       ~"DEF\n"
+       ~"GHI\033[0m"
+    );
+}
+
+/++
+ + Determines how a `TextBuffer` handles writing out each of its internal "lines".
+ + ++/
+enum TextBufferLineMode
+{
+    /// Each "line" inside of the `TextBuffer` is written sequentially, without any non-explicit new lines between them.
+    sideBySide,
+
+    /// Each "line" inside of the `TextBuffer` is written sequentially, with an automatically inserted new line between them.
+    /// Note that the inserted new line doesn't count towards the character limit for each line.
+    addNewLine
+}
+
+/++
+ + Options for a `TextBuffer`
+ + ++/
+struct TextBufferOptions
+{
+    /// Determines how a `TextBuffer` writes each of its "lines".
+    TextBufferLineMode lineMode = TextBufferLineMode.sideBySide;
+}
+
+// I want reference semantics.
 /++
  + An ANSI-enabled class used to easily manipulate a text buffer of a fixed width and height.
  +
  + Description:
- +  This class was inspired by the GPU component for the OpenComputers Minecraft mod.
+ +  This class was inspired by the GPU component from the OpenComputers Minecraft mod.
  +
  +  I thought having something like this, where you can easily manipulate a 2D grid of characters (including colour and the like)
  +  would be quite valuable.
  +
  +  For example, the existance of this class can be the stepping stone into various other things such as: a basic (and I mean basic) console-based UI functionality;
- +  other ANSI-enabled components such as tables, which can otherwise be a pain due to the non-uniform length of ANSI text (e.g. ANSI codes being invisible characters),
+ +  other ANSI-enabled components such as tables which can otherwise be a pain due to the non-uniform length of ANSI text (e.g. ANSI codes being invisible characters),
  +  and so on.
  +
  + Limitations:
  +  Currently the buffer must be given a fixed size, but I'm hoping to fix this (at the very least for the y-axis) in the future.
  +  It's probably pretty easy, I just haven't looked into doing it yet.
  +
- +  Creating the final string output (via `toString`) is unoptimised. It performs pretty well for a 180x180 buffer with a sparing amount of colours,
+ +  Creating the final string output (via `toString` or `toStringNoDupe`) is unoptimised. It performs pretty well for a 180x180 buffer with a sparing amount of colours,
  +  but don't expect it to perform too well right now.
  +  One big issue is that *any* change will cause the entire output to be reconstructed, which I'm sure can be changed to be a bit more optimal.
  + ++/
@@ -860,6 +907,8 @@ final class TextBuffer
         char[] _output;
         char[] _cachedOutput;
 
+        TextBufferOptions _options;
+
         void makeDirty()
         {
             this._cachedOutput = null;
@@ -870,14 +919,16 @@ final class TextBuffer
      + Creates a new `TextBuffer` with the specified width and height.
      +
      + Params:
-     +  width  = How many characters each line can contain.
-     +  height = How many lines in total there are.
+     +  width   = How many characters each line can contain.
+     +  height  = How many lines in total there are.
+     +  options = Configuration options for this `TextBuffer`.
      + ++/
-    this(size_t width, size_t height)
+    this(size_t width, size_t height, TextBufferOptions options = TextBufferOptions.init)
     {
         this._width        = width;
         this._height       = height;
         this._chars.length = width * height;
+        this._options      = options;
     }
     
     /++
@@ -964,14 +1015,27 @@ final class TextBuffer
 
         size_t outputCursor;
         size_t ansiCharCursor;
+        size_t nonAnsiCount;
 
         // Auto-increments outputCursor while auto-resizing the output buffer.
-        void putChar(char c)
+        void putChar(char c, bool isAnsiChar)
         {
+            if(!isAnsiChar)
+                nonAnsiCount++;
+
             if(outputCursor >= this._output.length)
                 this._output.length *= 2;
 
             this._output[outputCursor++] = c;
+
+            // Add new lines if the option is enabled.
+            if(!isAnsiChar
+            && this._options.lineMode == TextBufferLineMode.addNewLine
+            && nonAnsiCount           == this._width)
+            {
+                this._output[outputCursor++] = '\n';
+                nonAnsiCount = 0;
+            }
         }
         
         // Finds the next sequence of characters that have the same foreground, background, and flags.
@@ -1007,20 +1071,26 @@ final class TextBuffer
                 AnsiComponents components;
                 const activeCount = components.populateActiveAnsiComponents(first.fg, first.bg, first.flags);
 
-                putChar('\033');
-                putChar('[');
+                putChar('\033', true);
+                putChar('[', true);
                 foreach(ch; components[0..activeCount].joiner(";").byChar)
-                    putChar(ch);
-                putChar('m');
+                    putChar(ch, true);
+                putChar('m', true);
             }
 
             foreach(ansiChar; sequence)
-                putChar(ansiChar.value);
+                putChar(ansiChar.value, false);
+
+            // Remove final new line, since it's more expected for it not to be there.
+            if(this._options.lineMode         == TextBufferLineMode.addNewLine
+            && ansiCharCursor                 >= this._chars.length
+            && this._output[outputCursor - 1] == '\n')
+                outputCursor--; // For non ANSI, we just leave the \n orphaned, for ANSI, we just overwrite it with the reset command below.
 
             if(first.usesAnsi)
             {
                 foreach(ch; AnsiText.RESET_COMMAND)
-                    putChar(ch);
+                    putChar(ch, true);
             }
 
             sequence = getNextAnsiRange();
