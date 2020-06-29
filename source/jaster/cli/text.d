@@ -362,6 +362,10 @@ struct TextBufferRange
  +
  +  There are some special predefined values that can be used to save yourself some calculations or typing.
  +
+ +  These values are based around `size_t.max`, so you shouldn't accidentally run into them unless your own maths is off.
+ +
+ +  All the data is available to you to work out these calculations manually, but these values exist simply for quality of life.
+ +
  +  For positions these are:
  +      - `TextBuffer.CENTER` to get the center point on whichever axis.
  +      - `TextBuffer.END`    to get the last coordinate on whichever axis.
