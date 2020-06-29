@@ -1037,7 +1037,7 @@ final class TextBuffer
     }
 
     /// ditto.
-    TextBufferWriter createWriter(size_t left, size_t top, size_t width, size_t height)
+    TextBufferWriter createWriter(size_t left, size_t top, size_t width = USE_REMAINING_SPACE, size_t height = USE_REMAINING_SPACE)
     {
         return this.createWriter(TextBufferBounds(left, top, width, height));
     }
