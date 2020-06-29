@@ -355,6 +355,19 @@ struct TextBufferRange
 
 /++
  + The main way to modify and read data into/from a `TextBuffer`.
+ +
+ + Special_Values:
+ +  Most of this struct's functions will take an (x, y) position pair, and sometimes
+ +  also a (width, height) size pair.
+ +
+ +  There are some special predefined values that can be used to save yourself some calculations or typing.
+ +
+ +  For positions these are:
+ +      - `TextBuffer.CENTER` to get the center point on whichever axis.
+ +      - `TextBuffer.END`    to get the last coordinate on whichever axis.
+ +
+ +  For sizes these are:
+ +      - `TextBuffer.USE_REMAINING_SPACE` to use as much width as possible, taking the starting position into account.
  + ++/
 struct TextBufferWriter
 {
