@@ -112,8 +112,8 @@ struct TextBufferChar
 
     /// foreground
     AnsiColour    fg;
-    /// background
-    AnsiColour    bg;
+    /// background by reference
+    AnsiColour    bgRef;
     /// flags
     AnsiTextFlags flags;
     /// character
@@ -130,6 +130,20 @@ struct TextBufferChar
             || this.bg    != AnsiColour.init
             || this.flags != AnsiTextFlags.none;
     }
+
+    /// Set the background (automatically sets `value.isBg` to `yes`)
+    @property
+    void bg(AnsiColour value)
+    {
+        import jaster.cli.ansi : IsBgColour;
+
+        value.isBg = IsBgColour.yes;
+        this.bgRef = value;
+    }
+
+    /// Get the background.
+    @property
+    AnsiColour bg() const { return this.bgRef; }
 }
 
 /++
@@ -376,6 +390,12 @@ struct TextBufferWriter
             if(size == TextBuffer.USE_REMAINING_SPACE)
                 size = maxSize - offset;
         }
+
+        void fixAxis(ref size_t axis, const size_t axisSize)
+        {
+            if(axis == TextBuffer.CENTER)
+                axis = axisSize / 2;
+        }
     }
 
     /++
@@ -388,14 +408,22 @@ struct TextBufferWriter
      +  x  = The x position of the point.
      +  y  = The y position of the point.
      +  ch = The character to place.
+     +
+     + Returns:
+     +  `this`, for function chaining.
      + ++/
-    void set(size_t x, size_t y, char ch)
+    TextBufferWriter set(size_t x, size_t y, char ch)
     {
+        this.fixAxis(/*ref*/ x, this.bounds.width);
+        this.fixAxis(/*ref*/ y, this.bounds.height);
+
         const index = this._bounds.pointToIndex(x, y, this._buffer._width);
         this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
 
         this.setSingleChar(index, ch, this._fg, this._bg, this._flags);
         this._buffer.makeDirty();
+
+        return this;
     }
 
     /++
@@ -410,9 +438,14 @@ struct TextBufferWriter
      +  width  = How many characters to fill.
      +  height = How many lines to fill.
      +  ch     = The character to place.
+     +
+     + Returns:
+     +  `this`, for function chaining.
      + ++/
-    void fill(size_t x, size_t y, size_t width, size_t height, char ch)
+    TextBufferWriter fill(size_t x, size_t y, size_t width, size_t height, char ch)
     {
+        this.fixAxis(/*ref*/ x, this.bounds.width);
+        this.fixAxis(/*ref*/ y, this.bounds.height);
         this.fixSize(/*ref*/ width, x, this.bounds.width);
         this.fixSize(/*ref*/ height, y, this.bounds.height);
 
@@ -432,6 +465,7 @@ struct TextBufferWriter
         }
 
         this._buffer.makeDirty();
+        return this;
     }
 
     /++
@@ -452,9 +486,15 @@ struct TextBufferWriter
      +  x    = The starting x position.
      +  y    = The starting y position.
      +  text = The text to write.
+     +
+     + Returns:
+     +  `this`, for function chaining.
      + +/
-    void write(size_t x, size_t y, const char[] text)
+    TextBufferWriter write(size_t x, size_t y, const char[] text)
     {
+        this.fixAxis(/*ref*/ x, this.bounds.width);
+        this.fixAxis(/*ref*/ y, this.bounds.height);
+
         const width  = this.bounds.width - x;
         const height = this.bounds.height - y;
         
@@ -503,26 +543,26 @@ struct TextBufferWriter
         }
 
         this._buffer.makeDirty();
+        return this;
     }
 
     /// ditto.
-    void write(size_t x, size_t y, AnsiText text)
+    TextBufferWriter write(size_t x, size_t y, AnsiText text)
     {
         const fg    = this.fg;
         const bg    = this.bg;
         const flags = this.flags;
-        scope(exit)
-        {
-            this.fg    = fg;
-            this.bg    = bg;
-            this.flags = flags;
-        }
 
         this.fg    = text.getFg(); // TODO: These names need to become consistant.
         this.bg    = text.getBg();
         this.flags = text.flags();
-        
-        this.write(x, y, text.rawText);
+
+        this.write(x, y, text.rawText); // Can only fail asserts, never exceptions, so we don't need scope(exit/failure).
+
+        this.fg    = fg;
+        this.bg    = bg;
+        this.flags = flags;
+        return this;
     }
 
     /++
@@ -538,6 +578,9 @@ struct TextBufferWriter
      + ++/
     TextBufferChar get(size_t x, size_t y)
     {
+        this.fixAxis(/*ref*/ x, this.bounds.width);
+        this.fixAxis(/*ref*/ y, this.bounds.height);
+
         const index = this._bounds.pointToIndex(x, y, this._buffer._width);
         this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
 
@@ -559,6 +602,9 @@ struct TextBufferWriter
      + ++/
     TextBufferRange getArea(size_t x, size_t y, size_t width, size_t height)
     {
+        this.fixAxis(x, this.bounds.width);
+        this.fixAxis(y, this.bounds.height);
+
         auto bounds = TextBufferBounds(this._bounds.left + x, this._bounds.top + y);
         this.fixSize(/*ref*/ width,  bounds.left, this.bounds.width);
         this.fixSize(/*ref*/ height, bounds.top,  this.bounds.height);
@@ -577,14 +623,17 @@ struct TextBufferWriter
     }
     
     /// Set the foreground for any newly-written characters.
+    /// Returns: `this`, for function chaining.
     @property
-    void fg(AnsiColour fg) { this._fg = fg; }
+    TextBufferWriter fg(AnsiColour fg) { this._fg = fg; return this; }
     /// Set the background for any newly-written characters.
+    /// Returns: `this`, for function chaining.
     @property
-    void bg(AnsiColour bg) { this._bg = bg; }
+    TextBufferWriter bg(AnsiColour bg) { this._bg = bg; return this; }
     /// Set the flags for any newly-written characters.
+    /// Returns: `this`, for function chaining.
     @property
-    void flags(AnsiTextFlags flags) { this._flags = flags; }
+    TextBufferWriter flags(AnsiTextFlags flags) { this._flags = flags; return this; }
 
     /// Get the foreground.
     @property
@@ -900,8 +949,13 @@ struct TextBufferOptions
  + ++/
 final class TextBuffer
 {
+    // The extra enums logically shouldn't be here, but from a UX having them all in on place is beneficial.
+
     /// Used to specify that a writer's width or height should use all the space it can.
     enum USE_REMAINING_SPACE = size_t.max;
+
+    /// Used to specify that an X or Y position should be the center point of an area.
+    enum CENTER = size_t.max - 1;
 
     private
     {
