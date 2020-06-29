@@ -84,7 +84,15 @@ struct AnsiColour
         AnsiColourUnion _value;
         AnsiColourType  _type;
         IsBgColour      _isBg;
+
+        this(IsBgColour isBg)
+        {
+            this._isBg = isBg;
+        }
     }
+
+    /// A variant of `.init` that is used for background colours.
+    static immutable bgInit = AnsiColour(IsBgColour.yes);
 
     /// Ctor for an `AnsiColourType.fourBit`.
     this(Ansi4BitColour fourBit, IsBgColour isBg = IsBgColour.no)

@@ -108,7 +108,7 @@ unittest
 /// Contains a single character, with ANSI styling.
 struct TextBufferChar
 {
-    import jaster.cli.ansi : AnsiColour, AnsiTextFlags;
+    import jaster.cli.ansi : AnsiColour, AnsiTextFlags, IsBgColour;
 
     /// foreground
     AnsiColour    fg;
@@ -127,7 +127,7 @@ struct TextBufferChar
     bool usesAnsi() const
     {
         return this.fg    != AnsiColour.init
-            || this.bg    != AnsiColour.init
+            || (this.bg   != AnsiColour.init && this.bg != AnsiColour.bgInit)
             || this.flags != AnsiTextFlags.none;
     }
 
@@ -135,8 +135,6 @@ struct TextBufferChar
     @property
     void bg(AnsiColour value)
     {
-        import jaster.cli.ansi : IsBgColour;
-
         value.isBg = IsBgColour.yes;
         this.bgRef = value;
     }
@@ -681,7 +679,7 @@ unittest
        buffer.toStringNoDupe() ~ "\n%s".format(cast(ubyte[])buffer.toStringNoDupe())
     );
 
-    assert(writer.get(1, 1) == TextBufferChar(AnsiColour(Ansi4BitColour.green), AnsiColour.init, AnsiTextFlags.none, 'E'));
+    assert(writer.get(1, 1) == TextBufferChar(AnsiColour(Ansi4BitColour.green), AnsiColour.bgInit, AnsiTextFlags.none, 'E'));
 }
 
 @("Testing that basic operations work")
