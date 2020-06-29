@@ -66,8 +66,6 @@ final static class UserIO
             if(cast(int)level < UserIO._config.global.minLogLevel)
                 return;
 
-                writeln(UserIO._config.global.useColouredText);
-
             if(!UserIO._config.global.useColouredText)
             {
                 writeln(output);
