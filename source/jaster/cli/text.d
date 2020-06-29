@@ -405,14 +405,6 @@ struct TextBufferWriter
             if(size == TextBuffer.USE_REMAINING_SPACE)
                 size = maxSize - offset;
         }
-
-        void fixAxis(ref size_t axis, const size_t axisSizeInclusive)
-        {
-            if(axis == TextBuffer.CENTER)
-                axis = (axisSizeInclusive - 1) / 2; // - 1 to make it exclusive, because 0-based logic.
-            else if(axis == TextBuffer.END)
-                axis = (axisSizeInclusive - 1);
-        }
     }
 
     /++
@@ -431,9 +423,6 @@ struct TextBufferWriter
      + ++/
     TextBufferWriter set(size_t x, size_t y, char ch)
     {
-        this.fixAxis(/*ref*/ x, this.bounds.width);
-        this.fixAxis(/*ref*/ y, this.bounds.height);
-
         const index = this._bounds.pointToIndex(x, y, this._buffer._width);
         this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
 
@@ -461,8 +450,6 @@ struct TextBufferWriter
      + ++/
     TextBufferWriter fill(size_t x, size_t y, size_t width, size_t height, char ch)
     {
-        this.fixAxis(/*ref*/ x, this.bounds.width);
-        this.fixAxis(/*ref*/ y, this.bounds.height);
         this.fixSize(/*ref*/ width, x, this.bounds.width);
         this.fixSize(/*ref*/ height, y, this.bounds.height);
 
@@ -509,9 +496,6 @@ struct TextBufferWriter
      + +/
     TextBufferWriter write(size_t x, size_t y, const char[] text)
     {
-        this.fixAxis(/*ref*/ x, this.bounds.width);
-        this.fixAxis(/*ref*/ y, this.bounds.height);
-
         const width  = this.bounds.width - x;
         const height = this.bounds.height - y;
         
@@ -595,9 +579,6 @@ struct TextBufferWriter
      + ++/
     TextBufferChar get(size_t x, size_t y)
     {
-        this.fixAxis(/*ref*/ x, this.bounds.width);
-        this.fixAxis(/*ref*/ y, this.bounds.height);
-
         const index = this._bounds.pointToIndex(x, y, this._buffer._width);
         this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
 
@@ -619,9 +600,6 @@ struct TextBufferWriter
      + ++/
     TextBufferRange getArea(size_t x, size_t y, size_t width, size_t height)
     {
-        this.fixAxis(x, this.bounds.width);
-        this.fixAxis(y, this.bounds.height);
-
         auto bounds = TextBufferBounds(this._bounds.left + x, this._bounds.top + y);
         this.fixSize(/*ref*/ width,  bounds.left, this.bounds.width);
         this.fixSize(/*ref*/ height, bounds.top,  this.bounds.height);
@@ -915,34 +893,6 @@ unittest
     );
 }
 
-@("Test CENTER")
-unittest
-{
-    auto buffer = new TextBuffer(11, 1);
-    auto writer = buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
-
-    writer.fill(0, 0, 11, 1, ' ')
-          .set(TextBuffer.CENTER, 0, 'A');
-    assert(buffer.toStringNoDupe() == "     A     ", '"'~buffer.toStringNoDupe()~'"');
-
-    writer.fill(TextBuffer.CENTER, 0, 3, 1, 'B');
-    assert(buffer.toStringNoDupe() == "     BBB   ");
-
-    writer.write(TextBuffer.CENTER, 0, "Lol");
-    assert(buffer.toStringNoDupe() == "     Lol   ");
-}
-
-@("Test END")
-unittest
-{
-    auto buffer = new TextBuffer(2, 1);
-    auto writer = buffer.createWriter(0, 0, 2, 1);
-
-    writer.fill(0, 0, 2, 1, ' ')
-          .set(TextBuffer.END, 0, 'A');
-    assert(buffer.toStringNoDupe() == " A");
-}
-
 /++
  + Determines how a `TextBuffer` handles writing out each of its internal "lines".
  + ++/
@@ -994,16 +944,8 @@ struct TextBufferOptions
  + ++/
 final class TextBuffer
 {
-    // The extra enums logically shouldn't be here, but from a UX having them all in on place is beneficial.
-
     /// Used to specify that a writer's width or height should use all the space it can.
     enum USE_REMAINING_SPACE = size_t.max;
-
-    /// Used to specify that an X or Y position should be the center point of an area.
-    enum CENTER = size_t.max - 1;
-
-    /// Used to specify that an X or Y position should be at the end of its axis.
-    enum END    = size_t.max - 2;
 
     private
     {
