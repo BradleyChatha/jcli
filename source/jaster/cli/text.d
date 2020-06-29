@@ -389,10 +389,10 @@ struct TextBufferWriter
                 size = maxSize - offset;
         }
 
-        void fixAxis(ref size_t axis, const size_t axisSize)
+        void fixAxis(ref size_t axis, const size_t axisSizeInclusive)
         {
             if(axis == TextBuffer.CENTER)
-                axis = axisSize / 2;
+                axis = (axisSizeInclusive - 1) / 2; // - 1 to make it exclusive, because 0-based logic.
         }
     }
 
@@ -894,6 +894,23 @@ unittest
        ~"DEF\n"
        ~"GHI\033[0m"
     );
+}
+
+@("Test CENTER")
+unittest
+{
+    auto buffer = new TextBuffer(11, 1);
+    auto writer = buffer.createWriter(0, 0, TextBuffer.USE_REMAINING_SPACE, TextBuffer.USE_REMAINING_SPACE);
+
+    writer.fill(0, 0, 11, 1, ' ')
+          .set(TextBuffer.CENTER, 0, 'A');
+    assert(buffer.toStringNoDupe() == "     A     ", '"'~buffer.toStringNoDupe()~'"');
+
+    writer.fill(TextBuffer.CENTER, 0, 3, 1, 'B');
+    assert(buffer.toStringNoDupe() == "     BBB   ");
+
+    writer.write(TextBuffer.CENTER, 0, "Lol");
+    assert(buffer.toStringNoDupe() == "     Lol   ");
 }
 
 /++
