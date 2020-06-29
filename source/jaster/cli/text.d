@@ -393,6 +393,8 @@ struct TextBufferWriter
         {
             if(axis == TextBuffer.CENTER)
                 axis = (axisSizeInclusive - 1) / 2; // - 1 to make it exclusive, because 0-based logic.
+            else if(axis == TextBuffer.END)
+                axis = (axisSizeInclusive - 1);
         }
     }
 
@@ -913,6 +915,17 @@ unittest
     assert(buffer.toStringNoDupe() == "     Lol   ");
 }
 
+@("Test END")
+unittest
+{
+    auto buffer = new TextBuffer(2, 1);
+    auto writer = buffer.createWriter(0, 0, 2, 1);
+
+    writer.fill(0, 0, 2, 1, ' ')
+          .set(TextBuffer.END, 0, 'A');
+    assert(buffer.toStringNoDupe() == " A");
+}
+
 /++
  + Determines how a `TextBuffer` handles writing out each of its internal "lines".
  + ++/
@@ -971,6 +984,9 @@ final class TextBuffer
 
     /// Used to specify that an X or Y position should be the center point of an area.
     enum CENTER = size_t.max - 1;
+
+    /// Used to specify that an X or Y position should be at the end of its axis.
+    enum END    = size_t.max - 2;
 
     private
     {
