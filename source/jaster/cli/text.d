@@ -158,6 +158,52 @@ struct TextBufferBounds
     /// height
     size_t height;
 
+    /++
+     + Finds the relative center point on the X axis, optionally taking into account the width of another object (e.g. text).
+     +
+     + Params:
+     +  width = The optional width to take into account.
+     +
+     + Returns:
+     +  The relative center X position, optionally offset by `width`.
+     + ++/
+    size_t centerX(const size_t width = 0)
+    {
+        return this.centerAxis(this.width, width);
+    }
+    ///
+    unittest
+    {
+        auto bounds = TextBufferBounds(0, 0, 10, 0);
+        assert(bounds.centerX == 5);
+        assert(bounds.centerX(2) == 4);
+        assert(bounds.centerX(5) == 2);
+
+        bounds.left = 20000;
+        assert(bounds.centerX == 5); // centerX provides a relative point, not absolute.
+    }
+
+    /++
+     + Finds the relative center point on the Y axis, optionally taking into account the height of another object (e.g. text).
+     +
+     + Params:
+     +  height = The optional height to take into account.
+     +
+     + Returns:
+     +  The relative center Y position, optionally offset by `height`.
+     + ++/
+    size_t centerY(const size_t height = 0)
+    {
+        return this.centerAxis(this.height, height);
+    }
+
+    private size_t centerAxis(const size_t axis, const size_t offset)
+    {
+        import std.format : format;
+        assert(offset <= axis, "Cannot use offset as it's larger than the axis. Axis = %s, offset = %s".format(axis, offset));
+        return (axis - offset) / 2;
+    }
+
     /// 2D point to 1D array index.
     private size_t pointToIndex(size_t x, size_t y, size_t bufferWidth) const
     {
