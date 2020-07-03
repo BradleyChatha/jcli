@@ -1124,6 +1124,12 @@ final class TextBuffer
      + Side_Effects:
      +  This function clears any cached output, so `toStringNoDupe` and `toString` will have to completely reconstruct the output.
      +
+     +  Any `TextBufferWriter`s with a non-dynamic size (e.g. no `TextBuffer.USE_REMAINING_SPACE`) that end up becoming out-of-bounds,
+     +  will not be useable until they're remade, or until the height is changed again.
+     +
+     +  Any `TextBufferRange`s that exist prior to resizing are not affected in anyway, and can still access parts of the buffer that
+     +  should now technically be "out of bounds" (in the event of shrinking).
+     +
      + Params:
      +  lines = The new amount of lines.
      + ++/
