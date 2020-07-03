@@ -409,6 +409,7 @@ struct TextBufferWriter
     private
     {
         TextBuffer       _buffer;
+        TextBufferBounds _originalBounds;
         TextBufferBounds _bounds;
         AnsiColour       _fg;
         AnsiColour       _bg;
@@ -416,8 +417,11 @@ struct TextBufferWriter
 
         this(TextBuffer buffer, TextBufferBounds bounds)
         {
-            this._buffer = buffer;
-            this._bounds = bounds;
+            this._originalBounds = bounds;
+            this._buffer         = buffer;
+            this._bounds         = bounds;
+
+            this.updateSize();
         }
 
         void setSingleChar(size_t index, char ch, AnsiColour fg, AnsiColour bg, AnsiTextFlags flags)
@@ -434,6 +438,21 @@ struct TextBufferWriter
             if(size == TextBuffer.USE_REMAINING_SPACE)
                 size = maxSize - offset;
         }
+    }
+
+    /++
+     + Updates the size of this `TextBufferWriter` to reflect any size changes within the underlying
+     + `TextBuffer`.
+     +
+     + For example, if this `TextBufferWriter`'s height is set to `TextBuffer.USE_REMAINING_SPACE`, and the underlying
+     + `TextBuffer`'s height is changed, then this function is used to reflect these changes.
+     + ++/
+    void updateSize()
+    {
+        if(this._originalBounds.width == TextBuffer.USE_REMAINING_SPACE)
+            this._bounds.width = this._buffer._width - this._bounds.left;
+        if(this._originalBounds.height == TextBuffer.USE_REMAINING_SPACE)
+            this._bounds.height = this._buffer._height - this._bounds.top;
     }
 
     /++
@@ -525,6 +544,8 @@ struct TextBufferWriter
      + +/
     TextBufferWriter write(size_t x, size_t y, const char[] text)
     {
+        // Underflow doesn't matter, since it'll fail the assert check a few lines down anyway, unless
+        // the buffer's size is in the billions+, which is... unlikely.
         const width  = this.bounds.width - x;
         const height = this.bounds.height - y;
         
@@ -922,6 +943,41 @@ unittest
     );
 }
 
+@("Test height changes")
+unittest
+{
+    auto buffer     = new TextBuffer(4, 0);
+    auto leftColumn = buffer.createWriter(0, 0, 1, TextBuffer.USE_REMAINING_SPACE);
+
+    void addLine(string text)
+    {
+        buffer.height = buffer.height + 1;
+        auto writer = buffer.createWriter(1, buffer.height - 1, 3, 1);
+        
+        leftColumn.updateSize();
+        leftColumn.fill(0, 0, 1, TextBuffer.USE_REMAINING_SPACE, '#');
+
+        writer.write(0, 0, text);
+    }
+
+    addLine("lol");
+    addLine("omg");
+    addLine("owo");
+
+    assert(buffer.toStringNoDupe() == 
+        "#lol"
+       ~"#omg"
+       ~"#owo"
+    );
+
+    buffer.height = 2;
+    assert(buffer.toStringNoDupe() == 
+        "#lol"
+       ~"#omg",
+       buffer.toStringNoDupe()
+    );
+}
+
 /++
  + Determines how a `TextBuffer` handles writing out each of its internal "lines".
  + ++/
@@ -964,8 +1020,9 @@ struct TextBufferOptions
  +  When I can be bothered, I'll add user-facing examples :)
  +
  + Limitations:
- +  Currently the buffer must be given a fixed size, but I'm hoping to fix this (at the very least for the y-axis) in the future.
- +  It's probably pretty easy, I just haven't looked into doing it yet.
+ +  Currently the buffer can only be resized vertically, not horizontally.
+ +
+ +  This is due to how the memory's laid out, resizing vertically requires a slightly more complicated algorithm that I'm too lazy to do right now.
  +
  +  Creating the final string output (via `toString` or `toStringNoDupe`) is unoptimised. It performs pretty well for a 180x180 buffer with a sparing amount of colours,
  +  but don't expect it to perform too well right now.
@@ -978,6 +1035,7 @@ final class TextBuffer
 
     private
     {
+        TextBufferChar[] _charsBuffer;
         TextBufferChar[] _chars;
         size_t           _width;
         size_t           _height;
@@ -1003,10 +1061,11 @@ final class TextBuffer
      + ++/
     this(size_t width, size_t height, TextBufferOptions options = TextBufferOptions.init)
     {
-        this._width        = width;
-        this._height       = height;
-        this._chars.length = width * height;
-        this._options      = options;
+        this._width              = width;
+        this._height             = height;
+        this._options            = options;
+        this._charsBuffer.length = width * height;
+        this._chars              = this._charsBuffer[0..$];
     }
     
     /++
@@ -1027,12 +1086,6 @@ final class TextBuffer
      + ++/
     TextBufferWriter createWriter(TextBufferBounds bounds)
     {
-        if(bounds.width == USE_REMAINING_SPACE)
-            bounds.width = this._width - bounds.left;
-
-        if(bounds.height == USE_REMAINING_SPACE)
-            bounds.height = this._height - bounds.top;
-
         return TextBufferWriter(this, bounds);
     }
 
@@ -1040,6 +1093,51 @@ final class TextBuffer
     TextBufferWriter createWriter(size_t left, size_t top, size_t width = USE_REMAINING_SPACE, size_t height = USE_REMAINING_SPACE)
     {
         return this.createWriter(TextBufferBounds(left, top, width, height));
+    }
+    
+    /// Returns: The height of this `TextBuffer`.
+    @property
+    size_t height() const
+    {
+        return this._height;
+    }
+    
+    /++
+     + Sets the height (number of lines) for this `TextBuffer`.
+     +
+     + Notes:
+     +  `TextBufferWriters` will not automatically update their sizes to take into account this size change.
+     +
+     +  You will have to manually call `TextBufferWriter.updateSize` to reflect any changes, such as properly updating
+     +  writers that use `TextBuffer.USE_REMAINING_SPACE` as one of their sizes.
+     +
+     + Performance:
+     +  As is a common theme with this class, it will try to reuse an internal buffer.
+     +
+     +  So if you're shrinking the height, no allocations should be made.
+     +
+     +  If you're growing the height, allocations are only made if the new height is larger than its ever been set to.
+     +
+     +  As a side effect, whenever you grow the buffer the data that occupies the new space will either be `TextBufferChar.init`, or whatever
+     +  was previously left there.
+     +
+     + Side_Effects:
+     +  This function clears any cached output, so `toStringNoDupe` and `toString` will have to completely reconstruct the output.
+     +
+     + Params:
+     +  lines = The new amount of lines.
+     + ++/
+    @property
+    void height(size_t lines)
+    {
+        this._height   = lines;
+        const newCount = this._width * this._height;
+
+        if(newCount > this._charsBuffer.length)
+            this._charsBuffer.length = newCount;
+
+        this._chars = this._charsBuffer[0..newCount];
+        this._cachedOutput = null;
     }
 
     // This is a very slow (well, I assume, tired code is usually slow code), very naive function, but as long as it works for now, then it can be rewritten later.
