@@ -141,6 +141,7 @@ static struct ArgBinder(Modules...)
     }
 }
 ///
+@safe
 unittest
 {
     alias Binder = ArgBinder!(jaster.cli.binder);
@@ -157,15 +158,15 @@ unittest
 /+ BUILT-IN BINDERS +/
 
 /// arg -> string. The result is the contents of `arg` as-is.
-@ArgBinderFunc
-void stringBinder(string arg, ref string value)
+@ArgBinderFunc @safe @nogc
+void stringBinder(string arg, ref scope string value) nothrow pure
 {
     value = arg;
 }
 
 /// arg -> numeric. The result is `arg` converted to `T`.
-@ArgBinderFunc
-void numericBinder(T)(string arg, ref T value)
+@ArgBinderFunc @safe
+void numericBinder(T)(string arg, ref scope T value) pure
 if(isNumeric!T)
 {
     import std.conv : to;
@@ -173,8 +174,8 @@ if(isNumeric!T)
 }
 
 /// arg -> enum. The `arg` must be the name of one of the values in the `T` enum.
-@ArgBinderFunc
-void enumBinder(T)(string arg, ref T value)
+@ArgBinderFunc @safe
+void enumBinder(T)(string arg, ref scope T value) pure
 if(is(T == enum))
 {
     import std.conv : to;
@@ -182,8 +183,8 @@ if(is(T == enum))
 }
 
 /// arg -> bool.
-@ArgBinderFunc
-void boolBinder(string arg, ref bool value)
+@ArgBinderFunc @safe
+void boolBinder(string arg, ref scope bool value) pure
 {
     import std.conv : to;
     value = arg.to!bool;
