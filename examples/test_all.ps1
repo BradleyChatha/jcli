@@ -24,6 +24,11 @@ $TEST_CASES = @(
     @{ loc = "./06-configuration";                  params = "set name Bradley";    contains_match  = ".*"   } # Verbose logging should kick in
     @{ loc = "./06-configuration";                  params = "force exception";     contains_match  = ".*"   } # Ditto
     @{ loc = "./06-configuration";                  params = "greet";               contains_match  = "Brad" }
+
+    # Can't use contains_match as it doesn't handle ANSI properly.
+    # Also note that for some reason, this script eats all of the new line characters from the table's output.
+    @{ loc = "./07-text-buffer-table";              params = "fixed";               expected_status = 0      }
+    @{ loc = "./07-text-buffer-table";              params = "dynamic";             expected_status = 0      }
 )
 
 $AUX_DUB_PARAMS = ""
