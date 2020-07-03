@@ -756,6 +756,7 @@ unittest
 }
 
 @("Testing that basic operations work")
+@safe
 unittest
 {
     import std.format : format;
@@ -780,6 +781,7 @@ unittest
 }
 
 @("Testing that ANSI works (but only when the entire thing is a single ANSI command)")
+@safe
 unittest
 {
     import std.format : format;
@@ -799,6 +801,7 @@ unittest
 }
 
 @("Testing that a mix of ANSI and plain text works")
+@safe
 unittest
 {
     import std.format : format;
@@ -833,6 +836,7 @@ unittest
 }
 
 @("Various fill tests")
+@safe
 unittest
 {
     auto buffer = new TextBuffer(5, 4);
@@ -854,6 +858,7 @@ unittest
 }
 
 @("Issue with TextBufferRange length")
+@safe
 unittest
 {
     import std.range : walkLength;
@@ -873,6 +878,7 @@ unittest
 }
 
 @("Test TextBufferRange")
+@safe
 unittest
 {
     import std.algorithm   : equal;
@@ -915,6 +921,7 @@ unittest
 }
 
 @("Test write")
+@safe
 unittest
 {
     import std.format      : format;    
@@ -946,6 +953,7 @@ unittest
 }
 
 @("Test addNewLine mode")
+@safe
 unittest
 {
     import jaster.cli.ansi : AnsiColour, Ansi4BitColour;
@@ -970,6 +978,7 @@ unittest
 }
 
 @("Test height changes")
+@safe
 unittest
 {
     auto buffer     = new TextBuffer(4, 0);
