@@ -46,14 +46,15 @@ struct LineWrapOptions
  +  This function calculates, and reserves all required memory using a single allocation (barring bugs ;3), so it shouldn't
  +  be overly bad to use.
  + ++/
-string lineWrap(const(char)[] text, const LineWrapOptions options = LineWrapOptions(120))
+@trusted // Trusted due to the use of assumeUnique.
+string lineWrap(const(char)[] text, const LineWrapOptions options = LineWrapOptions(120)) pure
 {
     import std.exception : assumeUnique, enforce;
 
     char[] actualText;
     const charsPerLine = options.lineCharLimit - (options.linePrefix.length + + options.lineSuffix.length + 1); // '+ 1' is for the new line char.
     size_t offset      = 0;
-    
+
     enforce(charsPerLine > 0, "The lineCharLimit is too low. There's not enough space for any text (after factoring the prefix, suffix, and ending new line characters).");
 
     const estimatedLines = (text.length / charsPerLine);
@@ -88,14 +89,16 @@ string lineWrap(const(char)[] text, const LineWrapOptions options = LineWrapOpti
     return actualText.assumeUnique;
 }
 ///
+@safe
 unittest
 {
     const options = LineWrapOptions(8, "\t", "-");
     const text    = "Hello world".lineWrap(options);
-    assert(text == "\tHello-\n\tworld-", cast(char[])text);
+    assert(text == "\tHello-\n\tworld-", text);
 }
 
 @("issue #2")
+@safe
 unittest
 {
     const options = LineWrapOptions(4, "");
@@ -106,7 +109,8 @@ unittest
 }
 
 /// Contains a single character, with ANSI styling.
-struct TextBufferChar
+@safe
+struct TextBufferChar 
 {
     import jaster.cli.ansi : AnsiColour, AnsiTextFlags, IsBgColour;
 
@@ -118,6 +122,8 @@ struct TextBufferChar
     AnsiTextFlags flags;
     /// character
     char          value;
+
+    @nogc nothrow pure:
 
     /++
      + Returns:
@@ -146,7 +152,11 @@ struct TextBufferChar
 
 /++
  + A basic rectangle struct, used to specify the bounds of a `TextBufferWriter`.
+ +
+ + Notes:
+ +  This struct is not fully @nogc due to the use of `std.format` within assert messages.
  + ++/
+@safe
 struct TextBufferBounds
 {
     /// x offset
@@ -167,11 +177,12 @@ struct TextBufferBounds
      + Returns:
      +  The relative center X position, optionally offset by `width`.
      + ++/
-    size_t centerX(const size_t width = 0)
+    size_t centerX(const size_t width = 0) pure
     {
         return this.centerAxis(this.width, width);
     }
     ///
+    @safe pure
     unittest
     {
         auto bounds = TextBufferBounds(0, 0, 10, 0);
@@ -192,12 +203,12 @@ struct TextBufferBounds
      + Returns:
      +  The relative center Y position, optionally offset by `height`.
      + ++/
-    size_t centerY(const size_t height = 0)
+    size_t centerY(const size_t height = 0) pure
     {
         return this.centerAxis(this.height, height);
     }
 
-    private size_t centerAxis(const size_t axis, const size_t offset)
+    private size_t centerAxis(const size_t axis, const size_t offset) pure
     {
         import std.format : format;
         assert(offset <= axis, "Cannot use offset as it's larger than the axis. Axis = %s, offset = %s".format(axis, offset));
@@ -205,14 +216,15 @@ struct TextBufferBounds
     }
 
     /// 2D point to 1D array index.
-    private size_t pointToIndex(size_t x, size_t y, size_t bufferWidth) const
+    @nogc
+    private size_t pointToIndex(size_t x, size_t y, size_t bufferWidth) const nothrow pure
     {
         return (x + this.left) + (bufferWidth * (y + this.top));
     }
     ///
+    @safe @nogc nothrow pure
     unittest
     {
-        import std.format : format;
         auto b = TextBufferBounds(0, 0, 5, 5);
         assert(b.pointToIndex(0, 0, 5) == 0);
         assert(b.pointToIndex(0, 1, 5) == 5);
@@ -225,7 +237,7 @@ struct TextBufferBounds
         assert(b.pointToIndex(1, 1, 5) == 12);
     }
 
-    private void assertPointInBounds(size_t x, size_t y, size_t bufferWidth, size_t bufferSize) const
+    private void assertPointInBounds(size_t x, size_t y, size_t bufferWidth, size_t bufferSize) const pure
     {
         import std.format : format;
 
@@ -272,9 +284,10 @@ struct TextBufferBounds
  + See_Also:
  +  `TextBufferWriter.getArea` 
  + ++/
+@safe
 struct TextBufferRange
 {
-    private
+    private pure
     {
         TextBuffer       _buffer;
         TextBufferBounds _bounds;
@@ -312,7 +325,7 @@ struct TextBufferRange
     }
 
     ///
-    void popFront()
+    void popFront() pure
     {
         if(this._cursorY == this._bounds.height)
         {
@@ -329,6 +342,42 @@ struct TextBufferRange
             this._cursorY++;
         }
     }
+
+    @safe pure:
+    
+    /// Returns: The character at the specified index.
+    @property
+    TextBufferChar opIndex(size_t i)
+    {
+        return this.opIndexImpl(i);
+    }
+
+    /++
+     + Sets the character value of the `TextBufferChar` at index `i`.
+     +
+     + Notes:
+     +  This preserves the colouring and styling of the `TextBufferChar`, as we're simply changing its value.
+     +
+     + Params:
+     +  ch = The character to use.
+     +  i  = The index of the ansi character to change.
+     + ++/
+    @property
+    void opIndexAssign(char ch, size_t i)
+    {
+        this.opIndexImpl(i).value = ch;
+        this._buffer.makeDirty();
+    }
+
+    /// ditto.
+    @property
+    void opIndexAssign(TextBufferChar ch, size_t i)
+    {
+        this.opIndexImpl(i) = ch;
+        this._buffer.makeDirty();
+    }
+
+    @safe @nogc nothrow pure:
 
     ///
     @property
@@ -365,48 +414,21 @@ struct TextBufferRange
         return (this.empty) ? 0 : ((this._bounds.width * this._bounds.height) - this.progressedLength) + 1; // + 1 is to deal with the staggered empty logic, otherwise this is 1 off constantly.
     }
     alias opDollar = length;
-
-    /// Returns: The character at the specified index.
-    @property
-    TextBufferChar opIndex(size_t i)
-    {
-        return this.opIndexImpl(i);
-    }
-
-    /++
-     + Sets the character value of the `TextBufferChar` at index `i`.
-     +
-     + Notes:
-     +  This preserves the colouring and styling of the `TextBufferChar`, as we're simply changing its value.
-     +
-     + Params:
-     +  ch = The character to use.
-     +  i  = The index of the ansi character to change.
-     + ++/
-    @property
-    void opIndexAssign(char ch, size_t i)
-    {
-        this.opIndexImpl(i).value = ch;
-        this._buffer.makeDirty();
-    }
-
-    /// ditto.
-    @property
-    void opIndexAssign(TextBufferChar ch, size_t i)
-    {
-        this.opIndexImpl(i) = ch;
-        this._buffer.makeDirty();
-    }
 }
 
 /++
  + The main way to modify and read data into/from a `TextBuffer`.
+ +
+ + Performance:
+ +  Outside of error messages (only in asserts), there shouldn't be any allocations.
  + ++/
+@safe
 struct TextBufferWriter
 {
     import jaster.cli.ansi : AnsiColour, AnsiTextFlags, AnsiText;
 
-    private
+    @nogc
+    private nothrow pure
     {
         TextBuffer       _buffer;
         TextBufferBounds _originalBounds;
@@ -447,7 +469,8 @@ struct TextBufferWriter
      + For example, if this `TextBufferWriter`'s height is set to `TextBuffer.USE_REMAINING_SPACE`, and the underlying
      + `TextBuffer`'s height is changed, then this function is used to reflect these changes.
      + ++/
-    void updateSize()
+    @nogc
+    void updateSize() nothrow pure
     {
         if(this._originalBounds.width == TextBuffer.USE_REMAINING_SPACE)
             this._bounds.width = this._buffer._width - this._bounds.left;
@@ -469,7 +492,7 @@ struct TextBufferWriter
      + Returns:
      +  `this`, for function chaining.
      + ++/
-    TextBufferWriter set(size_t x, size_t y, char ch)
+    TextBufferWriter set(size_t x, size_t y, char ch) pure
     {
         const index = this._bounds.pointToIndex(x, y, this._buffer._width);
         this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
@@ -496,7 +519,7 @@ struct TextBufferWriter
      + Returns:
      +  `this`, for function chaining.
      + ++/
-    TextBufferWriter fill(size_t x, size_t y, size_t width, size_t height, char ch)
+    TextBufferWriter fill(size_t x, size_t y, size_t width, size_t height, char ch) pure
     {
         this.fixSize(/*ref*/ width, x, this.bounds.width);
         this.fixSize(/*ref*/ height, y, this.bounds.height);
@@ -542,7 +565,7 @@ struct TextBufferWriter
      + Returns:
      +  `this`, for function chaining.
      + +/
-    TextBufferWriter write(size_t x, size_t y, const char[] text)
+    TextBufferWriter write(size_t x, size_t y, const char[] text) pure
     {
         // Underflow doesn't matter, since it'll fail the assert check a few lines down anyway, unless
         // the buffer's size is in the billions+, which is... unlikely.
@@ -598,7 +621,7 @@ struct TextBufferWriter
     }
 
     /// ditto.
-    TextBufferWriter write(size_t x, size_t y, AnsiText text)
+    TextBufferWriter write(size_t x, size_t y, AnsiText text) pure
     {
         const fg    = this.fg;
         const bg    = this.bg;
@@ -627,7 +650,7 @@ struct TextBufferWriter
      + Returns:
      +  The `TextBufferChar` at the given point (x, y)
      + ++/
-    TextBufferChar get(size_t x, size_t y)
+    TextBufferChar get(size_t x, size_t y) pure
     {
         const index = this._bounds.pointToIndex(x, y, this._buffer._width);
         this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
@@ -648,7 +671,7 @@ struct TextBufferWriter
      + Returns:
      +  A `TextBufferRange` that is configured for the given area.
      + ++/
-    TextBufferRange getArea(size_t x, size_t y, size_t width, size_t height)
+    TextBufferRange getArea(size_t x, size_t y, size_t width, size_t height) pure
     {
         auto bounds = TextBufferBounds(this._bounds.left + x, this._bounds.top + y);
         this.fixSize(/*ref*/ width,  bounds.left, this.bounds.width);
@@ -659,6 +682,8 @@ struct TextBufferWriter
 
         return TextBufferRange(this._buffer, bounds);
     }
+
+    @safe @nogc nothrow pure:
 
     /// The bounds that this `TextWriter` is constrained to.
     @property
@@ -691,6 +716,7 @@ struct TextBufferWriter
     AnsiTextFlags flags() { return this._flags; }
 }
 ///
+@safe
 unittest
 {
     import std.format : format;
@@ -723,7 +749,7 @@ unittest
        ~" \033[32mDEF\033[0m " // \033 stuff is of course, the ANSI codes. In this case, green foreground, as we set above.
        ~"     ",
 
-       buffer.toStringNoDupe() ~ "\n%s".format(cast(ubyte[])buffer.toStringNoDupe())
+       buffer.toStringNoDupe() ~ "\n%s".format(buffer.toStringNoDupe())
     );
 
     assert(writer.get(1, 1) == TextBufferChar(AnsiColour(Ansi4BitColour.green), AnsiColour.bgInit, AnsiTextFlags.none, 'E'));
@@ -1028,6 +1054,7 @@ struct TextBufferOptions
  +  but don't expect it to perform too well right now.
  +  One big issue is that *any* change will cause the entire output to be reconstructed, which I'm sure can be changed to be a bit more optimal.
  + ++/
+@safe
 final class TextBuffer
 {
     /// Used to specify that a writer's width or height should use all the space it can.
@@ -1045,7 +1072,8 @@ final class TextBuffer
 
         TextBufferOptions _options;
 
-        void makeDirty()
+        @nogc
+        void makeDirty() nothrow pure
         {
             this._cachedOutput = null;
         }
@@ -1059,7 +1087,7 @@ final class TextBuffer
      +  height  = How many lines in total there are.
      +  options = Configuration options for this `TextBuffer`.
      + ++/
-    this(size_t width, size_t height, TextBufferOptions options = TextBufferOptions.init)
+    this(size_t width, size_t height, TextBufferOptions options = TextBufferOptions.init) nothrow pure
     {
         this._width              = width;
         this._height             = height;
@@ -1084,20 +1112,22 @@ final class TextBuffer
      + Returns:
      +  A `TextBufferWriter`, constrained to the given `bounds`, which is also bounded to this specific `TextBuffer`.
      + ++/
-    TextBufferWriter createWriter(TextBufferBounds bounds)
+    @nogc
+    TextBufferWriter createWriter(TextBufferBounds bounds) nothrow pure
     {
         return TextBufferWriter(this, bounds);
     }
 
     /// ditto.
-    TextBufferWriter createWriter(size_t left, size_t top, size_t width = USE_REMAINING_SPACE, size_t height = USE_REMAINING_SPACE)
+    @nogc
+    TextBufferWriter createWriter(size_t left, size_t top, size_t width = USE_REMAINING_SPACE, size_t height = USE_REMAINING_SPACE) nothrow pure
     {
         return this.createWriter(TextBufferBounds(left, top, width, height));
     }
     
     /// Returns: The height of this `TextBuffer`.
-    @property
-    size_t height() const
+    @property @nogc
+    size_t height() const nothrow pure
     {
         return this._height;
     }
@@ -1134,7 +1164,7 @@ final class TextBuffer
      +  lines = The new amount of lines.
      + ++/
     @property
-    void height(size_t lines)
+    void height(size_t lines) nothrow
     {
         this._height   = lines;
         const newCount = this._width * this._height;
