@@ -77,6 +77,7 @@ struct AnsiRgbColour
  + Contains either a 4-bit, 8-bit, or 24-bit colour, which can then be turned into
  + an its ANSI form (not a valid command, just the actual values needed to form the final command).
  + ++/
+@safe
 struct AnsiColour
 {
     private 
@@ -95,7 +96,8 @@ struct AnsiColour
     static immutable bgInit = AnsiColour(IsBgColour.yes);
 
     /// Ctor for an `AnsiColourType.fourBit`.
-    this(Ansi4BitColour fourBit, IsBgColour isBg = IsBgColour.no)
+    @nogc
+    this(Ansi4BitColour fourBit, IsBgColour isBg = IsBgColour.no) nothrow pure
     {
         this._value.fourBit = fourBit;
         this._type          = AnsiColourType.fourBit;
@@ -103,7 +105,8 @@ struct AnsiColour
     }
 
     /// Ctor for an `AnsiColourType.eightBit`
-    this(ubyte eightBit, IsBgColour isBg = IsBgColour.no)
+    @nogc
+    this(ubyte eightBit, IsBgColour isBg = IsBgColour.no) nothrow pure
     {
         this._value.eightBit = eightBit;
         this._type           = AnsiColourType.eightBit;
@@ -111,7 +114,8 @@ struct AnsiColour
     }
 
     /// Ctor for an `AnsiColourType.rgb`.
-    this(ubyte r, ubyte g, ubyte b, IsBgColour isBg = IsBgColour.no)
+    @nogc
+    this(ubyte r, ubyte g, ubyte b, IsBgColour isBg = IsBgColour.no) nothrow pure
     {        
         this._value.rgb = AnsiRgbColour(r, g, b);
         this._type      = AnsiColourType.eightBit;
@@ -119,7 +123,8 @@ struct AnsiColour
     }
 
     /// ditto
-    this(AnsiRgbColour rgb, IsBgColour isBg = IsBgColour.no)
+    @nogc
+    this(AnsiRgbColour rgb, IsBgColour isBg = IsBgColour.no) nothrow pure
     {
         this(rgb.r, rgb.g, rgb.b, isBg);
     }
@@ -131,7 +136,7 @@ struct AnsiColour
      + Returns:
      +  This `AnsiColour` as an incomplete ANSI command.
      + ++/
-    string toString() const
+    string toString() const pure
     {
         import std.format : format;
 
@@ -153,6 +158,8 @@ struct AnsiColour
                 return "%s;2;%s;%s;%s".format(marker, value.r, value.g, value.b);
         }
     }
+
+    @safe @nogc nothrow pure:
     
     /// Returns: The `AnsiColourType` of this `AnsiColour`.
     @property
@@ -278,7 +285,8 @@ alias AnsiComponents = string[2 + FLAG_COUNT]; // fg + bg + all supported flags.
  + See_Also:
  +  `createAnsiCommandString` to create an ANSI command string from an `AnsiComponents`.
  + ++/
-size_t populateActiveAnsiComponents(ref scope AnsiComponents components, AnsiColour fg, AnsiColour bg, AnsiTextFlags flags)
+@safe
+size_t populateActiveAnsiComponents(ref scope AnsiComponents components, AnsiColour fg, AnsiColour bg, AnsiTextFlags flags) pure
 {
     size_t componentIndex;
     components[] = null;
@@ -307,7 +315,8 @@ size_t populateActiveAnsiComponents(ref scope AnsiComponents components, AnsiCol
  + Returns:
  +  All of the component strings inside of `components`, formatted as a valid ANSI command string.
  + ++/
-string createAnsiCommandString(ref scope AnsiComponents components)
+@safe
+string createAnsiCommandString(ref scope AnsiComponents components) pure
 {
     import std.algorithm : joiner, filter;
     import std.format    : format;
@@ -334,6 +343,7 @@ string createAnsiCommandString(ref scope AnsiComponents components)
  +
  +  AnsiText uses `toString` to provide the final output, making it easily used with the likes of `writeln` and `format`.
  + ++/
+@safe
 struct AnsiText
 {
     import std.format : format;
@@ -341,7 +351,8 @@ struct AnsiText
     /// The ANSI command to reset all styling.
     public static const RESET_COMMAND = "\033[0m";
 
-    private
+    @nogc
+    private nothrow pure
     {
         string        _cachedText;
         const(char)[] _text;
@@ -384,7 +395,8 @@ struct AnsiText
     }
 
     ///
-    this(const(char)[] text)
+    @safe @nogc
+    this(const(char)[] text) nothrow pure
     {
         this._text = text;
         this._bg.isBg = true;
@@ -398,7 +410,8 @@ struct AnsiText
      + Returns:
      +  The ANSI escape-coded text.
      + ++/
-    string toString()
+    @safe
+    string toString() pure
     {
         if(this._bg.type == AnsiColourType.none 
         && this._fg.type == AnsiColourType.none
@@ -415,11 +428,13 @@ struct AnsiText
         // Then join them together.
         this._cachedText = "%s%s%s".format(
             components.createAnsiCommandString(), 
-            cast(string)this._text, // cast(string) is so format doesn't format as an array.
+            this._text,
             AnsiText.RESET_COMMAND
         ); 
         return this._cachedText;
     }
+
+    @safe @nogc nothrow pure:
 
     /// Sets the foreground/background as a 4-bit colour. Widest supported option.
     ref AnsiText fg(Ansi4BitColour fourBit) return    { return this.setColour4  (this._fg, fourBit);  }
@@ -492,11 +507,13 @@ struct AnsiText
 /++
  + A helper UFCS function used to fluently convert any piece of text into an `AnsiText`.
  + ++/
-AnsiText ansi(const char[] text)
+@safe @nogc
+AnsiText ansi(const char[] text) nothrow pure
 {
     return AnsiText(text);
 }
 ///
+@safe
 unittest
 {
     assert("Hello".ansi.toString() == "Hello");
