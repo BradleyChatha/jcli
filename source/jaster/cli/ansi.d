@@ -483,15 +483,15 @@ struct AnsiText
     }
 
     /// Gets the `AnsiColour` used as the foreground (text colour).
-    @property
-    AnsiColour getFg() const
+    //@property
+    AnsiColour fg() const
     {
         return this._fg;
     }
 
     /// Gets the `AnsiColour` used as the background.
-    @property
-    AnsiColour getBg() const
+    //@property
+    AnsiColour bg() const
     {
         return this._bg;
     }

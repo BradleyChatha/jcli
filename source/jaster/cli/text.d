@@ -627,8 +627,8 @@ struct TextBufferWriter
         const bg    = this.bg;
         const flags = this.flags;
 
-        this.fg    = text.getFg(); // TODO: These names need to become consistant.
-        this.bg    = text.getBg();
+        this.fg    = text.fg;
+        this.bg    = text.bg;
         this.flags = text.flags();
 
         this.write(x, y, text.rawText); // Can only fail asserts, never exceptions, so we don't need scope(exit/failure).
