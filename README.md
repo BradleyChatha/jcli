@@ -64,6 +64,10 @@ For sub-commands, simply populate the name field of `@Command`, e.g. `@Command("
 
 There are documented examples within the [examples](https://github.com/SealabJaster/jcli/tree/master/examples) folder.
 
+## Changelog
+
+I publish changelogs over at [my website](https://bradley.chatha.dev/Blog/JcliNews).
+
 ## Quick Start
 
 Include this library in your project (e.g. `dub add jcli`).
