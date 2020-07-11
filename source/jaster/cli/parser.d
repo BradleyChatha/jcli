@@ -63,6 +63,7 @@ struct ArgToken
  +  '--name ARG' - Longhand with argument.
  +  '--name=ARG' - Longhand with argument with an equals sign. The equals sign is removed from the token output.
  + ++/
+@safe
 struct ArgPullParser
 {
     /// Variables ///
@@ -270,6 +271,7 @@ struct ArgPullParser
     }
 }
 ///
+@safe
 unittest
 {
     import std.array : array;
@@ -321,12 +323,14 @@ unittest
 }
 
 @("Issue: .init.empty must be true")
+@safe
 unittest
 {
     assert(ArgPullParser.init.empty);
 }
 
 @("Test unparsedArgs")
+@safe
 unittest
 {
     auto args = 
