@@ -11,6 +11,8 @@ JCLI is a library to aid in the creation of command line tooling, with an aim of
 the individual parts of the library to be used on their own, allowing more dedicated users some tools to create their own
 customised core.
 
+As a firm believer of good documentation, JCLI is completely documented with in-depth explanations where needed.
+
 ![Example gif](https://i.imgur.com/n5kCLVW.gif)
 
 ## Components
@@ -63,6 +65,10 @@ For sub-commands, simply populate the name field of `@Command`, e.g. `@Command("
 ## Examples
 
 There are documented examples within the [examples](https://github.com/SealabJaster/jcli/tree/master/examples) folder.
+
+Other than there, here's a list of projects/scripts using JCLI:
+
+* [JCLI's test runner](https://github.com/SealabJaster/jcli/blob/master/examples/test.d)
 
 ## Changelog
 
