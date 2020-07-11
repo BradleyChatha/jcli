@@ -39,8 +39,8 @@ struct AssertEvenCommand
     /++
      + EXAMPLE USAGE:
      +  test.exe 20           -> status code 0
-     +  test.exe 21           -> status code -1
-     +  test.exe 20 --reverse -> status code -1
+     +  test.exe 21           -> status code 128
+     +  test.exe 20 --reverse -> status code 128
      +  test.exe 21 --reverse -> status code 0
      + ++/
 }
