@@ -2,7 +2,7 @@
 module jaster.cli.text;
 
 import std.typecons : Flag;
-import jaster.cli.ansi : TextBufferChar;
+import jaster.cli.ansi : AnsiChar;
 
 /// Contains options for the `lineWrap` function.
 struct LineWrapOptions
@@ -220,7 +220,7 @@ struct TextBufferBounds
 }
 
 /++
- + A mutable random-access range of `TextBufferChar`s that belongs to a certain bounded area (`TextBufferBound`) within a `TextBuffer`.
+ + A mutable random-access range of `AnsiChar`s that belongs to a certain bounded area (`TextBufferBound`) within a `TextBuffer`.
  +
  + You can use this range to go over a certain rectangular area of characters using the range API; directly index into this rectangular area,
  + and directly modify elements in this rectangular range.
@@ -232,13 +232,13 @@ struct TextBufferBounds
  +  Note that popping the elements from this range $(B does) affect indexing. So if you `popFront`, then [0] is now what was previous [1], and so on.
  +
  + Writing:
- +  This range implements `opIndexAssign` for both `char` and `TextBufferChar` parameters.
+ +  This range implements `opIndexAssign` for both `char` and `AnsiChar` parameters.
  +
  +  You can either index in a 1D way (using 1 index), or a 2D ways (using 2 indicies, $(B not implemented yet)).
  +
  +  So if you wanted to set the 7th index to a certain character, then you could do `range[6] = '0'`.
  +
- +  You could also do it like so - `range[6] = TextBufferChar(...params here)`
+ +  You could also do it like so - `range[6] = AnsiChar(...params here)`
  +
  + See_Also:
  +  `TextBufferWriter.getArea` 
@@ -252,7 +252,7 @@ struct TextBufferRange
         TextBufferBounds _bounds;
         size_t           _cursorX;
         size_t           _cursorY;
-        TextBufferChar   _front;
+        AnsiChar   _front;
 
         this(TextBuffer buffer, TextBufferBounds bounds)
         {
@@ -269,7 +269,7 @@ struct TextBufferRange
         }
 
         @property
-        ref TextBufferChar opIndexImpl(size_t i)
+        ref AnsiChar opIndexImpl(size_t i)
         {
             import std.format : format;
             assert(i < this.length, "Index out of bounds. Length = %s, Index = %s.".format(this.length, i));
@@ -306,16 +306,16 @@ struct TextBufferRange
     
     /// Returns: The character at the specified index.
     @property
-    TextBufferChar opIndex(size_t i)
+    AnsiChar opIndex(size_t i)
     {
         return this.opIndexImpl(i);
     }
 
     /++
-     + Sets the character value of the `TextBufferChar` at index `i`.
+     + Sets the character value of the `AnsiChar` at index `i`.
      +
      + Notes:
-     +  This preserves the colouring and styling of the `TextBufferChar`, as we're simply changing its value.
+     +  This preserves the colouring and styling of the `AnsiChar`, as we're simply changing its value.
      +
      + Params:
      +  ch = The character to use.
@@ -330,7 +330,7 @@ struct TextBufferRange
 
     /// ditto.
     @property
-    void opIndexAssign(TextBufferChar ch, size_t i)
+    void opIndexAssign(AnsiChar ch, size_t i)
     {
         this.opIndexImpl(i) = ch;
         this._buffer.makeDirty();
@@ -340,7 +340,7 @@ struct TextBufferRange
 
     ///
     @property
-    TextBufferChar front()
+    AnsiChar front()
     {
         return this._front;
     }
@@ -607,9 +607,9 @@ struct TextBufferWriter
      +  y = The y position.
      +
      + Returns:
-     +  The `TextBufferChar` at the given point (x, y)
+     +  The `AnsiChar` at the given point (x, y)
      + ++/
-    TextBufferChar get(size_t x, size_t y) pure
+    AnsiChar get(size_t x, size_t y) pure
     {
         const index = this._bounds.pointToIndex(x, y, this._buffer._width);
         this._bounds.assertPointInBounds(x, y, this._buffer._width, this._buffer._chars.length);
@@ -711,7 +711,7 @@ unittest
        buffer.toStringNoDupe() ~ "\n%s".format(buffer.toStringNoDupe())
     );
 
-    assert(writer.get(1, 1) == TextBufferChar(AnsiColour(Ansi4BitColour.green), AnsiColour.bgInit, AnsiTextFlags.none, 'E'));
+    assert(writer.get(1, 1) == AnsiChar(AnsiColour(Ansi4BitColour.green), AnsiColour.bgInit, AnsiTextFlags.none, 'E'));
 }
 
 @("Testing that basic operations work")
@@ -874,7 +874,7 @@ unittest
         range.popFront();
 
     // Since the range has been popped, the indicies have moved forward.
-    range[1] = TextBufferChar(AnsiColour.init, AnsiColour.init, AnsiTextFlags.none, '4');
+    range[1] = AnsiChar(AnsiColour.init, AnsiColour.init, AnsiTextFlags.none, '4');
 
     assert(buffer.toStringNoDupe() == "123D4F", buffer.toStringNoDupe());
 }
@@ -1030,8 +1030,8 @@ final class TextBuffer
 
     private
     {
-        TextBufferChar[] _charsBuffer;
-        TextBufferChar[] _chars;
+        AnsiChar[] _charsBuffer;
+        AnsiChar[] _chars;
         size_t           _width;
         size_t           _height;
 
@@ -1116,7 +1116,7 @@ final class TextBuffer
      +
      +  If you're growing the height, allocations are only made if the new height is larger than its ever been set to.
      +
-     +  As a side effect, whenever you grow the buffer the data that occupies the new space will either be `TextBufferChar.init`, or whatever
+     +  As a side effect, whenever you grow the buffer the data that occupies the new space will either be `AnsiChar.init`, or whatever
      +  was previously left there.
      +
      + Side_Effects:
@@ -1221,7 +1221,7 @@ final class TextBuffer
         // Finds the next sequence of characters that have the same foreground, background, and flags.
         // e.g. the next sequence of characters that can be used with the same ANSI command.
         // Returns `null` once we reach the end.
-        TextBufferChar[] getNextAnsiRange()
+        AnsiChar[] getNextAnsiRange()
         {
             if(ansiCharCursor >= this._chars.length)
                 return null;

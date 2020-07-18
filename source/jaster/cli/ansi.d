@@ -326,7 +326,7 @@ string createAnsiCommandString(ref scope AnsiComponents components) pure
 
 /// Contains a single character, with ANSI styling.
 @safe
-struct TextBufferChar 
+struct AnsiChar 
 {
     import jaster.cli.ansi : AnsiColour, AnsiTextFlags, IsBgColour;
 
