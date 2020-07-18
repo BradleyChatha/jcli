@@ -1007,10 +1007,10 @@ unittest
                 ~ "World".ansi.fg(255, 0, 255).italic.toString();
 
     const chars = input.asAnsiChars.array;
-    // assert(
-    //     chars.length == "HelloWorld".length, 
-    //     "Expected length of %s not %s\n%s".format("HelloWorld".length, chars.length, chars)
-    // );
+    assert(
+        chars.length == "HelloWorld".length, 
+        "Expected length of %s not %s\n%s".format("HelloWorld".length, chars.length, chars)
+    );
 
     // Styling for both sections
     const style1 = AnsiChar(AnsiColour(Ansi4BitColour.green), AnsiColour(20, IsBgColour.yes), AnsiTextFlags.bold);
