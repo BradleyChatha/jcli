@@ -729,15 +729,7 @@ if(isSomeChar!Char)
         this._current.type  = AnsiSectionType.text;
     }
 }
-
-/// Returns: A new `AnsiSectionRange` using the given `input`.
-@safe @nogc
-AnsiSectionRange!Char asAnsiSections(Char)(const Char[] input) nothrow pure
-if(isSomeChar!Char)
-{
-    return AnsiSectionRange!Char(input);
-}
-
+///
 @("Test AnsiSectionRange for only text, only ansi, and a mixed string.")
 @safe
 unittest
@@ -746,7 +738,7 @@ unittest
 
     const onlyText = "Hello, World!";
     const onlyAnsi = "\033[30m\033[0m";
-    const mixed    = "\033[30mHello, \033[0mWorld!";
+    const mixed    = "\033[30;1;2mHello, \033[0mWorld!";
 
     void test(string input, AnsiSection[] expectedSections)
     {
@@ -761,13 +753,21 @@ unittest
     test(onlyAnsi, [AnsiSection(AnsiSectionType.escapeSequence, "30"), AnsiSection(AnsiSectionType.escapeSequence, "0")]);
     test(mixed,
     [
-        AnsiSection(AnsiSectionType.escapeSequence, "30"),
+        AnsiSection(AnsiSectionType.escapeSequence, "30;1;2"),
         AnsiSection(AnsiSectionType.text,           "Hello, "),
         AnsiSection(AnsiSectionType.escapeSequence, "0"),
         AnsiSection(AnsiSectionType.text,           "World!")
     ]);
 
     assert(mixed.asAnsiSections.array.length == 4);
+}
+
+/// Returns: A new `AnsiSectionRange` using the given `input`.
+@safe @nogc
+AnsiSectionRange!Char asAnsiSections(Char)(const Char[] input) nothrow pure
+if(isSomeChar!Char)
+{
+    return AnsiSectionRange!Char(input);
 }
 
 private enum MAX_SGR_ARGS         = 4;     // 2;r;g;b being max... I think
@@ -1014,27 +1014,7 @@ struct AsAnsiCharRange(R)
         return (slice.length == 0) ? DEFAULT_SGR_ARG : slice; // Empty params are counted as 0.
     }
 }
-
-/++
- + Notes:
- +  Reminder that `AnsiSection.value` shouldn't include the starting `"\033["` and ending `'m'` when it
- +  contains an ANSI sequence.
- +
- + Returns:
- +  An `AsAnsiCharRange` wrapped around `range`.
- + ++/
-AsAnsiCharRange!R asAnsiChars(R)(R range)
-{
-    return typeof(return)(range);
-}
-
-/// Returns: An `AsAnsiCharRange` wrapped around an `AnsiSectionRange` wrapped around `input`.
-@safe
-AsAnsiCharRange!(AnsiSectionRange!char) asAnsiChars(const char[] input) pure
-{
-    return typeof(return)(input.asAnsiSections);
-}
-
+///
 @("Test AsAnsiCharRange")
 @safe
 unittest
@@ -1064,6 +1044,26 @@ unittest
     }
 
     assert("".asAnsiChars.array.length == 0);
+}
+
+/++
+ + Notes:
+ +  Reminder that `AnsiSection.value` shouldn't include the starting `"\033["` and ending `'m'` when it
+ +  contains an ANSI sequence.
+ +
+ + Returns:
+ +  An `AsAnsiCharRange` wrapped around `range`.
+ + ++/
+AsAnsiCharRange!R asAnsiChars(R)(R range)
+{
+    return typeof(return)(range);
+}
+
+/// Returns: An `AsAnsiCharRange` wrapped around an `AnsiSectionRange` wrapped around `input`.
+@safe
+AsAnsiCharRange!(AnsiSectionRange!char) asAnsiChars(const char[] input) pure
+{
+    return typeof(return)(input.asAnsiSections);
 }
 
 /// On windows - enable ANSI support.
