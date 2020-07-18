@@ -2,6 +2,7 @@
 module jaster.cli.text;
 
 import std.typecons : Flag;
+import jaster.cli.ansi : TextBufferChar;
 
 /// Contains options for the `lineWrap` function.
 struct LineWrapOptions
@@ -106,48 +107,6 @@ unittest
 
     assert(text[$-1] != '\n', "lineWrap is inserting a new line at the end again.");
     assert(text == "abc\ndef\ngh", text);
-}
-
-/// Contains a single character, with ANSI styling.
-@safe
-struct TextBufferChar 
-{
-    import jaster.cli.ansi : AnsiColour, AnsiTextFlags, IsBgColour;
-
-    /// foreground
-    AnsiColour    fg;
-    /// background by reference
-    AnsiColour    bgRef;
-    /// flags
-    AnsiTextFlags flags;
-    /// character
-    char          value;
-
-    @nogc nothrow pure:
-
-    /++
-     + Returns:
-     +  Whether this character needs an ANSI control code or not.
-     + ++/
-    @property
-    bool usesAnsi() const
-    {
-        return this.fg    != AnsiColour.init
-            || (this.bg   != AnsiColour.init && this.bg != AnsiColour.bgInit)
-            || this.flags != AnsiTextFlags.none;
-    }
-
-    /// Set the background (automatically sets `value.isBg` to `yes`)
-    @property
-    void bg(AnsiColour value)
-    {
-        value.isBg = IsBgColour.yes;
-        this.bgRef = value;
-    }
-
-    /// Get the background.
-    @property
-    AnsiColour bg() const { return this.bgRef; }
 }
 
 /++

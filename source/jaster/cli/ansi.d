@@ -324,6 +324,48 @@ string createAnsiCommandString(ref scope AnsiComponents components) pure
     return "\033[%sm".format(components[].filter!(s => s !is null).joiner(";")); 
 }
 
+/// Contains a single character, with ANSI styling.
+@safe
+struct TextBufferChar 
+{
+    import jaster.cli.ansi : AnsiColour, AnsiTextFlags, IsBgColour;
+
+    /// foreground
+    AnsiColour    fg;
+    /// background by reference
+    AnsiColour    bgRef;
+    /// flags
+    AnsiTextFlags flags;
+    /// character
+    char          value;
+
+    @nogc nothrow pure:
+
+    /++
+     + Returns:
+     +  Whether this character needs an ANSI control code or not.
+     + ++/
+    @property
+    bool usesAnsi() const
+    {
+        return this.fg    != AnsiColour.init
+            || (this.bg   != AnsiColour.init && this.bg != AnsiColour.bgInit)
+            || this.flags != AnsiTextFlags.none;
+    }
+
+    /// Set the background (automatically sets `value.isBg` to `yes`)
+    @property
+    void bg(AnsiColour value)
+    {
+        value.isBg = IsBgColour.yes;
+        this.bgRef = value;
+    }
+
+    /// Get the background.
+    @property
+    AnsiColour bg() const { return this.bgRef; }
+}
+
 /++
  + A struct used to compose together a piece of ANSI text.
  +
