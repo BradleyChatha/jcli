@@ -118,7 +118,7 @@ struct AnsiColour
     this(ubyte r, ubyte g, ubyte b, IsBgColour isBg = IsBgColour.no) nothrow pure
     {        
         this._value.rgb = AnsiRgbColour(r, g, b);
-        this._type      = AnsiColourType.eightBit;
+        this._type      = AnsiColourType.rgb;
         this._isBg      = isBg;
     }
 
@@ -402,26 +402,26 @@ struct AnsiText
         AnsiColour    _bg;
         AnsiTextFlags _flags;
 
-        ref AnsiText setColour(T)(ref AnsiColour colour, T value) return
+        ref AnsiText setColour(T)(ref AnsiColour colour, T value, IsBgColour isBg) return
         {
-            colour = AnsiColour(value);
+            colour = AnsiColour(value, isBg);
             this._cachedText = null;
             return this;
         }
 
-        ref AnsiText setColour4(ref AnsiColour colour, Ansi4BitColour value) return
+        ref AnsiText setColour4(ref AnsiColour colour, Ansi4BitColour value, IsBgColour isBg) return
         {
-            return this.setColour(colour, Ansi4BitColour(value));
+            return this.setColour(colour, Ansi4BitColour(value), isBg);
         }
 
-        ref AnsiText setColour8(ref AnsiColour colour, ubyte value) return
+        ref AnsiText setColour8(ref AnsiColour colour, ubyte value, IsBgColour isBg) return
         {
-            return this.setColour(colour, value);
+            return this.setColour(colour, value, isBg);
         }
 
-        ref AnsiText setColourRgb(ref AnsiColour colour, ubyte r, ubyte g, ubyte b) return
+        ref AnsiText setColourRgb(ref AnsiColour colour, ubyte r, ubyte g, ubyte b, IsBgColour isBg) return
         {
-            return this.setColour(colour, AnsiRgbColour(r, g, b));
+            return this.setColour(colour, AnsiRgbColour(r, g, b), isBg);
         }
 
         ref AnsiText setFlag(AnsiTextFlags flag, bool isSet) return
@@ -479,19 +479,19 @@ struct AnsiText
     @safe @nogc nothrow pure:
 
     /// Sets the foreground/background as a 4-bit colour. Widest supported option.
-    ref AnsiText fg(Ansi4BitColour fourBit) return    { return this.setColour4  (this._fg, fourBit);  }
+    ref AnsiText fg(Ansi4BitColour fourBit) return    { return this.setColour4  (this._fg, fourBit, IsBgColour.no);   }
     /// ditto
-    ref AnsiText bg(Ansi4BitColour fourBit) return    { return this.setColour4  (this._bg, fourBit);  }
+    ref AnsiText bg(Ansi4BitColour fourBit) return    { return this.setColour4  (this._bg, fourBit, IsBgColour.yes);  }
 
     /// Sets the foreground/background as an 8-bit colour. Please see this image for reference: https://i.stack.imgur.com/KTSQa.png
-    ref AnsiText fg(ubyte eightBit) return            { return this.setColour8  (this._fg, eightBit); }
+    ref AnsiText fg(ubyte eightBit) return            { return this.setColour8  (this._fg, eightBit, IsBgColour.no);  }
     /// ditto
-    ref AnsiText bg(ubyte eightBit) return            { return this.setColour8  (this._bg, eightBit); }
+    ref AnsiText bg(ubyte eightBit) return            { return this.setColour8  (this._bg, eightBit, IsBgColour.yes); }
 
     /// Sets the forground/background as an RGB colour.
-    ref AnsiText fg(ubyte r, ubyte g, ubyte b) return { return this.setColourRgb(this._fg, r, g, b);  }
+    ref AnsiText fg(ubyte r, ubyte g, ubyte b) return { return this.setColourRgb(this._fg, r, g, b, IsBgColour.no);   }
     /// ditto
-    ref AnsiText bg(ubyte r, ubyte g, ubyte b) return { return this.setColourRgb(this._bg, r, g, b);  }
+    ref AnsiText bg(ubyte r, ubyte g, ubyte b) return { return this.setColourRgb(this._bg, r, g, b, IsBgColour.yes);  }
 
     /// Sets whether the text is bold.
     ref AnsiText bold     (bool isSet = true) return { return this.setFlag(AnsiTextFlags.bold,      isSet); }
@@ -568,8 +568,8 @@ enum AnsiSectionType
 {
     /// Default/Failsafe value
     ERROR,
-    Text,
-    EscapeSequence
+    text,
+    escapeSequence
 }
 
 /++
@@ -593,7 +593,7 @@ if(isSomeChar!Char)
      + The value of this section.
      +
      + Notes:
-     +  For sections that contain an ANSI sequence (`AnsiSectionType.EscapeSequence`), the starting characters (`\033[`) and
+     +  For sections that contain an ANSI sequence (`AnsiSectionType.escapeSequence`), the starting characters (`\033[`) and
      +  ending character ('m') are stripped from this value.
      + ++/
     const(Char)[] value;
@@ -606,13 +606,13 @@ if(isSomeChar!Char)
     /// Returns: Whether this section contains plain text.
     bool isTextSection()
     {
-        return this.type == AnsiSectionType.Text;
+        return this.type == AnsiSectionType.text;
     }
 
     /// Returns: Whether this section contains an ANSI escape sequence.
     bool isSequenceSection()
     {
-        return this.type == AnsiSectionType.EscapeSequence;
+        return this.type == AnsiSectionType.escapeSequence;
     }
 }
 
@@ -697,11 +697,11 @@ if(isSomeChar!Char)
             this._current.value = this._input[start..this._index];
             if(foundM)
             {
-                this._current.type = AnsiSectionType.EscapeSequence;
+                this._current.type = AnsiSectionType.escapeSequence;
                 this._index++; // Skip over the 'm'
             }
             else
-                this._current.type = AnsiSectionType.Text;
+                this._current.type = AnsiSectionType.text;
 
             return;
         }
@@ -726,7 +726,7 @@ if(isSomeChar!Char)
         }
 
         this._current.value = this._input[start..this._index];
-        this._current.type  = AnsiSectionType.Text;
+        this._current.type  = AnsiSectionType.text;
     }
 }
 
@@ -742,6 +742,8 @@ if(isSomeChar!Char)
 @safe
 unittest
 {
+    import std.array : array;
+
     const onlyText = "Hello, World!";
     const onlyAnsi = "\033[30m\033[0m";
     const mixed    = "\033[30mHello, \033[0mWorld!";
@@ -755,23 +757,275 @@ unittest
         assert(range.equal(expectedSections), "Expected:\n%s\nGot:\n%s".format(expectedSections, range));
     }
 
-    test(onlyText, [AnsiSection(AnsiSectionType.Text, "Hello, World!")]);
-    test(onlyAnsi, [AnsiSection(AnsiSectionType.EscapeSequence, "30"), AnsiSection(AnsiSectionType.EscapeSequence, "0")]);
+    test(onlyText, [AnsiSection(AnsiSectionType.text, "Hello, World!")]);
+    test(onlyAnsi, [AnsiSection(AnsiSectionType.escapeSequence, "30"), AnsiSection(AnsiSectionType.escapeSequence, "0")]);
     test(mixed,
     [
-        AnsiSection(AnsiSectionType.EscapeSequence, "30"),
-        AnsiSection(AnsiSectionType.Text,           "Hello, "),
-        AnsiSection(AnsiSectionType.EscapeSequence, "0"),
-        AnsiSection(AnsiSectionType.Text,           "World!")
+        AnsiSection(AnsiSectionType.escapeSequence, "30"),
+        AnsiSection(AnsiSectionType.text,           "Hello, "),
+        AnsiSection(AnsiSectionType.escapeSequence, "0"),
+        AnsiSection(AnsiSectionType.text,           "World!")
     ]);
+
+    assert(mixed.asAnsiSections.array.length == 4);
 }
 
-// ByAnsiCharRange!Char byAnsiChar(Char)(const Char[] input)
-// if(isSomeChar!Char)
-// {
-//     return ByAnsiCharRange!Char(input);
-// }
-// alias T = byAnsiChar!char;
+private enum MAX_SGR_ARGS         = 4;     // 2;r;g;b being max... I think
+private immutable DEFAULT_SGR_ARG = ['0']; // Missing params are treated as 0
+
+@trusted @nogc
+private void executeSgrCommand(ubyte command, ubyte[MAX_SGR_ARGS] args, ref AnsiColour foreground, ref AnsiColour background, ref AnsiTextFlags flags) nothrow pure
+{
+    // Pre-testing me: I hope to god this works first time.
+    // During-testing me: It didn't
+    switch(command)
+    {
+        case 0:
+            foreground = AnsiColour.init;
+            background = AnsiColour.init;
+            flags      = AnsiTextFlags.init;
+            break;
+
+        case 1: flags |= AnsiTextFlags.bold;        break;
+        case 2: flags |= AnsiTextFlags.dim;         break;
+        case 3: flags |= AnsiTextFlags.italic;      break;
+        case 4: flags |= AnsiTextFlags.underline;   break;
+        case 5: flags |= AnsiTextFlags.slowBlink;   break;
+        case 6: flags |= AnsiTextFlags.fastBlink;   break;
+        case 7: flags |= AnsiTextFlags.invert;      break;
+        case 9: flags |= AnsiTextFlags.strike;      break;
+
+        case 22: flags &= ~(AnsiTextFlags.bold | AnsiTextFlags.dim);            break;
+        case 23: flags &= ~AnsiTextFlags.italic;                                break;
+        case 24: flags &= ~AnsiTextFlags.underline;                             break;
+        case 25: flags &= ~(AnsiTextFlags.slowBlink | AnsiTextFlags.fastBlink); break;
+        case 27: flags &= ~AnsiTextFlags.invert;                                break;
+        case 29: flags &= ~AnsiTextFlags.strike;                                break;
+
+        case 30: case 90: case 40: case 100:
+        case 31: case 91: case 41: case 101:
+        case 32: case 92: case 42: case 102:
+        case 33: case 93: case 43: case 103:
+        case 34: case 94: case 44: case 104:
+        case 35: case 95: case 45: case 105:
+        case 36: case 96: case 46: case 106:
+        case 37: case 97: case 47: case 107:
+            scope colour = (command >= 30 && command <= 37) || (command >= 90 && command <= 97)
+                           ? &foreground
+                           : &background;
+            *colour = AnsiColour(cast(Ansi4BitColour)command);
+            break;
+
+        case 38: case 48:
+            const isFg   = (command == 38);
+            scope colour = (isFg) ? &foreground : &background;
+                 *colour = (args[0] == 5) // 5 = Pallette, 2 = RGB.
+                           ? AnsiColour(args[1])
+                           : (args[0] == 2)
+                             ? AnsiColour(args[1], args[2], args[3])
+                             : AnsiColour.init;
+                colour.isBg = cast(IsBgColour)!isFg;
+            break;
+
+        default: break; // Ignore anything we don't support or care about.
+    }
+}
+
+struct AsAnsiCharRange(R)
+{
+    import std.range : ElementType;
+    static assert(
+        is(ElementType!R == AnsiSection), 
+        "Range "~R.stringof~" must be a range of AnsiSections, not "~ElementType!R.stringof
+    );
+
+    private
+    {
+        R           _sections;
+        AnsiChar    _front;
+        AnsiSection _currentSection;
+        size_t      _indexIntoSection;
+    }
+
+    @safe pure:
+
+    this(R range)
+    {
+        this._sections = range;
+        this.popFront();
+    }
+
+    AnsiChar front()
+    {
+        return this._front;
+    }
+
+    bool empty()
+    {
+        return this._front == AnsiChar.init;
+    }
+
+    void popFront()
+    {
+        if(this._sections.empty && this._currentSection == AnsiSection.init)
+        {
+            this._front = AnsiChar.init;
+            return;
+        }
+
+        // Check if we need to fetch the next section.
+        if(this._indexIntoSection >= this._currentSection.value.length)
+            this.nextSection();
+
+        // For text sections, just return the next character. For sequences, set the new settings.
+        if(this._currentSection.isTextSection)
+        {
+            this._front.value = this._currentSection.value[this._indexIntoSection++];
+            
+            // If we've reached the end of the final section, make the next call to this function set .empty to true.
+            if(this._sections.empty && this._indexIntoSection >= this._currentSection.value.length)
+                this._currentSection = AnsiSection.init;
+
+            return;
+        }
+
+        ubyte[MAX_SGR_ARGS] args;
+        while(this._indexIntoSection < this._currentSection.value.length)
+        {
+            import std.conv : to;
+            const param = this.readNextAnsiParam().to!ubyte;
+
+            // Again, since this code might become a function later, I'm doing things a bit weirdly as pre-prep
+            switch(param)
+            {
+                // Set fg or bg.
+                case 38:
+                case 48:
+                    args[] = 0;
+                    args[0] = this.readNextAnsiParam().to!ubyte; // 5 = Pallette, 2 = RGB
+
+                    if(args[0] == 5)
+                        args[1] = this.readNextAnsiParam().to!ubyte;
+                    else if(args[0] == 2)
+                    {
+                        foreach(i; 0..3)
+                            args[1 + i] = this.readNextAnsiParam().to!ubyte;
+                    }
+                    break;
+                
+                default: break;
+            }
+
+            executeSgrCommand(param, args, this._front.fg, this._front.bgRef, this._front.flags);
+        }
+
+        // If this was the last section, then we need to set .empty to true since we have no more text to give back anyway.
+        if(this._sections.empty())
+        {
+            import std.stdio : writeln;
+
+            this._front = AnsiChar.init;
+            this._currentSection = AnsiSection.init;
+        }
+        else // Otherwise, get the next char!
+            this.popFront();
+    }
+
+    private void nextSection()
+    {
+        if(this._sections.empty)
+            return;
+
+        this._indexIntoSection = 0;
+        this._currentSection   = this._sections.front;
+        this._sections.popFront();
+    }
+
+    private const(char)[] readNextAnsiParam()
+    {
+        size_t start = this._indexIntoSection;
+        const(char)[] slice;
+
+        // Read until end or semi-colon. We're only expecting SGR codes because... it doesn't really make sense for us to handle the others.
+        for(; this._indexIntoSection < this._currentSection.value.length; this._indexIntoSection++)
+        {
+            const ch = this._currentSection.value[this._indexIntoSection];
+            switch(ch)
+            {
+                // I *swear* you could do something like `case '0'..'9'`, but I appear to be wrong here?
+                case '0':
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9':
+                    break;
+
+                case ';':
+                    slice = this._currentSection.value[start..this._indexIntoSection++]; // ++ to move past the semi-colon.
+                    break;
+
+                default:
+                    throw new Exception("Unexpected character in ANSI escape sequence: '"~ch~"'");
+            }
+
+            if(slice !is null)
+                break;
+        }
+
+        // In case the final delim is simply EOF
+        if(slice is null && start < this._currentSection.value.length)
+            slice = this._currentSection.value[start..$];
+
+        return (slice.length == 0) ? DEFAULT_SGR_ARG : slice; // Empty params are counted as 0.
+    }
+}
+
+AsAnsiCharRange!R asAnsiChars(R)(R range)
+{
+    return typeof(return)(range);
+}
+
+@safe
+AsAnsiCharRange!(AnsiSectionRange!char) asAnsiChars(const char[] input) pure
+{
+    return typeof(return)(input.asAnsiSections);
+}
+
+@("Test AsAnsiCharRange")
+@safe
+unittest
+{
+    import std.array  : array;
+    import std.format : format;
+
+    const input = "Hello".ansi.fg(Ansi4BitColour.green).bg(20).bold.toString()
+                ~ "World".ansi.fg(255, 0, 255).italic.toString();
+
+    const chars = input.asAnsiChars.array;
+    // assert(
+    //     chars.length == "HelloWorld".length, 
+    //     "Expected length of %s not %s\n%s".format("HelloWorld".length, chars.length, chars)
+    // );
+
+    // Styling for both sections
+    const style1 = AnsiChar(AnsiColour(Ansi4BitColour.green), AnsiColour(20, IsBgColour.yes), AnsiTextFlags.bold);
+    const style2 = AnsiChar(AnsiColour(255, 0, 255), AnsiColour.init, AnsiTextFlags.italic);
+
+    foreach(i, ch; chars)
+    {
+        AnsiChar style = (i < 5) ? style1 : style2;
+        style.value    = ch.value;
+
+        assert(ch == style, "Char #%s doesn't match.\nExpected: %s\nGot: %s".format(i, style, ch));
+    }
+
+    assert("".asAnsiChars.array.length == 0);
+}
 
 /// On windows - enable ANSI support.
 version(Windows)
