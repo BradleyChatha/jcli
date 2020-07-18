@@ -1,7 +1,7 @@
 /// Utilities to create ANSI coloured text.
 module jaster.cli.ansi;
 
-import std.traits : EnumMembers;
+import std.traits : EnumMembers, isSomeChar;
 import std.typecons : Flag;
 
 alias IsBgColour = Flag!"isBackgroundAnsi";
@@ -562,6 +562,163 @@ unittest
     assert("Hello".ansi.fg(Ansi4BitColour.black).toString() == "\033[30mHello\033[0m");
     assert("Hello".ansi.bold.strike.bold(false).italic.toString() == "\033[3;9mHello\033[0m");
 }
+
+enum AnsiSectionType
+{
+    ERROR,
+    Text,
+    EscapeSequence
+}
+
+struct AnsiSectionBase(Char)
+if(isSomeChar!Char)
+{
+    AnsiSectionType type;
+    const(Char)[]   value;
+
+    bool isTextSection()
+    {
+        return this.type == AnsiSectionType.Text;
+    }
+
+    bool isSequenceSection()
+    {
+        return this.type == AnsiSectionType.EscapeSequence;
+    }
+}
+
+alias AnsiSection = AnsiSectionBase!char;
+
+struct AnsiSectionRange(Char)
+if(isSomeChar!Char)
+{
+    private
+    {
+        const(Char)[]        _input;
+        size_t               _index;
+        AnsiSectionBase!Char _current;
+    }
+
+    this(const Char[] input)
+    {
+        this._input = input;
+        this.popFront();
+    }
+
+    AnsiSectionBase!Char front()
+    {
+        return this._current;
+    }
+
+    bool empty()
+    {
+        return this._current == AnsiSectionBase!Char.init;
+    }
+
+    void popFront()
+    {
+        if(this._index >= this._input.length)
+        {
+            this._current = AnsiSectionBase!Char.init; // .empty condition.
+            return;
+        }
+        
+        const isNextSectionASequence = this._index <= this._input.length - 2
+                                    && this._input[this._index..this._index + 2] == "\033[";
+
+        // Read until end, or until an 'm'.
+        if(isNextSectionASequence)
+        {
+            // Skip the start codes
+            this._index += 2;
+
+            bool foundM  = false;
+            size_t start = this._index;
+            for(; this._index < this._input.length; this._index++)
+            {
+                if(this._input[this._index] == 'm')
+                {
+                    foundM = true;
+                    break;
+                }
+            }
+
+            // I don't know 100% what to do here, but, if we don't find an 'm' then we'll treat the sequence as text, since it's technically malformed.
+            this._current.value = this._input[start..this._index];
+            if(foundM)
+            {
+                this._current.type = AnsiSectionType.EscapeSequence;
+                this._index++; // Skip over the 'm'
+            }
+            else
+                this._current.type = AnsiSectionType.Text;
+
+            return;
+        }
+
+        // Otherwise, read until end, or an ansi start sequence.
+        size_t start              = this._index;
+        bool   foundEscape        = false;
+        bool   foundStartSequence = false;
+
+        for(; this._index < this._input.length; this._index++)
+        {
+            const ch = this._input[this._index];
+
+            if(ch == '[' && foundEscape)
+            {
+                foundStartSequence = true;
+                this._index -= 1; // To leave the start code for the next call to popFront.
+                break;
+            }
+
+            foundEscape = (ch == '\033');
+        }
+
+        this._current.value = this._input[start..this._index];
+        this._current.type  = AnsiSectionType.Text;
+    }
+}
+
+AnsiSectionRange!Char asAnsiSections(Char)(const Char[] input)
+if(isSomeChar!Char)
+{
+    return AnsiSectionRange!Char(input);
+}
+
+@("Test AnsiSectionRange for only text, only ansi, and a mixed string.")
+unittest
+{
+    const onlyText = "Hello, World!";
+    const onlyAnsi = "\033[30m\033[0m";
+    const mixed    = "\033[30mHello, \033[0mWorld!";
+
+    void test(string input, AnsiSection[] expectedSections)
+    {
+        import std.algorithm : equal;
+        import std.format    : format;
+
+        auto range = input.asAnsiSections();
+        assert(range.equal(expectedSections), "Expected:\n%s\nGot:\n%s".format(expectedSections, range));
+    }
+
+    test(onlyText, [AnsiSection(AnsiSectionType.Text, "Hello, World!")]);
+    test(onlyAnsi, [AnsiSection(AnsiSectionType.EscapeSequence, "30"), AnsiSection(AnsiSectionType.EscapeSequence, "0")]);
+    test(mixed,
+    [
+        AnsiSection(AnsiSectionType.EscapeSequence, "30"),
+        AnsiSection(AnsiSectionType.Text,           "Hello, "),
+        AnsiSection(AnsiSectionType.EscapeSequence, "0"),
+        AnsiSection(AnsiSectionType.Text,           "World!")
+    ]);
+}
+
+// ByAnsiCharRange!Char byAnsiChar(Char)(const Char[] input)
+// if(isSomeChar!Char)
+// {
+//     return ByAnsiCharRange!Char(input);
+// }
+// alias T = byAnsiChar!char;
 
 /// On windows - enable ANSI support.
 version(Windows)
