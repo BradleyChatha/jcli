@@ -802,6 +802,7 @@ private void executeSgrCommand(ubyte command, ubyte[MAX_SGR_ARGS] args, ref Ansi
         case 27: flags &= ~AnsiTextFlags.invert;                                break;
         case 29: flags &= ~AnsiTextFlags.strike;                                break;
 
+        //   FG      +FG       BG       +BG
         case 30: case 90: case 40: case 100:
         case 31: case 91: case 41: case 101:
         case 32: case 92: case 42: case 102:
@@ -831,6 +832,26 @@ private void executeSgrCommand(ubyte command, ubyte[MAX_SGR_ARGS] args, ref Ansi
     }
 }
 
+/++
+ + An InputRange that converts a range of `AnsiSection`s into a range of `AnsiChar`s.
+ +
+ + TLDR; If you have a piece of ANSI-encoded text, and you want to easily step through character by character, keeping the ANSI info, then
+ +       this range is for you.
+ +
+ + Notes:
+ +  This struct is @nogc, except for when it throws exceptions.
+ +
+ + Behaviour:
+ +  This range will only return characters that are not part of an ANSI sequence, which should hopefully end up only being visible ones.
+ +
+ +  For example, a string containing nothing but ANSI sequences won't produce any values.
+ +
+ + Params:
+ +  R = The range of `AnsiSection`s.
+ +
+ + See_Also:
+ +  `asAnsiChars` for easy creation of this struct.
+ + ++/
 struct AsAnsiCharRange(R)
 {
     import std.range : ElementType;
@@ -849,22 +870,31 @@ struct AsAnsiCharRange(R)
 
     @safe pure:
 
+    /// Creates a new instance of this struct, using `range` as the range of sections.
     this(R range)
     {
         this._sections = range;
         this.popFront();
     }
 
+    /// Returns: Last parsed character.
     AnsiChar front()
     {
         return this._front;
     }
 
+    /// Returns: Whether there's no more characters left to parse.
     bool empty()
     {
         return this._front == AnsiChar.init;
     }
 
+    /++
+     + Parses the next sections.
+     +
+     + Optimisation:
+     +  Pretty sure this is O(n)
+     + ++/
     void popFront()
     {
         if(this._sections.empty && this._currentSection == AnsiSection.init)
@@ -985,11 +1015,20 @@ struct AsAnsiCharRange(R)
     }
 }
 
+/++
+ + Notes:
+ +  Reminder that `AnsiSection.value` shouldn't include the starting `"\033["` and ending `'m'` when it
+ +  contains an ANSI sequence.
+ +
+ + Returns:
+ +  An `AsAnsiCharRange` wrapped around `range`.
+ + ++/
 AsAnsiCharRange!R asAnsiChars(R)(R range)
 {
     return typeof(return)(range);
 }
 
+/// Returns: An `AsAnsiCharRange` wrapped around an `AnsiSectionRange` wrapped around `input`.
 @safe
 AsAnsiCharRange!(AnsiSectionRange!char) asAnsiChars(const char[] input) pure
 {
