@@ -563,32 +563,76 @@ unittest
     assert("Hello".ansi.bold.strike.bold(false).italic.toString() == "\033[3;9mHello\033[0m");
 }
 
+/// Describes whether an `AnsiSectionBase` contains a piece of text, or an ANSI escape sequence.
 enum AnsiSectionType
 {
+    /// Default/Failsafe value
     ERROR,
     Text,
     EscapeSequence
 }
 
+/++
+ + Contains an section of text, with an additional field to specify whether the
+ + section contains plain text, or an ANSI escape sequence.
+ +
+ + Params:
+ +  Char = What character type is used.
+ +
+ + See_Also:
+ +  `AnsiSection` alias for ease-of-use.
+ + ++/
+@safe
 struct AnsiSectionBase(Char)
 if(isSomeChar!Char)
 {
+    /// The type of data stored in this section.
     AnsiSectionType type;
-    const(Char)[]   value;
 
+    /++
+     + The value of this section.
+     +
+     + Notes:
+     +  For sections that contain an ANSI sequence (`AnsiSectionType.EscapeSequence`), the starting characters (`\033[`) and
+     +  ending character ('m') are stripped from this value.
+     + ++/
+    const(Char)[] value;
+
+    // Making comparisons with enums can be a bit too clunky, so these helper functions should hopefully
+    // clean things up.
+
+    @safe @nogc nothrow pure const:
+
+    /// Returns: Whether this section contains plain text.
     bool isTextSection()
     {
         return this.type == AnsiSectionType.Text;
     }
 
+    /// Returns: Whether this section contains an ANSI escape sequence.
     bool isSequenceSection()
     {
         return this.type == AnsiSectionType.EscapeSequence;
     }
 }
 
+/// An `AnsiSectionBase` that uses `char` as the character type, a.k.a what's going to be used 99% of the time.
 alias AnsiSection = AnsiSectionBase!char;
 
+/++
+ + An InputRange that turns an array of `Char`s into a range of `AnsiSection`s.
+ +
+ + This isn't overly useful on its own, and is mostly so other ranges can be built on top of this.
+ +
+ + Notes:
+ +  Please see `AnsiSectionBase.value`'s documentation comment, as it explains that certain characters of an ANSI sequence are
+ +  omitted from the final output (the starting `"\033["` and the ending `'m'` specifically).
+ +
+ + Limitations:
+ +  To prevent the need for allocations or possibly buggy behaviour regarding a reusable buffer, this range can only work directly
+ +  on arrays, and not any generic char range.
+ + ++/
+@safe
 struct AnsiSectionRange(Char)
 if(isSomeChar!Char)
 {
@@ -599,22 +643,28 @@ if(isSomeChar!Char)
         AnsiSectionBase!Char _current;
     }
 
+    @nogc pure nothrow:
+
+    /// Creates an `AnsiSectionRange` from the given `input`.
     this(const Char[] input)
     {
         this._input = input;
         this.popFront();
     }
 
+    /// Returns: The latest-parsed `AnsiSection`.
     AnsiSectionBase!Char front()
     {
         return this._current;
     }
 
+    /// Returns: Whether there's no more text to parse.
     bool empty()
     {
         return this._current == AnsiSectionBase!Char.init;
     }
 
+    /// Parses the next section.
     void popFront()
     {
         if(this._index >= this._input.length)
@@ -680,13 +730,16 @@ if(isSomeChar!Char)
     }
 }
 
-AnsiSectionRange!Char asAnsiSections(Char)(const Char[] input)
+/// Returns: A new `AnsiSectionRange` using the given `input`.
+@safe @nogc
+AnsiSectionRange!Char asAnsiSections(Char)(const Char[] input) nothrow pure
 if(isSomeChar!Char)
 {
     return AnsiSectionRange!Char(input);
 }
 
 @("Test AnsiSectionRange for only text, only ansi, and a mixed string.")
+@safe
 unittest
 {
     const onlyText = "Hello, World!";
