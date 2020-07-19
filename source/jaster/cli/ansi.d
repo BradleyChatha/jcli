@@ -830,6 +830,9 @@ private void executeSgrCommand(ubyte command, ubyte[MAX_SGR_ARGS] args, ref Ansi
 
         default: break; // Ignore anything we don't support or care about.
     }
+
+    if(background != AnsiColour.init)
+        background.isBg = IsBgColour.yes;
 }
 
 /++
