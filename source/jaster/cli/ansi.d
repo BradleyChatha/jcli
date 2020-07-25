@@ -404,7 +404,14 @@ struct AnsiText
 
         ref AnsiText setColour(T)(ref AnsiColour colour, T value, IsBgColour isBg) return
         {
-            colour = AnsiColour(value, isBg);
+            static if(is(T == AnsiColour))
+            {
+                colour      = value;
+                colour.isBg = isBg;
+            }
+            else
+                colour = AnsiColour(value, isBg);
+
             this._cachedText = null;
             return this;
         }
@@ -493,6 +500,11 @@ struct AnsiText
     /// ditto
     ref AnsiText bg(ubyte r, ubyte g, ubyte b) return { return this.setColourRgb(this._bg, r, g, b, IsBgColour.yes);  }
 
+    /// Sets the forground/background to an `AnsiColour`. Background colours will have their `isBg` flag set automatically.
+    ref AnsiText fg(AnsiColour colour) return { return this.setColour(this._fg, colour, IsBgColour.no);   }
+    /// ditto
+    ref AnsiText bg(AnsiColour colour) return { return this.setColour(this._bg, colour, IsBgColour.yes);  }
+
     /// Sets whether the text is bold.
     ref AnsiText bold     (bool isSet = true) return { return this.setFlag(AnsiTextFlags.bold,      isSet); }
     /// Sets whether the text is dimmed (opposite of bold).
@@ -543,6 +555,14 @@ struct AnsiText
     const(char[]) rawText() const
     {
         return this._text;
+    }
+
+    /// Sets the raw text used.
+    @property
+    void rawText(const char[] text)
+    {
+        this._text       = text;
+        this._cachedText = null;
     }
 }
 
@@ -1065,6 +1085,247 @@ AsAnsiCharRange!R asAnsiChars(R)(R range)
 /// Returns: An `AsAnsiCharRange` wrapped around an `AnsiSectionRange` wrapped around `input`.
 @safe
 AsAnsiCharRange!(AnsiSectionRange!char) asAnsiChars(const char[] input) pure
+{
+    return typeof(return)(input.asAnsiSections);
+}
+
+/++
+ + An InputRange that converts a range of `AnsiSection`s into a range of `AnsiChar`s.
+ +
+ + TLDR; If you have a piece of ANSI-encoded text, and you want to easily step through character by character, keeping the ANSI info, then
+ +       this range is for you.
+ +
+ + Notes:
+ +  This struct is @nogc, except for when it throws exceptions.
+ +
+ + Behaviour:
+ +  This range will only return characters that are not part of an ANSI sequence, which should hopefully end up only being visible ones.
+ +
+ +  For example, a string containing nothing but ANSI sequences won't produce any values.
+ +
+ + Params:
+ +  R = The range of `AnsiSection`s.
+ +
+ + See_Also:
+ +  `asAnsiChars` for easy creation of this struct.
+ + ++/
+struct AsAnsiTextRange(R)
+{
+    // TODO: DRY this struct, since it's just a copy-pasted modification of `AsAnsiCharRange`.
+
+    import std.range : ElementType;
+    static assert(
+        is(ElementType!R == AnsiSection), 
+        "Range "~R.stringof~" must be a range of AnsiSections, not "~ElementType!R.stringof
+    );
+
+    private
+    {
+        R           _sections;
+        AnsiText    _front;
+        AnsiChar    _settings; // Just to store styling settings.
+        AnsiSection _currentSection;
+        size_t      _indexIntoSection;
+    }
+
+    @safe pure:
+
+    /// Creates a new instance of this struct, using `range` as the range of sections.
+    this(R range)
+    {
+        this._sections = range;
+        this.popFront();
+    }
+
+    /// Returns: Last parsed character.
+    AnsiText front()
+    {
+        return this._front;
+    }
+
+    /// Returns: Whether there's no more text left to parse.
+    bool empty()
+    {
+        return this._front == AnsiText.init;
+    }
+
+    /++
+     + Parses the next sections.
+     +
+     + Optimisation:
+     +  Pretty sure this is O(n)
+     + ++/
+    void popFront()
+    {
+        if(this._sections.empty && this._currentSection == AnsiSection.init)
+        {
+            this._front = AnsiText.init;
+            return;
+        }
+
+        // Check if we need to fetch the next section.
+        if(this._indexIntoSection >= this._currentSection.value.length)
+            this.nextSection();
+
+        // For text sections, just return them. For sequences, set the new settings.
+        if(this._currentSection.isTextSection)
+        {
+            this._front.fg         = this._settings.fg;
+            this._front.bg         = this._settings.bg;
+            this._front.setFlags   = this._settings.flags; // mmm, why is that setter prefixed with "set"?
+            this._front.rawText    = this._currentSection.value;
+            this._indexIntoSection = this._currentSection.value.length;
+            return;
+        }
+
+        ubyte[MAX_SGR_ARGS] args;
+        while(this._indexIntoSection < this._currentSection.value.length)
+        {
+            import std.conv : to;
+            const param = this.readNextAnsiParam().to!ubyte;
+
+            // Again, since this code might become a function later, I'm doing things a bit weirdly as pre-prep
+            switch(param)
+            {
+                // Set fg or bg.
+                case 38:
+                case 48:
+                    args[] = 0;
+                    args[0] = this.readNextAnsiParam().to!ubyte; // 5 = Pallette, 2 = RGB
+
+                    if(args[0] == 5)
+                        args[1] = this.readNextAnsiParam().to!ubyte;
+                    else if(args[0] == 2)
+                    {
+                        foreach(i; 0..3)
+                            args[1 + i] = this.readNextAnsiParam().to!ubyte;
+                    }
+                    break;
+                
+                default: break;
+            }
+
+            executeSgrCommand(param, args, this._settings.fg, this._settings.bgRef, this._settings.flags);
+        }
+
+        // If this was the last section, then we need to set .empty to true since we have no more text to give back anyway.
+        if(this._sections.empty())
+        {
+            import std.stdio : writeln;
+
+            this._front = AnsiText.init;
+            this._currentSection = AnsiSection.init;
+        }
+        else // Otherwise, get the next text!
+            this.popFront();
+    }
+
+    private void nextSection()
+    {
+        if(this._sections.empty)
+            return;
+
+        this._indexIntoSection = 0;
+        this._currentSection   = this._sections.front;
+        this._sections.popFront();
+    }
+
+    private const(char)[] readNextAnsiParam()
+    {
+        size_t start = this._indexIntoSection;
+        const(char)[] slice;
+
+        // Read until end or semi-colon. We're only expecting SGR codes because... it doesn't really make sense for us to handle the others.
+        for(; this._indexIntoSection < this._currentSection.value.length; this._indexIntoSection++)
+        {
+            const ch = this._currentSection.value[this._indexIntoSection];
+            switch(ch)
+            {
+                // I *swear* you could do something like `case '0'..'9'`, but I appear to be wrong here?
+                case '0':
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9':
+                    break;
+
+                case ';':
+                    slice = this._currentSection.value[start..this._indexIntoSection++]; // ++ to move past the semi-colon.
+                    break;
+
+                default:
+                    throw new Exception("Unexpected character in ANSI escape sequence: '"~ch~"'");
+            }
+
+            if(slice !is null)
+                break;
+        }
+
+        // In case the final delim is simply EOF
+        if(slice is null && start < this._currentSection.value.length)
+            slice = this._currentSection.value[start..$];
+
+        return (slice.length == 0) ? DEFAULT_SGR_ARG : slice; // Empty params are counted as 0.
+    }
+}
+///
+@("Test AsAnsiTextRange")
+@safe
+unittest
+{
+    // Even this test is copy-pasted, I'm so lazy today T.T
+
+    import std.array  : array;
+    import std.format : format;
+
+    const input = "Hello".ansi.fg(Ansi4BitColour.green).bg(20).bold.toString()
+                ~ "World".ansi.fg(255, 0, 255).italic.toString();
+
+    const text = input.asAnsiTexts.array;
+    assert(
+        text.length == 2, 
+        "Expected length of %s not %s\n%s".format(2, text.length, text)
+    );
+
+    // Styling for both sections
+    const style1 = AnsiChar(AnsiColour(Ansi4BitColour.green), AnsiColour(20, IsBgColour.yes), AnsiTextFlags.bold);
+    auto  style2 = AnsiChar(AnsiColour(255, 0, 255), AnsiColour.init, AnsiTextFlags.italic);
+
+    assert(text[0].fg      == style1.fg);
+    assert(text[0].bg      == style1.bg);
+    assert(text[0].flags   == style1.flags);
+    assert(text[0].rawText == "Hello");
+    
+    style2.bgRef.isBg = IsBgColour.yes; // AnsiText is a bit better at keeping this value set to `yes` than `AnsiChar`.
+    assert(text[1].fg      == style2.fg);
+    assert(text[1].bg      == style2.bg);
+    assert(text[1].flags   == style2.flags);
+    assert(text[1].rawText == "World");
+
+    assert("".asAnsiTexts.array.length == 0);
+}
+
+/++
+ + Notes:
+ +  Reminder that `AnsiSection.value` shouldn't include the starting `"\033["` and ending `'m'` when it
+ +  contains an ANSI sequence.
+ +
+ + Returns:
+ +  An `AsAnsiTextRange` wrapped around `range`.
+ + ++/
+AsAnsiTextRange!R asAnsiTexts(R)(R range)
+{
+    return typeof(return)(range);
+}
+
+/// Returns: An `AsAnsiTextRange` wrapped around an `AnsiSectionRange` wrapped around `input`.
+@safe
+AsAnsiTextRange!(AnsiSectionRange!char) asAnsiTexts(const char[] input) pure
 {
     return typeof(return)(input.asAnsiSections);
 }
