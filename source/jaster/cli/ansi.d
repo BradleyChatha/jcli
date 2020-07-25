@@ -1090,16 +1090,13 @@ AsAnsiCharRange!(AnsiSectionRange!char) asAnsiChars(const char[] input) pure
 }
 
 /++
- + An InputRange that converts a range of `AnsiSection`s into a range of `AnsiChar`s.
- +
- + TLDR; If you have a piece of ANSI-encoded text, and you want to easily step through character by character, keeping the ANSI info, then
- +       this range is for you.
+ + An InputRange that converts a range of `AnsiSection`s into a range of `AnsiText`s.
  +
  + Notes:
  +  This struct is @nogc, except for when it throws exceptions.
  +
  + Behaviour:
- +  This range will only return characters that are not part of an ANSI sequence, which should hopefully end up only being visible ones.
+ +  This range will only return text that isn't part of an ANSI sequence, which should hopefully end up only being visible ones.
  +
  +  For example, a string containing nothing but ANSI sequences won't produce any values.
  +
@@ -1107,7 +1104,7 @@ AsAnsiCharRange!(AnsiSectionRange!char) asAnsiChars(const char[] input) pure
  +  R = The range of `AnsiSection`s.
  +
  + See_Also:
- +  `asAnsiChars` for easy creation of this struct.
+ +  `asAnsiTexts` for easy creation of this struct.
  + ++/
 struct AsAnsiTextRange(R)
 {
