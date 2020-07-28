@@ -206,3 +206,5 @@ defined by dub if you have `asdf` as a dependency of your project. If you do not
 ## Contribution
 
 I'm perfectly accepting of anyone wanting to contribute to this library, just note that it might take me a while to respond.
+
+And please, if you have an issue, *create a Github issue for me*.
