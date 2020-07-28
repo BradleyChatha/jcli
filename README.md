@@ -209,3 +209,5 @@ I'm perfectly accepting of anyone wanting to contribute to this library, just no
 
 And please, if you have an issue, *create a Github issue for me*. I can't fix or prioritise issues that I don't know exist.
 I tend to not care about issues when **I** run across them, but when **someone else** runs into them, then it becomes a much higher priority for me to address it.
+
+Finally, if you use JCLI in anyway feel free to request for me to add your project into the `Examples` section. I'd really love to see how others are using my code :)
