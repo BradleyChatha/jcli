@@ -207,4 +207,5 @@ defined by dub if you have `asdf` as a dependency of your project. If you do not
 
 I'm perfectly accepting of anyone wanting to contribute to this library, just note that it might take me a while to respond.
 
-And please, if you have an issue, *create a Github issue for me*.
+And please, if you have an issue, *create a Github issue for me*. I can't fix or prioritise issues that I don't know exist.
+I tend to not care about issues when **I** run across them, but when **someone else** runs into them, then it becomes a much higher priority for me to address it.
