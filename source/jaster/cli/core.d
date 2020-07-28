@@ -212,7 +212,7 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +
  +  From there, ArgBinder will do its thing of binding/converting the string "200" into the integer 200.
  +
- +  `ArgBinder` has support for user-defined binders (in facts, all of the built-in binders use this mechanism!). Please
+ +  `ArgBinder` has support for user-defined binders (in fact, all of the built-in binders use this mechanism!). Please
  +  refer to its documentation for more information, or see example-04.
  +
  + Boolean_Binding:
