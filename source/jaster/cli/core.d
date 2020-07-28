@@ -234,14 +234,14 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  + Optional_And_Required_Arguments:
  +  By default, all arguments are required.
  +
- +  To make an optional argument, you must make it `Nullable`. For example, to have an optional in argument you'd use `Nullable!int` as the type.
+ +  To make an optional argument, you must make it `Nullable`. For example, to have an optional `int` argument you'd use `Nullable!int` as the type.
  +
  +  Note that `Nullable` is publicly imported by this module, for ease of use.
  +
  +  Before a nullable argument is binded, it is first lowered down into its base type before being passed to the `ArgBinder`.
  +  In other words, a `Nullable!int` argument will be treated as a normal `int` by the ArgBinder.
  +
- +  If there is a single required argument that is not provided by the user, then an exception is thrown (which in turn ends up showing an error message).
+ +  If **any** required argument is not provided by the user, then an exception is thrown (which in turn ends up showing an error message).
  +  This does not occur with missing optional arguments.
  +
  + Raw_Arguments:
@@ -253,7 +253,7 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +  After that, as long as your command contains a `string[]` field marked with `@CommandRawArg`, then any args after the triple dash are treated as "raw args" - they
  +  won't be parsed, passed to the ArgBinder, etc. they'll just be passed into the variable as-is.
  +
- +  For example, you have this member in a command `@CommandRawArg string[] rawList;`, and you are given the following command - 
+ +  For example, you have the following member in a command `@CommandRawArg string[] rawList;`, and you are given the following command - 
  +  `["command", "value1", "---", "rawValue1", "rawValue2"]`, which will result in `rawList`'s value becoming `["rawValue1", "rawValue2"]`
  +
  + Params:
