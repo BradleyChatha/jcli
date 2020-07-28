@@ -191,6 +191,18 @@ Available commands:
 
 And of course, if you provide no other arguments other than `-h`, then every command will be listed instead.
 
+## Versions
+
+JCLI makes use of the `version` statement in various areas. Here is a list of all versions that JCLI utilises.
+
+Any versions prefixed with `Have_` are automatically created by dub for each dependency in your project. For example, `Have_asdf` will be automatically
+defined by dub if you have `asdf` as a dependency of your project. If you do not use dub then you'll have to manually specify these versions when relevant.
+
+| Version       | Description                                                                                                                   |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| JCLI_Verbose  | When defined, enables certain verbose compile-time logging, such as how `ArgBinder` is deciding which `@ArgBinderFunc` to use |
+| Have_asdf     | Enables the `AsdfConfigAdapter`, which uses the `asdf` library to serialise the configuration value.                          |
+
 ## Contribution
 
 I'm perfectly accepting of anyone wanting to contribute to this library, just note that it might take me a while to respond.
