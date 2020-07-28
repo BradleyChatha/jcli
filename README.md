@@ -23,6 +23,8 @@ the one provided by JCLI (via `CommandLineInterface`) doesn't live up to their n
 * AnsiText - Fluently build up a piece of text containing Ansi escape codes, for the likes of colouring and styling your console output.
              **Windows ANSI support is automatically turned on.**
 
+* Ansi parsing - Use helper ranges such as `asAnsiChars` and `asAnsiText` to fearlessly parse over text that may or may not contain ANSI encoded contents.
+
 * ArgBinder - A simple helper struct which allows the user to define functions that binds a string (the arg) into a value of any type, so long
 as that type has an `@ArgBinder` available. `ArgBinder` will automatically discover and choose which binders to use for any given type.
 
@@ -60,7 +62,7 @@ JCLI has support for both a default command, and multiple sub-commands.
 To create a default command - a command that is executed if no other sub-commands are used - make sure that when using `@Command()` that the name (the first parameter) is `null`.
 e.g. `@Command()` or `@Command(null, "Some description")` would both create a default command.
 
-For sub-commands, simply populate the name field of `@Command`, e.g. `@Command("et|execute task")` would create a subcommand that can be used as either `mytool.exe et` or `mytool.exe execute test`.
+For sub-commands, simply populate the name field of `@Command`, e.g. `@Command("et|execute task")` would create a sub-command that can be used as either `mytool.exe et` or `mytool.exe execute test`.
 
 ## Examples
 
@@ -145,7 +147,7 @@ This is the *only* way `CommandLineInterface` is able to pass data into a comman
 `CommandLineInterface` will automatically generate help text for any given command, and if no command is specified (or found) then it'll show a list of all commands, or commands
 similar to the arguments given to it.
 
-Help text is shown eiter by using an unknown command, or passing either `-h` or `--help`. This does mean however that commands cannot use these as argument names.
+Help text is shown either by using an unknown command, or passing either `-h` or `--help`. This does mean however that commands cannot use these as argument names.
 
 Here is an example of the help text for a specific command:
 
