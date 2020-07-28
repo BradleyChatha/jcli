@@ -142,6 +142,8 @@ of `CommandLineInterface`. Afterwards, all command objects are created with depe
 
 This is the *only* way `CommandLineInterface` is able to pass data into a command's constructor.
 
+Please see [this](https://github.com/SealabJaster/jcli/tree/master/examples/05-dependency-injection) example for more information.
+
 ## Help text
 
 `CommandLineInterface` will automatically generate help text for any given command, and if no command is specified (or found) then it'll show a list of all commands, or commands
