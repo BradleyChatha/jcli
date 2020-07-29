@@ -790,6 +790,39 @@ if(isSomeChar!Char)
     return AnsiSectionRange!Char(input);
 }
 
+/++
+ + Provides an InputRange that iterates over all non-ANSI related parts of `input`.
+ +
+ + This can effectively be used to parse over text that is/might contain ANSI encoded text.
+ +
+ + Params:
+ +  input = The input to strip.
+ +
+ + Returns:
+ +  An InputRange that provides all ranges of characters from `input` that do not belong to an
+ +  ANSI command sequence.
+ +
+ + See_Also:
+ +  `asAnsiSections`
+ + ++/
+@safe @nogc
+auto stripAnsi(const char[] input) nothrow pure
+{
+    import std.algorithm : filter, map;
+    return input.asAnsiSections.filter!(s => s.isTextSection).map!(s => s.value);
+}
+///
+unittest
+{
+    import std.array : array;
+
+    auto ansiText = "ABC".ansi.fg(Ansi4BitColour.red).toString()
+                  ~ "Doe Ray Me".ansi.bg(Ansi4BitColour.green).toString()
+                  ~ "123";
+
+    assert(ansiText.stripAnsi.array == ["ABC", "Doe Ray Me", "123"]);
+}
+
 private enum MAX_SGR_ARGS         = 4;     // 2;r;g;b being max... I think
 private immutable DEFAULT_SGR_ARG = ['0']; // Missing params are treated as 0
 
