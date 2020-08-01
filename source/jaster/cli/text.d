@@ -24,6 +24,30 @@ struct LineWrapOptions
      + Same as `linePrefix`, except it's a suffix.
      + ++/
     string lineSuffix;
+
+    /++
+     + Calculates the amount of characters per line that can be used for the user's provided text.
+     +
+     + In other words, how many characters are left after the `linePrefix`, `lineSuffix`, and any `additionalChars` are considered for.
+     +
+     + Params:
+     +  additionalChars = The amount of additional chars that are outputted with every line, e.g. if you want to add new lines or tabs or whatever.
+     +
+     + Returns:
+     +  The amount of characters per line, not including "static" characters such as the `linePrefix` and so on.
+     + ++/
+    @safe @nogc
+    size_t charsPerLine(size_t additionalChars = 0) nothrow pure const
+    {
+        return this.lineCharLimit - (this.linePrefix.length + this.lineSuffix.length + additionalChars);
+    }
+    ///
+    unittest
+    {
+        assert(LineWrapOptions(120).charsPerLine               == 120);
+        assert(LineWrapOptions(120).charsPerLine(20)           == 100);
+        assert(LineWrapOptions(120, "ABC", "123").charsPerLine == 114);
+    }
 }
 
 /++
@@ -53,7 +77,7 @@ string lineWrap(const(char)[] text, const LineWrapOptions options = LineWrapOpti
     import std.exception : assumeUnique, enforce;
 
     char[] actualText;
-    const charsPerLine = options.lineCharLimit - (options.linePrefix.length + + options.lineSuffix.length + 1); // '+ 1' is for the new line char.
+    const charsPerLine = options.charsPerLine(1); // '1' is for the new line char.
     size_t offset      = 0;
 
     enforce(charsPerLine > 0, "The lineCharLimit is too low. There's not enough space for any text (after factoring the prefix, suffix, and ending new line characters).");
