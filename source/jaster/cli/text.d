@@ -35,11 +35,15 @@ struct LineWrapOptions
      +
      + Returns:
      +  The amount of characters per line, not including "static" characters such as the `linePrefix` and so on.
+     +
+     +  0 is returned on underflow.
      + ++/
     @safe @nogc
     size_t charsPerLine(size_t additionalChars = 0) nothrow pure const
     {
-        return this.lineCharLimit - (this.linePrefix.length + this.lineSuffix.length + additionalChars);
+        const value = this.lineCharLimit - (this.linePrefix.length + this.lineSuffix.length + additionalChars);
+
+        return (value > this.lineCharLimit) ? 0 : value; // Check for underflow.
     }
     ///
     unittest
@@ -47,69 +51,53 @@ struct LineWrapOptions
         assert(LineWrapOptions(120).charsPerLine               == 120);
         assert(LineWrapOptions(120).charsPerLine(20)           == 100);
         assert(LineWrapOptions(120, "ABC", "123").charsPerLine == 114);
+        assert(LineWrapOptions(120).charsPerLine(200)          == 0); // Underflow
     }
 }
 
 /++
- + Wraps a piece of text into seperate lines, based on the given options.
+ + Same thing as `asLineWrapped`, except it is eagerly evaluated.
  +
  + Throws:
  +  `Exception` if the char limit is too small to show any text.
  +
- + Notes:
- +  Currently, this performs character-wrapping instead of word-wrapping, so words
- +  can be split between multiple lines. There is no technical reason for this outside of I'm lazy.
+ + Params:
+ +  text    = The text to line wrap.
+ +  options = The options to line wrap with.
  +
- +  For every line created from the given `text`, the starting and ending spaces (not whitespace, just spaces)
- +  are stripped off. This is so the user doesn't have to worry about random leading/trailling spaces, making it
- +  easier to format for the general case (though specific cases might find this undesirable, I'm sorry).
- +  $(B This does not apply to prefixes and suffixes).
+ + Performance:
+ +  With character-based wrapping, this function can calculate the entire amount of space needed for the resulting string, resulting in only
+ +  a single GC allocation.
  +
- +  For every line created from the given `text`, the line prefix defined in the `options` is prefixed onto every newly made line.
+ + Returns:
+ +  A newly allocated `string` containing the eagerly-evaluated results of `asLineWrapped(text, options)`.
  +
- + Peformance:
- +  This function calculates, and reserves all required memory using a single allocation (barring bugs ;3), so it shouldn't
- +  be overly bad to use.
+ + See_Also:
+ +  `LineWrapRange` for full documentation.
+ +
+ +  `asLineWrapped` for a lazily evaluated version.
  + ++/
-@trusted // Trusted due to the use of assumeUnique.
+@trusted // Can't be @safe due to assumeUnique
 string lineWrap(const(char)[] text, const LineWrapOptions options = LineWrapOptions(120)) pure
 {
     import std.exception : assumeUnique, enforce;
 
-    char[] actualText;
-    const charsPerLine = options.charsPerLine(1); // '1' is for the new line char.
-    size_t offset      = 0;
-
-    enforce(charsPerLine > 0, "The lineCharLimit is too low. There's not enough space for any text (after factoring the prefix, suffix, and ending new line characters).");
+    const charsPerLine = options.charsPerLine(LineWrapRange!string.ADDITIONAL_CHARACTERS_PER_LINE);
+    if(charsPerLine == 0)
+        LineWrapRange!string("", options); // Causes the ctor to throw exception with a proper error message.
 
     const estimatedLines = (text.length / charsPerLine);
-    actualText.reserve(text.length + (options.linePrefix.length * estimatedLines) + (options.lineSuffix.length * estimatedLines));
-    
-    while(offset < text.length)
-    {
-        size_t end = (offset + charsPerLine);
-        if(end > text.length)
-            end = text.length;
-        
-        // Strip off whitespace, so things format properly.
-        while(offset < text.length && text[offset] == ' ')
-        {
-            offset++;
-            if(end < text.length)
-                end++;
-        }
-        
-        actualText ~= options.linePrefix;
-        actualText ~= text[offset..(end >= text.length) ? text.length : end];
-        actualText ~= options.lineSuffix;
-        actualText ~= "\n";
 
-        offset += charsPerLine;
-    }
+    char[] actualText;
+    actualText.reserve(
+        text.length 
+      + (options.linePrefix.length * estimatedLines) 
+      + (options.lineSuffix.length * estimatedLines)
+      + estimatedLines // For new line characters.
+    ); // This can overallocate, because we can strip off leading space characters.
 
-    // Don't keep the new line for the last line.
-    if(actualText.length > 0 && actualText[$-1] == '\n')
-        actualText = actualText[0..$-1];
+    foreach(segment; text.asLineWrapped(options))
+        actualText ~= segment;
 
     return actualText.assumeUnique;
 }
@@ -131,6 +119,261 @@ unittest
 
     assert(text[$-1] != '\n', "lineWrap is inserting a new line at the end again.");
     assert(text == "abc\ndef\ngh", text);
+}
+
+/++
+ + An InputRange that wraps a piece of text into seperate lines, based on the given options.
+ +
+ + Throws:
+ +  `Exception` if the char limit is too small to show any text.
+ +
+ + Notes:
+ +  Other than the constructor, this range is entirely `@nogc nothrow`.
+ +
+ +  Currently, this performs character-wrapping instead of word-wrapping, so words
+ +  can be split between multiple lines. There is no technical reason for this outside of I'm lazy.
+ +  The option between character and word wrapping will become a toggle inside of `LineWrapOptions`, so don't fear about
+ +  this range magically breaking in the future.
+ +
+ +  For every line created from the given `text`, the starting and ending spaces (not all whitespace, just spaces)
+ +  are stripped off. This is so the user doesn't have to worry about random leading/trailling spaces, making it
+ +  easier to format for the general case (though specific cases might find this undesirable, I'm sorry).
+ +  $(B This does not apply to prefixes and suffixes).
+ +
+ +  I may expand `LineWrapOptions` so that the user can specify an array of characters to be stripped off, instead of it being hard coded to spaces.
+ +
+ + Output:
+ +  For every line that needs to be wrapped by this range, it will return values in the following pattern.
+ +
+ +  Prefix (`LineWrapOptions.prefix`) -> Text (from input) -> Suffix (`LineWrapOptions.suffix`) -> New line character (if this isn't the last line).
+ +
+ +  $(B Prefixes and suffixes are only outputted if they are not) `null`.
+ +
+ +  Please refer to the example unittest for this struct, as it will show you this pattern more clearly.
+ +
+ + Peformance:
+ +  This range performs no allocations other than if the ctor throws an exception.
+ +
+ +  For character-based wrapping, the part of the code that handles getting the next range of characters from the user-provided input, totals
+ +  to `O(l+s)`, where "l" is the amount of lines that this range will produce (`input.length / lineWrapOptions.charsPerLine(1)`), and "s" is the amount
+ +  of leading spaces that the range needs to skip over. In general, "l" will be the main speed factor.
+ +
+ +  For character-based wrapping, once leading spaces have been skipped over, it is able to calculate the start and end for the range of user-provided
+ +  characters to return. In other words, it doesn't need to iterate over every single character (unless every single character is a space >:D), making it very fast.
+ + ++/
+@safe
+struct LineWrapRange(StringT)
+{
+    // So basically, we want to return the same type we get, instead of going midway with `const(char)[]`.
+    //
+    // This is because it's pretty annoying when you pass a `string` in, with plans to store things as `string`s, but then
+    // find out that you're only getting a `const(char)[]`.
+    //
+    // Also we're working directly with arrays instead of ranges, so we don't have to allocate.
+    static assert(
+        is(StringT : const(char)[]),
+        "StringT must either be a `string` or a `char[]` of some sort."
+    );
+
+    private
+    {
+        enum Next
+        {
+            prefix,
+            text,
+            suffix,
+            newline
+        }
+
+        enum ADDITIONAL_CHARACTERS_PER_LINE = 1; // New line
+
+        StringT         _input;
+        StringT         _front;
+        size_t          _cursor;
+        Next            _nextFront;
+        LineWrapOptions _options;
+    }
+
+    this(StringT input, LineWrapOptions options = LineWrapOptions(120)) pure
+    {
+        import std.exception : enforce;
+
+        this._input   = input;
+        this._options = options;
+
+        enforce(
+            options.charsPerLine(ADDITIONAL_CHARACTERS_PER_LINE) > 0,
+            "The lineCharLimit is too low. There's not enough space for any text (after factoring the prefix, suffix, and ending new line characters)."
+        );
+
+        this.popFront();
+    }
+
+    //@nogc nothrow pure:
+
+    StringT front()
+    {
+        return this._front;
+    }
+
+    bool empty()
+    {
+        return this._front is null;
+    }
+
+    void popFront()
+    {
+        switch(this._nextFront) with(Next)
+        {
+            case prefix:
+                if(this._options.linePrefix is null)
+                {
+                    this._nextFront = Next.text;
+                    this.popFront();
+                    return;
+                }
+                
+                this._front     = this._options.linePrefix;
+                this._nextFront = Next.text;   
+                return;
+
+            case suffix:
+                if(this._options.lineSuffix is null)
+                {
+                    this._nextFront = Next.newline;
+                    this.popFront();
+                    return;
+                }
+                
+                this._front     = this._options.lineSuffix;
+                this._nextFront = Next.newline;
+                return;
+
+            case text: break; // The rest of this function is the logic for .text, so just break.
+            default:   break; // We want to hide .newline behind the End of text check, otherwise we'll end up with a stray newline at the end that we don't want.
+        }
+
+        // end of text check
+        if(this._cursor >= this._input.length)
+        {
+            this._front = null;
+            return;
+        }
+
+        // Only add the new lines if we've not hit end of text.
+        if(this._nextFront == Next.newline)
+        {
+            this._front = "\n";
+            this._nextFront  = Next.prefix;
+            return;
+        }
+
+        // This is the logic for Next.text
+        // BUG: "end" can very technically wrap around, causing a range error.
+        //      If you're line wrapping a 4 billion+/whatever ulong.max is, sized string, you have other issues I imagine.
+        
+        // Find the range for the next piece of text.
+        const charsPerLine = this._options.charsPerLine(ADDITIONAL_CHARACTERS_PER_LINE);
+        size_t end         = (this._cursor + charsPerLine);
+        
+        // Strip off whitespace, so things format properly.
+        while(this._cursor < this._input.length && this._input[this._cursor] == ' ')
+        {
+            this._cursor++;
+            end++;
+        }
+        
+        this._front     = this._input[this._cursor..(end >= this._input.length) ? this._input.length : end];
+        this._cursor   += charsPerLine;
+        this._nextFront = Next.suffix;
+    }
+}
+///
+@safe
+unittest
+{
+    import std.algorithm : equal;
+    import std.format    : format;
+
+    auto options = LineWrapOptions(8, "\t", "-");
+    assert(options.charsPerLine(1) == 5);
+
+    // This is the only line that's *not* @nogc nothrow, as it can throw an exception.
+    auto range = "Hello world".asLineWrapped(options);
+
+    assert(range.equal([
+        "\t", "Hello", "-", "\n",
+        "\t", "world", "-"        // Leading spaces were trimmed. No ending newline.
+    ]), "%s".format(range));
+
+    // If the suffix/prefix are null, then they don't get outputted
+    options.linePrefix = null;
+    options.lineCharLimit--;
+    range = "Hello world".asLineWrapped(options);
+
+    assert(range.equal([
+        "Hello", "-", "\n",
+        "world", "-"
+    ]));
+}
+
+@("Test that a LineWrapRange that only creates a single line, works fine.")
+unittest
+{
+    import std.algorithm : equal;
+
+    const options = LineWrapOptions(6);
+    auto range    = "Hello".asLineWrapped(options);
+    assert(!range.empty, "Range created no values");
+    assert(range.equal(["Hello"]));
+}
+
+@("LineWrapRange.init must be empty")
+unittest
+{
+    assert(LineWrapRange!string.init.empty);
+}
+
+// Two overloads to make it clear there's a behaviour difference.
+
+/++
+ + Returns an InputRange (`LineWrapRange`) that will wrap the given `text` onto seperate lines.
+ +
+ + Params:
+ +  text    = The text to line wrap.
+ +  options = The options to line wrap with, such as whether to add a prefix and suffix.
+ +
+ + Returns:
+ +  A `LineWrapRange` that will wrap the given `text` onto seperate lines.
+ +
+ + See_Also:
+ +  `LineWrapRange` for full documentation.
+ +
+ +  `lineWrap` for an eagerly evaluated version.
+ + ++/
+@safe
+LineWrapRange!string asLineWrapped(string text, LineWrapOptions options = LineWrapOptions(120)) pure
+{
+    return typeof(return)(text, options);
+}
+
+/// ditto
+@safe
+LineWrapRange!(const(char)[]) asLineWrapped(CharArrayT)(CharArrayT text, LineWrapOptions options = LineWrapOptions(120)) pure
+if(is(CharArrayT == char[]) || is(CharArrayT == const(char)[]))
+{
+    // If it's not clear, if the user passes in "char[]" then it gets promoted into "const(char)[]".
+    return typeof(return)(text, options);
+}
+///
+unittest
+{
+    auto constChars   = cast(const(char)[])"Hello";
+    auto mutableChars = ['H', 'e', 'l', 'l', 'o'];
+
+    // Mutable "char[]" is promoted to const "const(char)[]".
+    LineWrapRange!(const(char)[]) constRange   = constChars.asLineWrapped;
+    LineWrapRange!(const(char)[]) mutableRange = mutableChars.asLineWrapped;
 }
 
 /++
