@@ -84,7 +84,7 @@ string lineWrap(const(char)[] text, const LineWrapOptions options = LineWrapOpti
 
     const charsPerLine = options.charsPerLine(LineWrapRange!string.ADDITIONAL_CHARACTERS_PER_LINE);
     if(charsPerLine == 0)
-        LineWrapRange!string("", options); // Causes the ctor to throw exception with a proper error message.
+        LineWrapRange!string("", options); // Causes the ctor to throw an exception with a proper error message.
 
     const estimatedLines = (text.length / charsPerLine);
 
