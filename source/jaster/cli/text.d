@@ -209,7 +209,7 @@ struct LineWrapRange(StringT)
         this.popFront();
     }
 
-    //@nogc nothrow pure:
+    @nogc nothrow pure:
 
     StringT front()
     {
