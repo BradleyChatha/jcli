@@ -1,8 +1,9 @@
 /// Contains functions for getting input, and sending output to the user.
 module jaster.cli.userio;
 
-import jaster.cli.ansi;
+import jaster.cli.ansi, jaster.cli.binder;
 import std.experimental.logger : LogLevel;
+import std.traits : isInstanceOf;
 
 /++
  + Provides various utilities:
@@ -172,6 +173,49 @@ final static class UserIO
         void verboseFatalf   (Args...)(const char[] format, Args args){ UserIO.verbosef(format, LogLevel.fatal, args);    }
         /// ditto
         alias verboseException = exception!verboseErrorf;
+    }
+
+    /+++++++++++++++++
+     +++  CURSOR   +++
+     +++++++++++++++++/
+    public static
+    {
+        @safe
+        private void singleArgCsiCommand(char command)(size_t n)
+        {
+            import std.conv   : to;
+            import std.stdio  : write;
+            import std.format : sformat;
+
+            enum FORMAT_STRING = "\033[%s"~command;
+            enum SIZET_LENGTH  = size_t.max.to!string.length;
+
+            char[SIZET_LENGTH] buffer;
+            const used = sformat!FORMAT_STRING(buffer, n);
+
+            // Pretty sure this is safe right? It copies the buffer, right?
+            write(used);
+        }
+
+        // Again, not auto generated since I don't trust autocomplete to pick up aliases properly.
+
+        /++
+         + Moves the console's cursor down and moves the cursor to the start of that line.
+         +
+         + Params:
+         +  lineCount = The amount of lines to move down.
+         + ++/
+        @safe
+        void moveCursorDownByLines(size_t lineCount) { UserIO.singleArgCsiCommand!'E'(lineCount); }
+
+        /++
+         + Moves the console's cursor up and moves the cursor to the start of that line.
+         +
+         + Params:
+         +  lineCount = The amount of lines to move up.
+         + ++/
+        @safe
+        void moveCursorUpByLines(size_t lineCount) { UserIO.singleArgCsiCommand!'F'(lineCount); }
     }
 
     /+++++++++++++++
