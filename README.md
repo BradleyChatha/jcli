@@ -15,6 +15,8 @@ As a firm believer of good documentation, JCLI is completely documented with in-
 
 ![Example gif](https://i.imgur.com/n5kCLVW.gif)
 
+![Example gif 2](https://i.imgur.com/zLnHYg1.gif)
+
 ## Components
 
 As mentioned, this library aims to also serve as a base for anyone who might need a more specialised 'core' for their application in the event that
@@ -47,7 +49,7 @@ also provides a line-wrap helper function.
 * TextBuffer - An ANSI-enabled text buffer which can be interfaced with using a `TextBufferWriter`, which allows editing of the `TextBuffer` as if it were a 2D grid of characters.
 
 * UserIO - Get input and show output to the user. Optional colourful logging; debug-only and toggleable verbose logging; functions such as `getInput` and `getInputFromList` which
-can make use of `ArgBinder` to perform conversions.
+can make use of `ArgBinder` to perform conversions. Cursor control using ANSI CSI codes.
 
 It's best to refer to the documentation of each component, as they go into much more detail than this brief overview.
 
@@ -71,6 +73,8 @@ There are documented examples within the [examples](https://github.com/SealabJas
 Other than there, here's a list of projects/scripts using JCLI:
 
 * [JCLI's test runner](https://github.com/SealabJaster/jcli/blob/master/examples/test.d)
+
+* [JCLI's manual/misc test program](https://github.com/SealabJaster/jcli_testerr)
 
 ## Changelog
 
