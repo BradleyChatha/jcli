@@ -1299,8 +1299,8 @@ final class TextBuffer
     {
         AnsiChar[] _charsBuffer;
         AnsiChar[] _chars;
-        size_t           _width;
-        size_t           _height;
+        size_t     _width;
+        size_t     _height;
 
         char[] _output;
         char[] _cachedOutput;
