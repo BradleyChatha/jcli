@@ -567,7 +567,7 @@ final class CommandLineInterface(Modules...)
                                 return -1;
                             }
 
-                            debugName = "positional arg %s".format(positionalArgIndex);
+                            debugName = "positional arg %s(%s)".format(positionalArgIndex, positionalArgs[positionalArgIndex].uda.name);
                             positionalArgs[positionalArgIndex].setter(token, /*ref*/ commandInstance);
                             positionalArgs[positionalArgIndex++].wasFound = true;
                             break;
