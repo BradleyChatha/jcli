@@ -246,8 +246,8 @@ struct ArgPullParser
             }
             else if(slice.length >= 1 && slice[0] == '-')
             {
-                this._currentCharIndex += 2; // += 2 so we skip over the arg name.
-                this._currentToken = ArgToken(slice[1..2], ArgTokenType.ShortHandArgument);
+                this._currentCharIndex += (slice.length == 1) ? 1 : 2; // += 2 so we skip over the arg name.
+                this._currentToken = ArgToken((slice.length == 1) ? "" : slice[1..2], ArgTokenType.ShortHandArgument);
 
                 // Skip over the equals sign if there is one.
                 if(this._currentCharIndex < this.currentArg.length
@@ -343,4 +343,15 @@ unittest
     }
 
     assert(parser.unparsedArgs is null);
+}
+
+@("Nameless short hand args")
+@safe
+unittest
+{
+    auto args =
+    [
+        "-"
+    ];
+    auto parser = ArgPullParser(args);
 }
