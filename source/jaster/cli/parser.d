@@ -240,16 +240,12 @@ struct ArgPullParser
             auto slice = this.currentArgSlice;
             if(slice.length >= 2 && slice[0..2] == "--")
             {
-                enforce(slice.length > 2, "Unfinished argument name. Found '--' but no characters following it.");
-
                 this._currentCharIndex += 2;
                 this._currentToken = ArgToken(this.readToEnd(OrSpace.yes, OrEqualSign.yes), ArgTokenType.LongHandArgument);
                 return;
             }
             else if(slice.length >= 1 && slice[0] == '-')
             {
-                enforce(slice.length > 1, "Unfinished argument name. Found '-' but no character following it.");
-
                 this._currentCharIndex += 2; // += 2 so we skip over the arg name.
                 this._currentToken = ArgToken(slice[1..2], ArgTokenType.ShortHandArgument);
 
