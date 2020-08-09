@@ -474,7 +474,7 @@ final class CommandLineInterface(Modules...)
             //
             // Since this is also an internal function, error checking is much more lax.
             import std.array     : array;
-            import std.algorithm : map, filter, splitter, equal;
+            import std.algorithm : map, filter, splitter, equal, startsWith;
             import std.conv      : to;
             import std.stdio     : writeln;
 
@@ -501,28 +501,42 @@ final class CommandLineInterface(Modules...)
                 char[] output;
                 output.reserve(1024); // Gonna be doing a good bit of concat.
 
-                auto partialMatches = this._commands.filter!((c) 
+                // Special case: When we have no text to look for, just display the first word of every command pattern.
+                if(before.length == 0 && current is null)
                 {
-                    auto parser = ArgPullParser(before);
-                    return matchSpacefullPattern(c.pattern.pattern, parser, AllowPartialMatch.yes);
-                });
+                    foreach(command; this._commands)
+                    {
+                        foreach(pattern; command.pattern.pattern.splitter('|'))
+                        {
+                            output ~= pattern.splitter(' ').front;
+                            output ~= ' ';
+                        }
+                    }
+                    writeln(output);
+                    return 0 ;
+                }
+
+                // Otherwise try to match using the existing text.
 
                 // So basically, for any subpattern that matches what's inside of `before`, and has at least one element after that,
                 // display that first extra element.
+                //
+                // Also if current isn't null, then use that as a further filter.
                 //
                 // e.g.
                 // Before  = ["name"]
                 // Pattern = "name get"
                 // Output  = "get"
-                foreach(match; partialMatches)
+                foreach(command; this._commands)
                 {
-                    foreach(pattern; match.pattern.pattern.splitter("|"))
+                    foreach(pattern; command.pattern.pattern.splitter("|"))
                     {
                         const wordsInPattern = pattern.splitter(" ").array;
                         if(wordsInPattern.length <= before.length)
                             continue;
 
-                        if(wordsInPattern[0..before.length].equal(before))
+                        if(wordsInPattern[0..before.length].equal(before)
+                        && (current is null || wordsInPattern[before.length].startsWith(current)))
                         {
                             output ~= wordsInPattern[before.length];
                             output ~= " ";
