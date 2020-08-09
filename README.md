@@ -26,6 +26,7 @@ the one provided by JCLI (via `CommandLineInterface`) doesn't live up to their n
              **Windows ANSI support is automatically turned on.**
 
 * Ansi parsing - Use helper ranges such as `asAnsiChars` and `asAnsiText` to fearlessly parse over text that may or may not contain ANSI encoded contents.
+Alternatively, just lazily `stripAnsi` your string!
 
 * ArgBinder - A helper struct which allows the user to define functions that binds a string (the arg) into a value of any type, so long
 as that type has an `@ArgBinder` available. `ArgBinder` will automatically discover and choose which binders to use for any given type. Also allows
