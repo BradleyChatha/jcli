@@ -391,7 +391,7 @@ final class CommandLineInterface(Modules...)
 
             Mode mode = Mode.execute;
 
-            if(args.front.type == ArgTokenType.LongHandArgument && args.front.value == "jcli:complete")
+            if(args.front.type == ArgTokenType.Text && args.front.value == "__jcli:complete")
                 mode = Mode.complete;
 
             ParseResult parseResult;
@@ -408,16 +408,12 @@ final class CommandLineInterface(Modules...)
                     
                     if(this._commands.length > 0)
                         parseResult.helpText ~= this.createAvailableCommandsHelpText(ArgPullParser.init, "Available commands").toString();
-                    
-                    return 0;
                 }
-
-                if(this._defaultCommand == CommandInfo.init)
+                else if(this._defaultCommand == CommandInfo.init)
                 {
                     parseResult.type      = ParseResultType.commandNotFound;
                     parseResult.helpText ~= format("ERROR: Unknown command '%s'.", parseResult.argParserBeforeAttempt.front.value);
                     parseResult.helpText ~= this.createAvailableCommandsHelpText(args).toString();
-                    return -1;
                 }
                 else
                     parseResult.command = this._defaultCommand;
@@ -471,6 +467,73 @@ final class CommandLineInterface(Modules...)
 
         int onComplete(ref ParseResult result)
         {
+            // Parsing here shouldn't be affected by user-defined ArgBinders, so stuff being done here is done manually.
+            // This way we gain reliability.
+            //
+            // Since this is also an internal function, error checking is much more lax.
+            import std.array     : array;
+            import std.algorithm : map, filter, splitter, equal;
+            import std.conv      : to;
+            import std.stdio     : writeln;
+
+            // Expected args:
+            //  [0]    = COMP_CWORD
+            //  [1..$] = COMP_WORDS
+            result.argParserAfterAttempt.popFront(); // Skip __jcli:complete
+            auto cword = result.argParserAfterAttempt.front.value.to!uint;
+            result.argParserAfterAttempt.popFront();
+            auto  words = result.argParserAfterAttempt.map!(t => t.value).array;
+
+            cword -= 1;
+            words = words[1..$]; // [0] is the exe name, which we don't care about.
+            auto  before  = words[0..cword];
+            const current = (cword < words.length)     ? words[cword] : [];
+            const after   = (cword + 1 < words.length) ? words[cword+1..$] : [];
+
+            auto beforeParser = ArgPullParser(before);
+            auto commandRange = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref only on success*/ beforeParser));
+
+            // Can't find command, so we're in "display command name" mode.
+            if(commandRange.empty)
+            {
+                char[] output;
+                output.reserve(1024); // Gonna be doing a good bit of concat.
+
+                auto partialMatches = this._commands.filter!((c) 
+                {
+                    auto parser = ArgPullParser(before);
+                    return matchSpacefullPattern(c.pattern.pattern, parser, AllowPartialMatch.yes);
+                });
+
+                // So basically, for any subpattern that matches what's inside of `before`, and has at least one element after that,
+                // display that first extra element.
+                //
+                // e.g.
+                // Before  = ["name"]
+                // Pattern = "name get"
+                // Output  = "get"
+                foreach(match; partialMatches)
+                {
+                    foreach(pattern; match.pattern.pattern.splitter("|"))
+                    {
+                        const wordsInPattern = pattern.splitter(" ").array;
+                        if(wordsInPattern.length <= before.length)
+                            continue;
+
+                        if(wordsInPattern[0..before.length].equal(before))
+                        {
+                            output ~= wordsInPattern[before.length];
+                            output ~= " ";
+                        }
+                    }
+                }
+
+                writeln(output);
+                return 0;
+            }
+
+            // Found command, so we're in "display possible args" mode.
+
             return 0;
         }
     }
