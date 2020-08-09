@@ -27,8 +27,9 @@ the one provided by JCLI (via `CommandLineInterface`) doesn't live up to their n
 
 * Ansi parsing - Use helper ranges such as `asAnsiChars` and `asAnsiText` to fearlessly parse over text that may or may not contain ANSI encoded contents.
 
-* ArgBinder - A simple helper struct which allows the user to define functions that binds a string (the arg) into a value of any type, so long
-as that type has an `@ArgBinder` available. `ArgBinder` will automatically discover and choose which binders to use for any given type.
+* ArgBinder - A helper struct which allows the user to define functions that binds a string (the arg) into a value of any type, so long
+as that type has an `@ArgBinder` available. `ArgBinder` will automatically discover and choose which binders to use for any given type. Also allows
+for user-defined validation.
 
 * ArgPullParser - An InputRange that parses the `args` parameter passed to the main function. **Note** that this function expects the data to be provided in the same
 way as the main function's `args` parameter. e.g. ["env", "set", "--name=abc", "-v", "yada"] should be passed instead of ["env set --name=abc -v yada"].
