@@ -63,8 +63,8 @@ struct ArgBinderFunc {}
  +  A validator is simply a struct that defines either, or both of these function signatures (or compatible signatures):
  +
  +  ```
- +      bool onPreValidate(string arg);
- +      bool onValidate(VALUE_TYPE value); // Can be templated of course.
+ +      bool onPreValidate(string arg, ref string errorMessage);
+ +      bool onValidate(VALUE_TYPE value, ref string errorMessage); // Can be templated of course.
  +  ```
  +
  +  A validator containing the `onPreValidate` function can be used to validate the argument prior to it being ran through
@@ -72,7 +72,13 @@ struct ArgBinderFunc {}
  +
  +  A validator containing the `onValidate` function can be used to validate the argument after it has been bound by an `@ArgBinderFunc`.
  +
+ +  If validation fails, the vaildator can set a user-friendly `errorMessage` to display. If this is left as `null`, then one will be automatically
+ +  generated for you.
+ +
  +  By specifying the "JCLI_Verbose" version, the `ArgBinder` will detail what validators are being used for what types, and for which stages of binding.
+ +
+ +  If a type does not pass any of the previously mentioned interfaces, then it is silently ignored. You can specify the `JCLI_BinderCompilerErrors` version
+ +  to make `ArgBinder` display some compiler errors, which may help you pinpoint why your validator struct is failing to be used.
  +
  + Notes:
  +  While other parts of this library have special support for `Nullable` types. This struct doesn't directly have any special
@@ -128,8 +134,8 @@ static struct ArgBinder(Modules...)
 
             // Get all the validators we need.
             enum isStruct(alias V)       = is(typeof(V) == struct);
-            enum canPreValidate(alias V) = isStruct!V && __traits(compiles, { bool a = typeof(V).init.onPreValidate(""); });
-            enum canValidate(alias V)    = isStruct!V && __traits(compiles, { bool a = typeof(V).init.onValidate(T.init); });
+            enum canPreValidate(alias V) = isStruct!V && __traits(compiles, { string s; bool a = typeof(V).init.onPreValidate("", s); });
+            enum canValidate(alias V)    = isStruct!V && __traits(compiles, { string s; bool a = typeof(V).init.onValidate(T.init, s); });
 
             // The user might specify `@Struct` instead of `@Struct()`, so this is just to handle that.
             template ctorValidatorIfNeeded(alias V)
@@ -141,26 +147,50 @@ static struct ArgBinder(Modules...)
             }
             alias ValidatorsMapped = staticMap!(ctorValidatorIfNeeded, Validators);
 
+            version(JCLI_BinderCompilerErrors)
+            {
+                pragma(msg, "Type:             %s".format(T.stringof));
+                pragma(msg, "Validators:       ", Validators);
+                pragma(msg, "ValidatorsMapped: ", ValidatorsMapped);
+                static foreach(v; ValidatorsMapped)
+                {
+                    pragma(msg, "Validator:        %s".format(v));
+                    pragma(msg, "canPreValidate:   %s".format(canPreValidate!v));
+                    pragma(msg, "canValueValidate: %s".format(canValidate!v));
+                    pragma(msg, "");
+                    { string s; bool a = typeof(v).init.onPreValidate("", s); }
+                    { string s; bool a = typeof(v).init.onValidate(T.init, s); }
+                }
+            }
+
             // Runtime variables
             bool handled = false;
+            string validatorError;
+
+            // Pre validate the argument text.
+            static foreach(Validator; ValidatorsMapped)
+            static if(canPreValidate!Validator)
+            {
+                debugPragma!("Using PRE VALIDATION validator %s for type %s".format(Validator, T.stringof));
+                enforce(
+                    Validator.onPreValidate(arg, validatorError),
+                    new ArgBinderValidationException(
+                        "Pre validation",
+                        "%s".format(Validator),
+                        T.stringof,
+                        arg,
+                        "[N/A]",
+                        validatorError
+                    )
+                );
+            }
 
             static foreach(mod; AllModules)
             {
-                // Pre validate the argument text.
-                static foreach(Validator; ValidatorsMapped)
-                static if(canPreValidate!Validator)
-                {
-                    debugPragma!("Using PRE VALIDATION validator %s for type %s".format(Validator, T.stringof));
-                    enforce(
-                        Validator.onPreValidate(arg),
-                        "Pre validation failed for type %s. Validator = %s, Arg = '%s'"
-                        .format(T.stringof, Validator, arg)
-                    );
-                }
-
                 // Bind the text to the value, using the right binder.
                 foreach(binder; getSymbolsByUDA!(mod, ArgBinderFunc))
                 {
+
                     // For templated binder funcs, we need a slightly different set of values.
                     static if(__traits(compiles, binder!T))
                     {
@@ -201,22 +231,28 @@ static struct ArgBinder(Modules...)
                             debugPragma!("This binder is templated, so it is likely that the binder's contract fails, or its code doesn't compile for this given type.");
                     }
                 }
-
-                // Value validation.
-                static foreach(Validator; ValidatorsMapped)
-                static if(canValidate!Validator)
-                {
-                    debugPragma!("Using VALUE VALIDATION validator %s for type %s".format(Validator, T.stringof));
-                    enforce(
-                        Validator.onValidate(value),
-                        "Value validation failed for type %s. Validator = %s, Arg = '%s', Value = %s"
-                        .format(T.stringof, Validator, arg, value)
-                    );
-                }
             }
 
             if(!handled)
                 assert(false, "No arg binder could be found for type `"~T.stringof~"`");
+
+            // Value validation.
+            static foreach(Validator; ValidatorsMapped)
+            static if(canValidate!Validator)
+            {
+                debugPragma!("Using VALUE VALIDATION validator %s for type %s".format(Validator, T.stringof));
+                enforce(
+                    Validator.onValidate(value, validatorError),
+                    new ArgBinderValidationException(
+                        "Value validation",
+                        "%s".format(Validator),
+                        T.stringof,
+                        arg,
+                        "%s".format(value),
+                        validatorError
+                    )
+                );
+            }
         }
     }
 }
@@ -243,9 +279,14 @@ unittest
         import std.traits : isNumeric;
         ulong value;
 
-        bool onValidate(T)(T value)
+        bool onValidate(T)(T value, ref string error)
         if(isNumeric!T)
         {
+            import std.format : format;
+
+            // This is only shown on error, so it's safe to set on truthy paths as well
+            error = "Value %s is NOT greater than %s".format(value, this.value);
+
             return value > this.value;
         }
     }
@@ -272,7 +313,7 @@ unittest
 
     static struct Dummy
     {
-        bool onPreValidate(string arg)
+        bool onPreValidate(string arg, ref string error)
         {
             return false;
         }
@@ -288,6 +329,42 @@ unittest
 
     S value;
     Binder.bind!(int, __traits(getAttributes, S.value))("200", value.value).assertThrown;
+}
+
+class ArgBinderValidationException : Exception
+{
+    const string stageName;
+    const string validatorName;
+    const string typeName;
+    const string argValue;
+    const string valueAsString;
+    const string validatorError;
+
+    pure @safe this(
+        string stageName,
+        string validatorName,
+        string typeName,
+        string argValue,
+        string valueAsString,
+        string validatorError,
+        string file = __FILE__, 
+        size_t line = __LINE__, 
+        Throwable next = null)
+    {
+        this.stageName      = stageName;
+        this.validatorName  = validatorName;
+        this.typeName       = typeName;
+        this.argValue       = argValue;
+        this.valueAsString  = valueAsString;
+        this.validatorError = validatorError;
+        import std.format : format;
+        auto error = (this.validatorError !is null)
+                     ? this.validatorError
+                     : "%s failed for type %s. Validator = %s; Arg = '%s'; Value = %s"
+                       .format(stageName, typeName, validatorName, argValue, valueAsString);
+
+        super(error, file, line, next);
+    }
 }
 
 /+ BUILT-IN BINDERS +/

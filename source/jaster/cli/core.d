@@ -215,6 +215,11 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +  `ArgBinder` has support for user-defined binders (in fact, all of the built-in binders use this mechanism!). Please
  +  refer to its documentation for more information, or see example-04.
  +
+ +  You can also specify validation for arguments, by attaching structs (that match the definition specified in `ArgBinder`'s documentation) as
+ +  UDAs onto your fields.
+ +
+ +  $(B Beware) you need to attach your validation struct as `@Struct()` (or with args) and not `@Struct`, notice the first one has parenthesis.
+ +
  + Boolean_Binding:
  +  Bool arguments have special logic in place.
  +
@@ -524,7 +529,7 @@ final class CommandLineInterface(Modules...)
         {
             import std.format    : format;
             import std.algorithm : filter, map;
-            import std.exception : enforce;
+            import std.exception : enforce, collectException;
 
             // This is expecting the parser to have already read in the command's name, leaving only the args.
             return (ArgPullParser parser, ref string executionError, scope ref ServiceScope services, HelpTextBuilderSimple helpText)
@@ -541,18 +546,19 @@ final class CommandLineInterface(Modules...)
                     assert(commandInstance !is null, "Dependency injection failed somehow.");
                 
                 // Get arg info.
-                NamedArgInfo!T[] namedArgs;
+                NamedArgInfo!T[]      namedArgs;
                 PositionalArgInfo!T[] positionalArgs;
                 /*static member*/ getArgs!T(/*ref*/ namedArgs, /*ref*/ positionalArgs);
 
                 // Parse args.
-                size_t positionalArgIndex = 0;
-                bool processRawList = false;
+                size_t   positionalArgIndex = 0;
+                bool     processRawList = false;
                 string[] rawList;
                 for(; !parser.empty && !processRawList; parser.popFront())
                 {
-                    const token = parser.front;
-                    final switch(token.type) with(ArgTokenType)
+                    const  token = parser.front;
+                    string debugName; // Used for when there's a validation error
+                    try final switch(token.type) with(ArgTokenType)
                     {
                         case Text:
                             if(positionalArgIndex >= positionalArgs.length)
@@ -561,6 +567,7 @@ final class CommandLineInterface(Modules...)
                                 return -1;
                             }
 
+                            debugName = "positional arg %s".format(positionalArgIndex);
                             positionalArgs[positionalArgIndex].setter(token, /*ref*/ commandInstance);
                             positionalArgs[positionalArgIndex++].wasFound = true;
                             break;
@@ -580,7 +587,8 @@ final class CommandLineInterface(Modules...)
                                 if(/*static member*/matchSpacelessPattern(arg.uda.pattern, token.value))
                                 {
                                     arg.wasFound = true;
-                                    result = arg;
+                                    result       = arg;
+                                    debugName    = "named argument "~arg.uda.pattern;
                                     break;
                                 }
                             }
@@ -631,6 +639,11 @@ final class CommandLineInterface(Modules...)
 
                         case EOF:
                             break;
+                    }
+                    catch(ArgBinderValidationException ex)
+                    {
+                        executionError = "For "~debugName~": "~ex.msg;
+                        return -1;
                     }
                 }
 
@@ -830,6 +843,8 @@ final class CommandLineInterface(Modules...)
                             && (hasUDA!(Symbol, CommandNamedArg) || hasUDA!(Symbol, CommandPositionalArg))
                         ) 
                         {
+                            alias SymbolUDAs = __traits(getAttributes, Symbol);
+
                             static if(hasUDA!(Symbol, CommandNamedArg))
                             {
                                 NamedArgInfo!T arg;
@@ -854,12 +869,12 @@ final class CommandLineInterface(Modules...)
                                     alias SymbolUnderlyingType = Unqual!(ReturnType!(SymbolType.get));
 
                                     SymbolUnderlyingType proxy;
-                                    ArgBinderInstance.bind(tok.value, /*ref*/ proxy);
+                                    ArgBinderInstance.bind!(SymbolUnderlyingType, SymbolUDAs)(tok.value, /*ref*/ proxy);
 
                                     mixin("commandInstance.%s = proxy;".format(SymbolName));
                                 }
                                 else
-                                    ArgBinderInstance.bind(tok.value, /*ref*/ mixin("commandInstance.%s".format(SymbolName)));
+                                    ArgBinderInstance.bind!(SymbolType, SymbolUDAs)(tok.value, /*ref*/ mixin("commandInstance.%s".format(SymbolName)));
                             };
                             arg.isNullable = isInstanceOf!(Nullable, SymbolType);
                             arg.isBool     = is(SymbolType == bool) || is(SymbolType == Nullable!bool);
@@ -1032,6 +1047,47 @@ version(unittest)
                 ["rawListTest", "-a", "---", "raw1", "raw2"],
                 IgnoreFirstArg.no
             ) == 0
+        );
+    }
+
+    private struct Expect(T)
+    {
+        T value;
+
+        bool onValidate(T boundValue, ref string error)
+        {
+            import std.format : format;
+            error = "Expected value to equal '%s', not '%s'.".format(this.value, boundValue);
+
+            return this.value == boundValue;
+        }
+    }
+
+    @Command("validationTest", "Test validation")
+    private struct ValidationTestCommand
+    {
+        @CommandPositionalArg(0)
+        @Expect!string("lol")
+        string value;
+        
+        void onExecute(){}
+    }
+    @("Test ArgBinder validation integration")
+    unittest
+    {
+        auto cli = new CommandLineInterface!(jaster.cli.core);
+        assert(
+            cli.parseAndExecute(
+                ["validationTest", "lol"],
+                IgnoreFirstArg.no
+            ) == 0
+        );
+
+        assert(
+            cli.parseAndExecute(
+                ["validationTest", "non"],
+                IgnoreFirstArg.no
+            ) == -1
         );
     }
 }
