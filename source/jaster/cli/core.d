@@ -271,6 +271,7 @@ final class CommandLineInterface(Modules...)
     alias ArgValueSetterFunc(T) = void function(ArgToken, ref T);
     alias ArgBinderInstance     = ArgBinder!Modules;
     alias AllowPartialMatch     = Flag!"partialMatch";
+    immutable BASH_COMPLETION   = import("bash_completion.sh");
 
     private struct CommandInfo
     {
@@ -283,7 +284,8 @@ final class CommandLineInterface(Modules...)
     private enum Mode
     {
         execute,
-        complete
+        complete,
+        bashCompletion
     }
 
     private enum ParseResultType
@@ -395,6 +397,8 @@ final class CommandLineInterface(Modules...)
 
             if(args.front.type == ArgTokenType.Text && args.front.value == "__jcli:complete")
                 mode = Mode.complete;
+            else if(args.front.type == ArgTokenType.Text && args.front.value == "__jcli:bash_complete_script")
+                mode = Mode.bashCompletion;
 
             ParseResult parseResult;
 
@@ -432,9 +436,12 @@ final class CommandLineInterface(Modules...)
             if(proxy !is null)
                 proxy._func = &this.parseAndExecute;
 
-            return (mode == Mode.execute)
-                   ? this.onExecute(parseResult)
-                   : this.onComplete(parseResult);
+            final switch(mode) with(Mode)
+            {
+                case execute:        return this.onExecute(parseResult);
+                case complete:       return this.onComplete(parseResult);
+                case bashCompletion: return this.onBashCompletionScript();
+            }
         }
     }
 
@@ -555,6 +562,24 @@ final class CommandLineInterface(Modules...)
             commandRange.front.doComplete(before, current, after, /*ref*/ output); // We need black magic, so this is generated in addCommand.
             writeln(output);
 
+            return 0;
+        }
+
+        int onBashCompletionScript()
+        {
+            import std.stdio : writefln;
+            import std.file  : thisExePath;
+            import std.path  : baseName;
+
+            const fullPath = thisExePath;
+            const exeName  = fullPath.baseName;
+
+            writefln(BASH_COMPLETION,
+                exeName,
+                fullPath,
+                exeName,
+                exeName
+            );
             return 0;
         }
     }
