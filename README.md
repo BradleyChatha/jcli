@@ -35,6 +35,8 @@ for user-defined validation.
 * ArgPullParser - An InputRange that parses the `args` parameter passed to the main function. **Note** that this function expects the data to be provided in the same
 way as the main function's `args` parameter. e.g. ["env", "set", "--name=abc", "-v", "yada"] should be passed instead of ["env set --name=abc -v yada"].
 
+* Bash Completion - JCLI provides automatic support for bash tab completion, see the appropriate section below for more information.
+
 * CommandLineInterface - This is the 'core' provided by JCLI, and is built up from every other component.
 It will automatically discover structs/classes decorated with `@Command`; auto-generate help text; auto-bind and parse the command line
 args; provides dependency injection (via JIOC), etc.
@@ -67,6 +69,24 @@ To create a default command - a command that is executed if no other sub-command
 e.g. `@Command()` or `@Command(null, "Some description")` would both create a default command.
 
 For sub-commands, simply populate the name field of `@Command`, e.g. `@Command("et|execute task")` would create a sub-command that can be used as either `mytool.exe et` or `mytool.exe execute test`.
+
+## Bash Completion
+
+*Note: JCLI can technically support any shell's autocomplete, but only Bash is supported for now*.
+
+This feature is still in the preliminary phase, so may not be *quite* correct or useable, but it's better than nothing.
+
+Basically, build and install your tool into its final resting place on your machine, then run `myTool __jcli:bash_complete_script` to make it output
+a bash completion script. Further instructions completely depend on how your system is set up.
+
+For example, systems with bash_completion.d can run a command similar to (at least, I think) `myTool __jcli:bash_complete_script > /etc/bash_completion.d/myTool`
+to automatically enable it completion.
+
+Another example could be `eval "$(myTool __jcli:bash_complete_script)"`, which will enable completion for the current shell session.
+
+The resulting bash script will essentially generate a call to `myTool __jcli:complete COMP_CWORD COMP_WORDS`, where JCLI will then do the actual busywork.
+
+I'm still a pretty big noob to Linux, and this feature is still in its early stages, so forgive me if things aren't exactly perfect here :o)
 
 ## Examples
 
