@@ -15,10 +15,10 @@ private
 struct ArgBinderFunc {}
 
 /++
- + A static struct providing functionality for binding a string (the argument) to a value.
+ + A static struct providing functionality for binding a string (the argument) to a value, as well as optionally validating it.
  +
  + Description:
- +  The ArgBinder itself does not directly contain functions to bind arguments (e.g arg -> int, arg -> enum, etc.).
+ +  The ArgBinder itself does not directly contain functions to bind or validate arguments (e.g arg -> int, arg -> enum, etc.).
  +
  +  Instead, arg binders are user-provided, free-standing functions that are automatically detected from the specified `Modules`.
  +
@@ -30,6 +30,9 @@ struct ArgBinderFunc {}
  +
  +  For example, the following binder `@ArgBinderFunc void argToInt(string arg, ref int value);` will be called anytime the arg binder
  +  needs to bind the argument into an `int` value.
+ +
+ +  When binding a value, you can optionally pass in a set of Validators, which are (typically) struct UDAs that provide a certain
+ +  interface for validation.
  +
  + Lookup_Rules:
  +  The arg binder functions off of a simple 'First come first served' ruleset.
@@ -51,6 +54,25 @@ struct ArgBinderFunc {}
  +  Note that you must also add "JCLI_Verbose" as a version (either in your dub file, or cli, or whatever) for these messages to show up.
  +
  +  While not perfect, this does go over the entire process the arg binder is doing to select which `@ArgBinderFunc` it will use.
+ +
+ + Validation_:
+ +  Validation structs can be passed via the `Validators` template parameter present for the `ArgBinder.bind` function.
+ +
+ +  If you are using `CommandLineInterface` (JCLI's default core), then a field's UDAs are passed through automatically as validator structs.
+ +
+ +  A validator is simply a struct that defines either, or both of these function signatures (or compatible signatures):
+ +
+ +  ```
+ +      bool onPreValidate(string arg);
+ +      bool onValidate(VALUE_TYPE value); // Can be templated of course.
+ +  ```
+ +
+ +  A validator containing the `onPreValidate` function can be used to validate the argument prior to it being ran through
+ +  an `@ArgBinderFunc`.
+ +
+ +  A validator containing the `onValidate` function can be used to validate the argument after it has been bound by an `@ArgBinderFunc`.
+ +
+ +  By specifying the "JCLI_Verbose" version, the `ArgBinder` will detail what validators are being used for what types, and for which stages of binding.
  +
  + Notes:
  +  While other parts of this library have special support for `Nullable` types. This struct doesn't directly have any special
@@ -75,6 +97,16 @@ static struct ArgBinder(Modules...)
          + Binds the given `arg` to the `value`, using the `@ArgBinderFunc` found by using the 'Lookup Rules' documented in the
          + document comment for `ArgBinder`.
          +
+         + Validators:
+         +  The `Validators` template parameter is used to pass in validator structs (see ArgBinder's documentation comment).
+         +
+         +  Anything inside of this template parameter that isn't a struct, and doesn't define any valid
+         +  validator interface, will be completely ignored, so it is safe to simply pass the results of
+         +  `__traits(getAttributes, someField)` without having to worry about filtering.
+         +
+         + Throws:
+         +  `Exception` if any validator fails.
+         +
          + Assertions:
          +  When an `@ArgBinderFunc` is found, it must have only 2 parameters.
          + 
@@ -83,15 +115,37 @@ static struct ArgBinder(Modules...)
          +  If no appropriate binder func was found, then an assert(false) is used.
          +
          + Params:
-         +  arg     = The argument to bind.
-         +  value   = The value to put the result in.
+         +  arg        = The argument to bind.
+         +  value      = The value to put the result in.
+         +  Validators = A tuple of validator structs to use.
          + ++/
-        void bind(T)(string arg, ref T value)
+        void bind(T, Validators...)(string arg, ref T value)
         {
+            import std.format    : format; // Only for exceptions/compile time logging.
+            import std.exception : enforce;
+
+            // Get all the validators we need.
+            enum isStruct(alias V)       = is(typeof(V) == struct);
+            enum canPreValidate(alias V) = isStruct!V && __traits(compiles, { bool a = typeof(V).init.onPreValidate(""); });
+            enum canValidate(alias V)    = isStruct!V && __traits(compiles, { bool a = typeof(V).init.onValidate(T.init); });
+
             bool handled = false;
 
             static foreach(mod; AllModules)
             {
+                // Pre validate the argument text.
+                static foreach(Validator; Validators)
+                static if(canPreValidate!Validator)
+                {
+                    debugPragma!("Using PRE VALIDATION validator %s for type %s".format(Validator, T.stringof));
+                    enforce(
+                        Validator.onPreValidate(arg),
+                        "Pre validation failed for type %s. Validator = %s, Arg = '%s'"
+                        .format(T.stringof, Validator, arg)
+                    );
+                }
+
+                // Bind the text to the value, using the right binder.
                 foreach(binder; getSymbolsByUDA!(mod, ArgBinderFunc))
                 {
                     static if(__traits(compiles, binder!T))
@@ -133,6 +187,18 @@ static struct ArgBinder(Modules...)
                             debugPragma!("This binder is templated, so it is likely that the binder's contract fails, or its code doesn't compile for this given type.");
                     }
                 }
+
+                // Value validation.
+                static foreach(Validator; Validators)
+                static if(canValidate!Validator)
+                {
+                    debugPragma!("Using VALUE VALIDATION validator %s for type %s".format(Validator, T.stringof));
+                    enforce(
+                        Validator.onValidate(value),
+                        "Value validation failed for type %s. Validator = %s, Arg = '%s', Value = %s"
+                        .format(T.stringof, Validator, arg, value)
+                    );
+                }
             }
 
             if(!handled)
@@ -144,8 +210,11 @@ static struct ArgBinder(Modules...)
 @safe
 unittest
 {
+    import std.exception : assertThrown;
+
     alias Binder = ArgBinder!(jaster.cli.binder);
 
+    // Non-validated bindings.
     int value;
     string strValue;
     Binder.bind("200", value);
@@ -153,6 +222,24 @@ unittest
 
     assert(value == 200);
     assert(strValue == "200");
+
+    // Validated bindings
+    static struct GreaterThan
+    {
+        import std.traits : isNumeric;
+        ulong value;
+
+        bool onValidate(T)(T value)
+        if(isNumeric!T)
+        {
+            return value > this.value;
+        }
+    }
+
+    Binder.bind!(int, GreaterThan(68))("69", value);
+    assert(value == 69);
+
+    assertThrown(Binder.bind!(int, GreaterThan(70))("69", value)); // Failed validation causes an exception to be thrown.
 }
 
 /+ BUILT-IN BINDERS +/
