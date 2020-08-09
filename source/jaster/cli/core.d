@@ -267,15 +267,17 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
 final class CommandLineInterface(Modules...)
 {
     alias CommandExecuteFunc    = int function(ArgPullParser, ref string errorMessageIfThereWasOne, scope ref ServiceScope, HelpTextBuilderSimple);
+    alias CommandCompleteFunc   = void function(string[] before, string current, string[] after, ref char[] buffer);
     alias ArgValueSetterFunc(T) = void function(ArgToken, ref T);
     alias ArgBinderInstance     = ArgBinder!Modules;
     alias AllowPartialMatch     = Flag!"partialMatch";
 
     private struct CommandInfo
     {
-        Command pattern;
+        Command               pattern;
         HelpTextBuilderSimple helpText;
-        CommandExecuteFunc doExecute;
+        CommandExecuteFunc    doExecute;
+        CommandCompleteFunc   doComplete;
     }
 
     private enum Mode
@@ -486,9 +488,9 @@ final class CommandLineInterface(Modules...)
 
             cword -= 1;
             words = words[1..$]; // [0] is the exe name, which we don't care about.
-            auto  before  = words[0..cword];
-            const current = (cword < words.length)     ? words[cword] : [];
-            const after   = (cword + 1 < words.length) ? words[cword+1..$] : [];
+            auto before  = words[0..cword];
+            auto current = (cword < words.length)     ? words[cword] : [];
+            auto after   = (cword + 1 < words.length) ? words[cword+1..$] : [];
 
             auto beforeParser = ArgPullParser(before);
             auto commandRange = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref only on success*/ beforeParser));
@@ -533,6 +535,11 @@ final class CommandLineInterface(Modules...)
             }
 
             // Found command, so we're in "display possible args" mode.
+            char[] output;
+            output.reserve(1024);
+
+            commandRange.front.doComplete(before, current, after, /*ref*/ output); // We need black magic, so this is generated in addCommand.
+            writeln(output);
 
             return 0;
         }
@@ -594,9 +601,10 @@ final class CommandLineInterface(Modules...)
             import std.exception : enforce;
 
             CommandInfo info;
-            info.helpText  = this.createHelpText!T();
-            info.pattern   = getSingleUDA!(T, Command);
-            info.doExecute = this.createCommandExecuteFunc!T();
+            info.helpText   = this.createHelpText!T();
+            info.pattern    = getSingleUDA!(T, Command);
+            info.doExecute  = this.createCommandExecuteFunc!T();
+            info.doComplete = this.createCommandCompleteFunc!T();
 
             if(info.pattern.pattern is null)
             {
@@ -818,6 +826,47 @@ final class CommandLineInterface(Modules...)
                     executionError = ex.msg;
                     debug executionError ~= "\n\nSTACK TRACE:\n" ~ ex.info.toString(); // trace info
                     return -1;
+                }
+            };
+        }
+        
+        CommandCompleteFunc createCommandCompleteFunc(alias T)()
+        {
+            import std.algorithm : filter, map, startsWith, splitter;
+            import std.exception : assumeUnique;
+
+            return (string[] before, string current, string[] after, ref char[] output)
+            {
+                // Get arg info.
+                NamedArgInfo!T[]      namedArgs;
+                PositionalArgInfo!T[] positionalArgs;
+                getArgs!T(/*ref*/ namedArgs, /*ref*/ positionalArgs);
+
+                // See if the previous value was a non-boolean argument.
+                const justBefore               = ArgPullParser(before[$-1..$]).front;
+                auto  justBeforeNamedArgResult = namedArgs.filter!(a => matchSpacelessPattern(a.uda.pattern, justBefore.value));
+                if((justBefore.type == ArgTokenType.LongHandArgument || justBefore.type == ArgTokenType.ShortHandArgument)
+                && (!justBeforeNamedArgResult.empty && !justBeforeNamedArgResult.front.isBool))
+                {
+                    // TODO: In the future, add support for specifying values to a parameter, either static and/or dynamically.
+                    return;
+                }
+
+                // Otherwise, we either need to autocomplete an argument's name, or something else that's predefined.
+                string[] names;
+                names.reserve(namedArgs.length * 2);
+
+                foreach(arg; namedArgs)
+                {
+                    foreach(pattern; arg.uda.pattern.splitter('|'))
+                        names ~= pattern;
+                }
+
+                foreach(name; names.filter!(n => n.startsWith(current)))
+                {
+                    output ~= (name.length == 1) ? "-" : "--";
+                    output ~= name;
+                    output ~= ' ';
                 }
             };
         }
