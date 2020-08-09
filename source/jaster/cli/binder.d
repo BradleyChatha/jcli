@@ -148,6 +148,7 @@ static struct ArgBinder(Modules...)
                 // Bind the text to the value, using the right binder.
                 foreach(binder; getSymbolsByUDA!(mod, ArgBinderFunc))
                 {
+                    // For templated binder funcs, we need a slightly different set of values.
                     static if(__traits(compiles, binder!T))
                     {
                         alias Binder      = binder!T;
@@ -160,7 +161,8 @@ static struct ArgBinder(Modules...)
                         const BinderFQN   = fullyQualifiedName!Binder;
                         const IsTemplated = false;
                     }
-
+                    
+                    // Perform the binding, asserting that its interface is correct.
                     static if(isFunction!Binder)
                     {
                         alias Params = Parameters!Binder;
@@ -171,8 +173,7 @@ static struct ArgBinder(Modules...)
                             "The arg binder `"~BinderFQN~"` must have a `string` as their first parameter, not a(n) `"~Params[0].stringof~"`."
                         );
 
-                        static if(is(Params[1] == T)
-                               || __traits(compiles, Binder("", value))) // Template support.
+                        static if(__traits(compiles, Binder("", value)))
                         {
                             debugPragma!("Using arg binder `"~BinderFQN~"` for type `"~T.stringof~"`.");
                             Binder(arg, value);
