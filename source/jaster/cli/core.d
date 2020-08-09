@@ -403,6 +403,7 @@ final class CommandLineInterface(Modules...)
             ParseResult parseResult;
 
             parseResult.argParserBeforeAttempt = args; // If we can't find the exact command, sometimes we can get a partial match when showing help text.
+            parseResult.type                   = ParseResultType.commandFound; // Default to command found.
             auto result                        = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref*/ args));
             if(result.empty)
             {
@@ -428,7 +429,6 @@ final class CommandLineInterface(Modules...)
                 parseResult.command = result.front;
 
             parseResult.argParserAfterAttempt = args;
-            parseResult.type                  = ParseResultType.commandFound;
             parseResult.services              = this._services.createScope(); // Reminder: ServiceScope uses RAII.
 
             // Special support: For our default implementation of `ICommandLineInterface`, set its value.
