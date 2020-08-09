@@ -278,6 +278,29 @@ final class CommandLineInterface(Modules...)
         CommandExecuteFunc doExecute;
     }
 
+    private enum Mode
+    {
+        execute,
+        complete
+    }
+
+    private enum ParseResultType
+    {
+        commandFound,
+        commandNotFound,
+        showHelpText
+    }
+
+    private struct ParseResult
+    {
+        ParseResultType type;
+        CommandInfo     command;
+        string          helpText;
+        ArgPullParser   argParserAfterAttempt;
+        ArgPullParser   argParserBeforeAttempt;
+        ServiceScope    services;
+    }
+
     struct ArgInfo(UDA, T)
     {
         UDA uda;
@@ -356,7 +379,8 @@ final class CommandLineInterface(Modules...)
         {
             import std.algorithm : filter, any;
             import std.exception : enforce;
-            import std.stdio     : writefln, writeln, write;
+            import std.stdio     : writefln;
+            import std.format    : format;
 
             if(args.empty && this._defaultCommand == CommandInfo.init)
             {
@@ -365,49 +389,89 @@ final class CommandLineInterface(Modules...)
                 return -1;
             }
 
-            CommandInfo command;
+            Mode mode = Mode.execute;
 
-            auto argsSave = args; // If we can't find the exact command, sometimes we can get a partial match when showing help text.
-            auto result   = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref*/ args));
+            if(args.front.type == ArgTokenType.LongHandArgument && args.front.value == "jcli:complete")
+                mode = Mode.complete;
+
+            ParseResult parseResult;
+
+            parseResult.argParserBeforeAttempt = args; // If we can't find the exact command, sometimes we can get a partial match when showing help text.
+            auto result                        = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref*/ args));
             if(result.empty)
             {
                 if(this.containsHelpArgument(args))
                 {
+                    parseResult.type = ParseResultType.showHelpText;
                     if(this._defaultCommand != CommandInfo.init)
-                        write(this._defaultCommand.helpText.toString()); // writeln adds too much spacing.
+                        parseResult.helpText ~= this._defaultCommand.helpText.toString();
                     
                     if(this._commands.length > 0)
-                        writeln(this.createAvailableCommandsHelpText(ArgPullParser.init, "Available commands").toString());
+                        parseResult.helpText ~= this.createAvailableCommandsHelpText(ArgPullParser.init, "Available commands").toString();
                     
                     return 0;
                 }
 
                 if(this._defaultCommand == CommandInfo.init)
                 {
-                    writefln("ERROR: Unknown command '%s'.", argsSave.front.value);
-                    writeln(this.createAvailableCommandsHelpText(args).toString());
+                    parseResult.type      = ParseResultType.commandNotFound;
+                    parseResult.helpText ~= format("ERROR: Unknown command '%s'.", parseResult.argParserBeforeAttempt.front.value);
+                    parseResult.helpText ~= this.createAvailableCommandsHelpText(args).toString();
                     return -1;
                 }
                 else
-                    command = this._defaultCommand;
+                    parseResult.command = this._defaultCommand;
             }
             else
-                command = result.front;
+                parseResult.command = result.front;
 
-            auto commandScope = this._services.createScope(); // Reminder: ServiceScope uses RAII.
+            parseResult.argParserAfterAttempt = args;
+            parseResult.type                  = ParseResultType.commandFound;
+            parseResult.services              = this._services.createScope(); // Reminder: ServiceScope uses RAII.
 
             // Special support: For our default implementation of `ICommandLineInterface`, set its value.
-            auto proxy = cast(ICommandLineInterfaceImpl)commandScope.getServiceOrNull!ICommandLineInterface();
+            auto proxy = cast(ICommandLineInterfaceImpl)parseResult.services.getServiceOrNull!ICommandLineInterface();
             if(proxy !is null)
                 proxy._func = &this.parseAndExecute;
 
+            return (mode == Mode.execute)
+                   ? this.onExecute(parseResult)
+                   : this.onComplete(parseResult);
+        }
+    }
+
+    /+ MODE EXECUTORS +/
+    private final
+    {
+        int onExecute(ref ParseResult result)
+        {
+            import std.stdio : writeln, writefln;
+
+            final switch(result.type) with(ParseResultType)
+            {
+                case showHelpText:
+                    writeln(result.helpText);
+                    return 0;
+
+                case commandNotFound:
+                    writeln(result.helpText);
+                    return -1;
+
+                case commandFound: break;
+            }
+
             string errorMessage;
-            auto statusCode = command.doExecute(args, /*ref*/ errorMessage, commandScope, command.helpText);
+            auto statusCode = result.command.doExecute(result.argParserAfterAttempt, /*ref*/ errorMessage, result.services, result.command.helpText);
 
             if(errorMessage !is null)
                 writefln("ERROR: %s", errorMessage);
 
             return statusCode;
+        }
+
+        int onComplete(ref ParseResult result)
+        {
+            return 0;
         }
     }
 
