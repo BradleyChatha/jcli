@@ -109,7 +109,7 @@ auto TEST_CASES =
               .finish           (),
     testCase().inFolder         ("./04-custom-arg-binders/")
               .withParams       ("./lalaland.txt")
-              .expectStatusToBe (1)
+              .expectStatusToBe (1) // idk why this returns 1, I should probably figure that out...
               .finish           (),
 
     testCase().inFolder         ("./05-dependency-injection/")
@@ -153,6 +153,21 @@ auto TEST_CASES =
               .withParams           ("dynamic")
               .expectStatusToBe     (0)
               .expectOutputToMatch  ("Age")
+              .finish               (),
+
+    testCase().inFolder             ("./08-arg-binder-validation")
+              .withParams           ("20 69")
+              .expectStatusToBe     (0)
+              .finish               (),
+    testCase().inFolder             ("./08-arg-binder-validation")
+              .withParams           ("69 69")
+              .expectStatusToBe     (-1)
+              .expectOutputToMatch  ("Expected number to be even")
+              .finish               (),
+    testCase().inFolder             ("./08-arg-binder-validation")
+              .withParams           ("20 20")
+              .expectStatusToBe     (-1)
+              .expectOutputToMatch  ("Expected number to be odd")
               .finish               (),
 ];
  
