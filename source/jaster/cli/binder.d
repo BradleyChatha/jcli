@@ -121,20 +121,33 @@ static struct ArgBinder(Modules...)
          + ++/
         void bind(T, Validators...)(string arg, ref T value)
         {
+            import std.traits    : isType;
             import std.format    : format; // Only for exceptions/compile time logging.
             import std.exception : enforce;
+            import std.meta      : staticMap;
 
             // Get all the validators we need.
             enum isStruct(alias V)       = is(typeof(V) == struct);
             enum canPreValidate(alias V) = isStruct!V && __traits(compiles, { bool a = typeof(V).init.onPreValidate(""); });
             enum canValidate(alias V)    = isStruct!V && __traits(compiles, { bool a = typeof(V).init.onValidate(T.init); });
 
+            // The user might specify `@Struct` instead of `@Struct()`, so this is just to handle that.
+            template ctorValidatorIfNeeded(alias V)
+            {
+                static if(isType!V)
+                    enum ctorValidatorIfNeeded = V.init;
+                else
+                    alias ctorValidatorIfNeeded = V;
+            }
+            alias ValidatorsMapped = staticMap!(ctorValidatorIfNeeded, Validators);
+
+            // Runtime variables
             bool handled = false;
 
             static foreach(mod; AllModules)
             {
                 // Pre validate the argument text.
-                static foreach(Validator; Validators)
+                static foreach(Validator; ValidatorsMapped)
                 static if(canPreValidate!Validator)
                 {
                     debugPragma!("Using PRE VALIDATION validator %s for type %s".format(Validator, T.stringof));
@@ -190,7 +203,7 @@ static struct ArgBinder(Modules...)
                 }
 
                 // Value validation.
-                static foreach(Validator; Validators)
+                static foreach(Validator; ValidatorsMapped)
                 static if(canValidate!Validator)
                 {
                     debugPragma!("Using VALUE VALIDATION validator %s for type %s".format(Validator, T.stringof));
@@ -241,6 +254,40 @@ unittest
     assert(value == 69);
 
     assertThrown(Binder.bind!(int, GreaterThan(70))("69", value)); // Failed validation causes an exception to be thrown.
+}
+
+@("Test that ArgBinder correctly discards non-validators")
+unittest
+{
+    alias Binder = ArgBinder!(jaster.cli.binder);
+
+    int value;
+    Binder.bind!(int, "string", null, 2020)("2", value);
+}
+
+@("Test that __traits(getAttributes) works with ArgBinder")
+unittest
+{
+    import std.exception : assertThrown;
+
+    static struct Dummy
+    {
+        bool onPreValidate(string arg)
+        {
+            return false;
+        }
+    }
+
+    alias Binder = ArgBinder!(jaster.cli.binder);
+
+    static struct S
+    {
+        @Dummy
+        int value;
+    }
+
+    S value;
+    Binder.bind!(int, __traits(getAttributes, S.value))("200", value.value).assertThrown;
 }
 
 /+ BUILT-IN BINDERS +/
