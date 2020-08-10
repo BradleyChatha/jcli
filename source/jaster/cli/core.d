@@ -584,81 +584,9 @@ final class CommandLineInterface(Modules...)
         }
     }
 
-    /+ PRIVATE FUNCTIONS +/
+    /+ COMMAND INFO CREATOR FUNCTIONS +/
     private final
     {
-        HelpTextBuilderTechnical createAvailableCommandsHelpText(ArgPullParser args, string sectionName = "Did you mean")
-        {
-            import std.array     : array;
-            import std.algorithm : filter, sort, map, splitter;
-
-            auto builder = new HelpTextBuilderTechnical();
-            builder.addSection(sectionName)
-                   .addContent(
-                       new HelpSectionArgInfoContent(
-                           this._commands
-                               .filter!((c)
-                               {
-                                    auto argsSave = args;
-                                    return argsSave.empty 
-                                        || matchSpacefullPattern(c.pattern.pattern, /*ref*/ argsSave, AllowPartialMatch.yes);
-                               })
-                               .map!(c => HelpSectionArgInfoContent.ArgInfo(
-                                    [c.pattern.pattern],
-                                    c.pattern.description,
-                                    ArgIsOptional.no
-                               ))
-                               .array
-                               .sort!"a.names[0] < b.names[0]"
-                               .array, // eww...
-                            AutoAddArgDashes.no
-                       )
-            );
-
-            return builder;
-        }
-
-        void addCommandsFromModule(alias Module)()
-        {
-            import std.traits : getSymbolsByUDA;
-
-            static foreach(symbol; getSymbolsByUDA!(Module, Command))
-            {
-                static assert(is(symbol == struct) || is(symbol == class), 
-                    "Only structs and classes can be marked with @Command. Issue Symbol = " ~ __traits(identifier, symbol)
-                );
-
-                pragma(msg, "Found command: ", __traits(identifier, symbol));
-                this.addCommand!symbol();
-            }
-        }
-
-        void addCommand(alias T)()
-        if(is(T == struct) || is(T == class))
-        {
-            import std.format    : format;
-            import std.exception : enforce;
-
-            CommandInfo info;
-            info.helpText   = this.createHelpText!T();
-            info.pattern    = getSingleUDA!(T, Command);
-            info.doExecute  = this.createCommandExecuteFunc!T();
-            info.doComplete = this.createCommandCompleteFunc!T();
-
-            if(info.pattern.pattern is null)
-            {
-                enforce(
-                    this._defaultCommand == CommandInfo.init, 
-                    "Multiple default commands defined: Second default command is %s"
-                    .format(T.stringof)
-                );
-                info.helpText.setCommandName("DEFAULT");
-                this._defaultCommand = info;
-            }
-            else
-                this._commands ~= info;
-        }
-
         HelpTextBuilderSimple createHelpText(alias T)()
         {
             import std.algorithm : splitter;
@@ -921,94 +849,11 @@ final class CommandLineInterface(Modules...)
                 }
             };
         }
+    }
 
-        static bool containsHelpArgument(ArgPullParser args)
-        {
-            import std.algorithm : any;
-
-            return args.any!(t => t.type == ArgTokenType.ShortHandArgument && t.value == "h"
-                               || t.type == ArgTokenType.LongHandArgument && t.value == "help");
-        }
-
-        static bool matchSpacelessPattern(string pattern, string toTestAgainst)
-        {
-            import std.algorithm : splitter, any;
-
-            return pattern.splitter("|").any!(str => str == toTestAgainst);
-        }
-        ///
-        unittest
-        {
-            assert(matchSpacelessPattern("v|verbose", "v"));
-            assert(matchSpacelessPattern("v|verbose", "verbose"));
-            assert(!matchSpacelessPattern("v|verbose", "lalafell"));
-        }
-
-        static bool matchSpacefullPattern(string pattern, ref ArgPullParser parser, AllowPartialMatch allowPartial = AllowPartialMatch.no)
-        {
-            import std.algorithm : splitter;
-
-            foreach(subpattern; pattern.splitter("|"))
-            {
-                auto savedParser = parser.save();
-                bool isAMatch = true;
-                bool isAPartialMatch = false;
-                foreach(split; subpattern.splitter(" "))
-                {
-                    // import std.stdio;
-                    // writeln(subpattern, " > ", split, " > ", savedParser.front, " > ", savedParser.empty, " > ", (savedParser.front.type == ArgTokenType.Text && savedParser.front.value == split));
-
-                    if(savedParser.empty
-                    || !(savedParser.front.type == ArgTokenType.Text && savedParser.front.value == split))
-                    {
-                        isAMatch = false;
-                        break;
-                    }
-
-                    isAPartialMatch = true;
-                    savedParser.popFront();
-                }
-
-                if(isAMatch
-                || (isAPartialMatch && allowPartial))
-                {
-                    parser = savedParser;
-                    return true;
-                }
-            }
-
-            return false;
-        }
-        ///
-        unittest
-        {
-            // Test empty parsers.
-            auto parser = ArgPullParser([]);
-            assert(!matchSpacefullPattern("v", parser));
-
-            // Test that the parser's position is moved forward correctly.
-            parser = ArgPullParser(["v", "verbose"]);
-            assert(matchSpacefullPattern("v", parser));
-            assert(matchSpacefullPattern("verbose", parser));
-            assert(parser.empty);
-
-            // Test that a parser that fails to match isn't moved forward at all.
-            parser = ArgPullParser(["v", "verbose"]);
-            assert(!matchSpacefullPattern("lel", parser));
-            assert(parser.front.value == "v");
-
-            // Test that a pattern with spaces works.
-            parser = ArgPullParser(["give", "me", "chocolate"]);
-            assert(matchSpacefullPattern("give me", parser));
-            assert(parser.front.value == "chocolate");
-
-            // Test that multiple patterns work.
-            parser = ArgPullParser(["v", "verbose"]);
-            assert(matchSpacefullPattern("lel|v|verbose", parser));
-            assert(matchSpacefullPattern("lel|v|verbose", parser));
-            assert(parser.empty);
-        }
-
+    /+ COMMAND RUNTIME HELPERS +/
+    private final
+    {
         static void insertRawList(T)(ref T command, string[] rawList)
         {
             import std.traits : getSymbolsByUDA;
@@ -1112,6 +957,173 @@ final class CommandLineInterface(Modules...)
                     }
                 }
             }}
+        }
+    }
+
+    /+ PARSING HELPERS +/
+    private final
+    {
+        static bool containsHelpArgument(ArgPullParser args)
+        {
+            import std.algorithm : any;
+
+            return args.any!(t => t.type == ArgTokenType.ShortHandArgument && t.value == "h"
+                               || t.type == ArgTokenType.LongHandArgument && t.value == "help");
+        }
+
+        static bool matchSpacelessPattern(string pattern, string toTestAgainst)
+        {
+            import std.algorithm : splitter, any;
+
+            return pattern.splitter("|").any!(str => str == toTestAgainst);
+        }
+        ///
+        unittest
+        {
+            assert(matchSpacelessPattern("v|verbose", "v"));
+            assert(matchSpacelessPattern("v|verbose", "verbose"));
+            assert(!matchSpacelessPattern("v|verbose", "lalafell"));
+        }
+
+        static bool matchSpacefullPattern(string pattern, ref ArgPullParser parser, AllowPartialMatch allowPartial = AllowPartialMatch.no)
+        {
+            import std.algorithm : splitter;
+
+            foreach(subpattern; pattern.splitter("|"))
+            {
+                auto savedParser = parser.save();
+                bool isAMatch = true;
+                bool isAPartialMatch = false;
+                foreach(split; subpattern.splitter(" "))
+                {
+                    // import std.stdio;
+                    // writeln(subpattern, " > ", split, " > ", savedParser.front, " > ", savedParser.empty, " > ", (savedParser.front.type == ArgTokenType.Text && savedParser.front.value == split));
+
+                    if(savedParser.empty
+                    || !(savedParser.front.type == ArgTokenType.Text && savedParser.front.value == split))
+                    {
+                        isAMatch = false;
+                        break;
+                    }
+
+                    isAPartialMatch = true;
+                    savedParser.popFront();
+                }
+
+                if(isAMatch
+                || (isAPartialMatch && allowPartial))
+                {
+                    parser = savedParser;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        ///
+        unittest
+        {
+            // Test empty parsers.
+            auto parser = ArgPullParser([]);
+            assert(!matchSpacefullPattern("v", parser));
+
+            // Test that the parser's position is moved forward correctly.
+            parser = ArgPullParser(["v", "verbose"]);
+            assert(matchSpacefullPattern("v", parser));
+            assert(matchSpacefullPattern("verbose", parser));
+            assert(parser.empty);
+
+            // Test that a parser that fails to match isn't moved forward at all.
+            parser = ArgPullParser(["v", "verbose"]);
+            assert(!matchSpacefullPattern("lel", parser));
+            assert(parser.front.value == "v");
+
+            // Test that a pattern with spaces works.
+            parser = ArgPullParser(["give", "me", "chocolate"]);
+            assert(matchSpacefullPattern("give me", parser));
+            assert(parser.front.value == "chocolate");
+
+            // Test that multiple patterns work.
+            parser = ArgPullParser(["v", "verbose"]);
+            assert(matchSpacefullPattern("lel|v|verbose", parser));
+            assert(matchSpacefullPattern("lel|v|verbose", parser));
+            assert(parser.empty);
+        }
+    }
+
+    /+ UNCATEGORISED HELPERS +/
+    private final
+    {
+        HelpTextBuilderTechnical createAvailableCommandsHelpText(ArgPullParser args, string sectionName = "Did you mean")
+        {
+            import std.array     : array;
+            import std.algorithm : filter, sort, map, splitter;
+
+            auto builder = new HelpTextBuilderTechnical();
+            builder.addSection(sectionName)
+                   .addContent(
+                       new HelpSectionArgInfoContent(
+                           this._commands
+                               .filter!((c)
+                               {
+                                    auto argsSave = args;
+                                    return argsSave.empty 
+                                        || matchSpacefullPattern(c.pattern.pattern, /*ref*/ argsSave, AllowPartialMatch.yes);
+                               })
+                               .map!(c => HelpSectionArgInfoContent.ArgInfo(
+                                    [c.pattern.pattern],
+                                    c.pattern.description,
+                                    ArgIsOptional.no
+                               ))
+                               .array
+                               .sort!"a.names[0] < b.names[0]"
+                               .array, // eww...
+                            AutoAddArgDashes.no
+                       )
+            );
+
+            return builder;
+        }
+
+        void addCommandsFromModule(alias Module)()
+        {
+            import std.traits : getSymbolsByUDA;
+
+            static foreach(symbol; getSymbolsByUDA!(Module, Command))
+            {
+                static assert(is(symbol == struct) || is(symbol == class), 
+                    "Only structs and classes can be marked with @Command. Issue Symbol = " ~ __traits(identifier, symbol)
+                );
+
+                pragma(msg, "Found command: ", __traits(identifier, symbol));
+                this.addCommand!symbol();
+            }
+        }
+
+        void addCommand(alias T)()
+        if(is(T == struct) || is(T == class))
+        {
+            import std.format    : format;
+            import std.exception : enforce;
+
+            CommandInfo info;
+            info.helpText   = this.createHelpText!T();
+            info.pattern    = getSingleUDA!(T, Command);
+            info.doExecute  = this.createCommandExecuteFunc!T();
+            info.doComplete = this.createCommandCompleteFunc!T();
+
+            if(info.pattern.pattern is null)
+            {
+                enforce(
+                    this._defaultCommand == CommandInfo.init, 
+                    "Multiple default commands defined: Second default command is %s"
+                    .format(T.stringof)
+                );
+                info.helpText.setCommandName("DEFAULT");
+                this._defaultCommand = info;
+            }
+            else
+                this._commands ~= info;
         }
     }
 }
