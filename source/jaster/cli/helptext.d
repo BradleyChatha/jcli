@@ -206,7 +206,9 @@ final class HelpTextBuilderTechnical
             foreach(ref section; this._sections)
             {
                 // This could all technically be 'D-ified'/'rangeified' but I couldn't make it look nice.
-                output ~= "\n\n";
+                if(output.length > 0)
+                    output ~= "\n\n";
+                    
                 output ~= section.name~":\n";
                 section.content.map!(c => c.getContent(section.options))
                                .each!(c => output ~= c);
