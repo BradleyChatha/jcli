@@ -871,7 +871,7 @@ final class CommandLineInterface(Modules...)
         
         CommandCompleteFunc createCommandCompleteFunc(alias T)()
         {
-            import std.algorithm : filter, map, startsWith, splitter;
+            import std.algorithm : filter, map, startsWith, splitter, canFind;
             import std.exception : assumeUnique;
 
             return (string[] before, string current, string[] after, ref char[] output)
@@ -898,7 +898,13 @@ final class CommandLineInterface(Modules...)
                 foreach(arg; namedArgs)
                 {
                     foreach(pattern; arg.uda.pattern.splitter('|'))
+                    {
+                        // Reminder: Confusingly for this use case, arguments don't have their leading dashes in the before and after arrays.
+                        if(before.canFind(pattern) || after.canFind(pattern))
+                            continue;
+
                         names ~= pattern;
+                    }
                 }
 
                 foreach(name; names.filter!(n => n.startsWith(current)))
