@@ -897,6 +897,7 @@ final class CommandLineInterface(Modules...)
                 }
 
                 // Otherwise, we either need to autocomplete an argument's name, or something else that's predefined.
+                
                 string[] names;
                 names.reserve(namedArgs.length * 2);
 
