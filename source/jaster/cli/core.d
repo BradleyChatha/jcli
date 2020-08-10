@@ -927,7 +927,7 @@ final class CommandLineInterface(Modules...)
             import std.algorithm : any;
 
             return args.any!(t => t.type == ArgTokenType.ShortHandArgument && t.value == "h"
-                                || t.type == ArgTokenType.LongHandArgument && t.value == "help");
+                               || t.type == ArgTokenType.LongHandArgument && t.value == "help");
         }
 
         static bool matchSpacelessPattern(string pattern, string toTestAgainst)
