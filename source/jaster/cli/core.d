@@ -876,6 +876,11 @@ final class CommandLineInterface(Modules...)
 
             return (string[] before, string current, string[] after, ref char[] output)
             {
+                // Check if there's been a null ("--") or '-' ("---"), and if there has, don't bother with completion.
+                // Because anything past that is of course, the raw arg list.
+                if(before.canFind(null) || before.canFind("-"))
+                    return;
+
                 // Get arg info.
                 NamedArgInfo!T[]      namedArgs;
                 PositionalArgInfo!T[] positionalArgs;
