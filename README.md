@@ -198,7 +198,6 @@ Here is an example of the help text listing commands that are similar to the arg
 
 ```text
 > .\aim.exe deploy -h
-
 Available commands:
     deploy init                  - Initialises a deployment project.
     deploy pack                  - Creates a package that can then be deployed to a server.
@@ -207,7 +206,6 @@ Available commands:
 
 ```text
 > .\aim.exe secrets -h
-
 Available commands:
     secrets define               - Defines a new secret.
     secrets get                  - Gets the value of a secret.
