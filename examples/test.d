@@ -181,15 +181,17 @@ int main(string[] args)
 @Command(null, "Runs all test cases")
 struct DefaultCommand
 {
-    void onExecute()
+    int onExecute()
     {
         UserIO.logInfof("Running %s tests.", "ALL".ansi.fg(Ansi4BitColour.green));
-        runTestSet(TEST_CASES);
+        const anyFailures = runTestSet(TEST_CASES);
+
+        return anyFailures ? -1 : 0;
     }
 }
 
 /++ FUNCS ++/
-void runTestSet(TestCase[] testSet)
+bool runTestSet(TestCase[] testSet)
 {
     auto results = new TestResult[testSet.length];
     foreach(i, testCase; testSet)
@@ -215,6 +217,8 @@ void runTestSet(TestCase[] testSet)
         failedCount, "FAILED".ansi.fg(Ansi4BitColour.red),
         results.length
     );
+
+    return (failedCount != 0);
 }
 
 TestResult runTest(TestCase testCase)
@@ -233,7 +237,13 @@ TestResult runTest(TestCase testCase)
     }
 
     failIf(results[0].statusCode != 0, "Build failed.");
-    failIf(results[1].statusCode != testCase.expectedStatus.get(0), "Status code is wrong.");
+
+    // When handling the status code, some terminals allow negative status codes, some don't, so we'll special case expecting
+    // a -1 as expecting -1 or 255.
+    if(testCase.expectedStatus.get(0) != -1)
+        failIf(results[1].statusCode != testCase.expectedStatus.get(0), "Status code is wrong.");
+    else
+        failIf(results[1].statusCode != -1 && results[1].statusCode != 255, "Status code is wrong. (-1 special case)");
 
     if(!testCase.outputRegex.isNull)
         failIf(!results[1].output.match(testCase.outputRegex), "Output doesn't contain a match for the given regex.");
