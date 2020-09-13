@@ -72,7 +72,7 @@ struct HelpSection
      + Returns:
      +  `this`
      + ++/
-    ref HelpSection addContent(IHelpSectionContent content)
+    ref HelpSection addContent(IHelpSectionContent content) return
     {
         assert(content !is null);
         this.content ~= content;

@@ -5,7 +5,7 @@ private
 {
     import std.typecons : Flag;
     import std.traits   : isSomeChar;
-    import jaster.cli.parser, jaster.cli.udas, jaster.cli.binder, jaster.cli.helptext;
+    import jaster.cli.parser, jaster.cli.udas, jaster.cli.binder, jaster.cli.helptext, jaster.cli.resolver;
     import jaster.ioc;
 }
 
@@ -319,9 +319,9 @@ final class CommandLineInterface(Modules...)
     /+ VARIABLES +/
     private
     {
-        CommandInfo[]   _commands;
-        ServiceProvider _services;
-        CommandInfo     _defaultCommand;
+        CommandResolver!CommandInfo _resolver;
+        ServiceProvider             _services;
+        CommandInfo                 _defaultCommand;
     }
 
     /+ PUBLIC INTERFACE +/
@@ -339,11 +339,10 @@ final class CommandLineInterface(Modules...)
             if(services is null)
                 services = new ServiceProvider([addCommandLineInterfaceService()]);
             this._services = services;
+            this._resolver = new CommandResolver!CommandInfo();
 
             static foreach(mod; Modules)
                 this.addCommandsFromModule!mod();
-
-            this._commands.sort!"a.pattern.pattern.length > b.pattern.pattern.length"();
         }
         
         /++
@@ -404,8 +403,8 @@ final class CommandLineInterface(Modules...)
 
             parseResult.argParserBeforeAttempt = args; // If we can't find the exact command, sometimes we can get a partial match when showing help text.
             parseResult.type                   = ParseResultType.commandFound; // Default to command found.
-            auto result                        = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref*/ args));
-            if(result.empty)
+            auto result                        = this._resolver.resolveAndAdvance(args);
+            if(!result.success)
             {
                 if(this.containsHelpArgument(args))
                 {
@@ -413,7 +412,7 @@ final class CommandLineInterface(Modules...)
                     if(this._defaultCommand != CommandInfo.init)
                         parseResult.helpText ~= this._defaultCommand.helpText.toString();
                     
-                    if(this._commands.length > 0)
+                    //if(this._commands.length > 0)
                         parseResult.helpText ~= this.createAvailableCommandsHelpText(ArgPullParser.init, "Available commands").toString();
                 }
                 else if(this._defaultCommand == CommandInfo.init)
@@ -426,7 +425,7 @@ final class CommandLineInterface(Modules...)
                     parseResult.command = this._defaultCommand;
             }
             else
-                parseResult.command = result.front;
+                parseResult.command = result.value.userData;
 
             parseResult.argParserAfterAttempt = args;
             parseResult.services              = this._services.createScope(); // Reminder: ServiceScope uses RAII.
@@ -496,59 +495,39 @@ final class CommandLineInterface(Modules...)
             cword -= 1;
             words = words[1..$]; // [0] is the exe name, which we don't care about.
             auto before  = words[0..cword];
-            auto current = (cword < words.length)     ? words[cword] : [];
+            auto current = (cword < words.length)     ? words[cword]      : [];
             auto after   = (cword + 1 < words.length) ? words[cword+1..$] : [];
 
             auto beforeParser = ArgPullParser(before);
-            auto commandRange = this._commands.filter!(c => matchSpacefullPattern(c.pattern.pattern, /*ref only on success*/ beforeParser));
+            auto commandInfo  = this._resolver.resolveAndAdvance(beforeParser);
 
             // Can't find command, so we're in "display command name" mode.
-            if(commandRange.empty)
+            if(!commandInfo.success || commandInfo.value.type == CommandNodeType.partialWord)
             {
                 char[] output;
                 output.reserve(1024); // Gonna be doing a good bit of concat.
 
-                // Special case: When we have no text to look for, just display the first word of every command pattern.
+                // Special case: When we have no text to look for, just display the first word of every command path.
                 if(before.length == 0 && current is null)
-                {
-                    foreach(command; this._commands)
-                    {
-                        foreach(pattern; command.pattern.pattern.splitter('|'))
-                        {
-                            output ~= pattern.splitter(' ').front;
-                            output ~= ' ';
-                        }
-                    }
-                    writeln(output);
-                    return 0 ;
-                }
+                    commandInfo.value = this._resolver.root;
 
                 // Otherwise try to match using the existing text.
 
-                // So basically, for any subpattern that matches what's inside of `before`, and has at least one element after that,
-                // display that first extra element.
+                // Display the word of all children of the current command word.
                 //
-                // Also if current isn't null, then use that as a further filter.
+                // If the current argument word isn't null, then use that as a further filter.
                 //
                 // e.g.
                 // Before  = ["name"]
                 // Pattern = "name get"
                 // Output  = "get"
-                foreach(command; this._commands)
+                foreach(child; commandInfo.value.children)
                 {
-                    foreach(pattern; command.pattern.pattern.splitter("|"))
-                    {
-                        const wordsInPattern = pattern.splitter(" ").array;
-                        if(wordsInPattern.length <= before.length)
-                            continue;
+                    if(current.length > 0 && !child.word.startsWith(current))
+                        continue;
 
-                        if(wordsInPattern[0..before.length].equal(before)
-                        && (current is null || wordsInPattern[before.length].startsWith(current)))
-                        {
-                            output ~= wordsInPattern[before.length];
-                            output ~= " ";
-                        }
-                    }
+                    output ~= child.word;
+                    output ~= " ";
                 }
 
                 writeln(output);
@@ -559,7 +538,7 @@ final class CommandLineInterface(Modules...)
             char[] output;
             output.reserve(1024);
 
-            commandRange.front.doComplete(before, current, after, /*ref*/ output); // We need black magic, so this is generated in addCommand.
+            commandInfo.value.userData.doComplete(before, current, after, /*ref*/ output); // We need black magic, so this is generated in addCommand.
             writeln(output);
 
             return 0;
@@ -1063,13 +1042,11 @@ final class CommandLineInterface(Modules...)
             builder.addSection(sectionName)
                    .addContent(
                        new HelpSectionArgInfoContent(
-                           this._commands
-                               .filter!((c)
-                               {
-                                    auto argsSave = args;
-                                    return argsSave.empty 
-                                        || matchSpacefullPattern(c.pattern.pattern, /*ref*/ argsSave, AllowPartialMatch.yes);
-                               })
+                           this._resolver
+                               .resolveAndAdvance(args)
+                               .value
+                               .children
+                               .map!(c => c.userData)
                                .map!(c => HelpSectionArgInfoContent.ArgInfo(
                                     [c.pattern.pattern],
                                     c.pattern.description,
@@ -1103,6 +1080,7 @@ final class CommandLineInterface(Modules...)
         void addCommand(alias T)()
         if(is(T == struct) || is(T == class))
         {
+            import std.algorithm : splitter;
             import std.format    : format;
             import std.exception : enforce;
 
@@ -1123,7 +1101,10 @@ final class CommandLineInterface(Modules...)
                 this._defaultCommand = info;
             }
             else
-                this._commands ~= info;
+            {
+                foreach(pattern; info.pattern.pattern.splitter('|'))
+                    this._resolver.define(pattern, info);
+            }
         }
     }
 }
