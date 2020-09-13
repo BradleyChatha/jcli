@@ -81,7 +81,7 @@ struct CommandNode(UserDataT)
             // Above loop failed.
             if(currentBeforeChange.word == current.word)
             {
-                current = this; // Makes result.success become false, but only if there's no more words left to go over.
+                current = this; // Makes result.success become false.
                 break;
             }
         }
@@ -245,12 +245,29 @@ final class CommandResolver(UserDataT)
         return this._rootNode.byCommandSentence(words);
     }
 
+    /// ditto.
     CommandResolveResult!UserDataT resolve(string sentence) pure
     {
         import std.algorithm : splitter, filter;
         return this.resolve(sentence.splitter(' ').filter!(w => w.length > 0));
     }
 
+    /++
+     + Peforms the same task as `CommandResolver.resolve`, except that it will also advance the given `parser` to the
+     + next unparsed argument.
+     +
+     + Description:
+     +  For example, you've defined `"set verbose"` as a command, and you pass in an `ArgPullParser(["set", "verbose", "true"])`.
+     +
+     +  This function will match with the `"set verbose"` sentence, and will advance the parser so that it will now be `ArgPullParser(["true"])`, ready
+     +  for your application code to perform additional processing (e.g. arguments).
+     +
+     + Params:
+     +  parser = The `ArgPullParser` to use and advance.
+     +
+     + Returns:
+     +  Same thing as `CommandResolver.resolve`.
+     + ++/
     CommandResolveResult!UserDataT resolveAndAdvance(ref ArgPullParser parser)
     {
         import std.algorithm : map;
@@ -274,7 +291,8 @@ final class CommandResolver(UserDataT)
             parser.popFront();
         }
     }
-
+    
+    /// Returns: The root `CommandNode`, for whatever you need it for.
     @property
     NodeT root()
     {
@@ -384,4 +402,7 @@ unittest
     assert(result.value.type == CommandNodeType.finalWord);
     assert(result.value.word == "value");
     assert(parser.front.value == "true");
+
+    result = resolver.resolve("set verbose true");
+    assert(!result.success);
 }
