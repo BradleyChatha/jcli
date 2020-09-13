@@ -148,6 +148,9 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +
  +  Example #4: The pattern (for `@CommandNamedArg`) "v|verbose" will match when either "-v" or "--verbose" is used.
  +
+ +  Internally, `CommandResolver` is used to perform command resolution, and a solution custom to `CommandLineInterface` is used for everything else
+ +  regarding patterns.
+ +
  + Commands:
  +  A command is a struct or class that is marked with `@Command`.
  +
@@ -275,7 +278,7 @@ final class CommandLineInterface(Modules...)
 
     private struct CommandInfo
     {
-        Command               pattern;
+        Command               pattern; // Patterns (and their helper functions) are still being kept around, so previous code can work unimpeded from the migration to CommandResolver.
         HelpTextBuilderSimple helpText;
         CommandExecuteFunc    doExecute;
         CommandCompleteFunc   doComplete;

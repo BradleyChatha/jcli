@@ -41,6 +41,8 @@ way as the main function's `args` parameter. e.g. ["env", "set", "--name=abc", "
 It will automatically discover structs/classes decorated with `@Command`; auto-generate help text; auto-bind and parse the command line
 args; provides dependency injection (via JIOC), etc.
 
+* CommandResolver - An abstraction over a tree that allows you to define commands via "command sentences", and perform full or partial searches.
+
 * HelpTextBuilder - As the name implies, it is used to create a help text. Comes with a 'technical' version for more fine-grained control, and a 'simple' version
 for an easier-to-use, generically layed out help message. Content is provided by classes that inherit the `IHelpSectionContent` class, which
 also provides a line-wrap helper function.
