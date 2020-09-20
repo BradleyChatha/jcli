@@ -407,7 +407,8 @@ final class CommandLineInterface(Modules...)
             parseResult.argParserBeforeAttempt = args; // If we can't find the exact command, sometimes we can get a partial match when showing help text.
             parseResult.type                   = ParseResultType.commandFound; // Default to command found.
             auto result                        = this._resolver.resolveAndAdvance(args);
-            if(!result.success)
+
+            if(!result.success || result.value.type == CommandNodeType.partialWord)
             {
                 if(this.containsHelpArgument(args))
                 {
@@ -416,7 +417,7 @@ final class CommandLineInterface(Modules...)
                         parseResult.helpText ~= this._defaultCommand.helpText.toString();
                     
                     //if(this._commands.length > 0)
-                        parseResult.helpText ~= this.createAvailableCommandsHelpText(ArgPullParser.init, "Available commands").toString();
+                        parseResult.helpText ~= this.createAvailableCommandsHelpText(parseResult.argParserBeforeAttempt, "Available commands").toString();
                 }
                 else if(this._defaultCommand == CommandInfo.init)
                 {
@@ -1041,23 +1042,25 @@ final class CommandLineInterface(Modules...)
             import std.array     : array;
             import std.algorithm : filter, sort, map, splitter;
 
+            auto command = this._resolver.root;
+            auto result  = this._resolver.resolveAndAdvance(args);
+            if(result.success)
+                command = result.value;
+
             auto builder = new HelpTextBuilderTechnical();
             builder.addSection(sectionName)
                    .addContent(
                        new HelpSectionArgInfoContent(
-                           this._resolver
-                               .resolveAndAdvance(args)
-                               .value
-                               .children
-                               .map!(c => c.userData)
-                               .map!(c => HelpSectionArgInfoContent.ArgInfo(
-                                    [c.pattern.pattern],
-                                    c.pattern.description,
-                                    ArgIsOptional.no
-                               ))
-                               .array
-                               .sort!"a.names[0] < b.names[0]"
-                               .array, // eww...
+                           command.finalWords
+                                  .map!(c => c.userData)
+                                  .map!(c => HelpSectionArgInfoContent.ArgInfo(
+                                       [c.pattern.pattern],
+                                       c.pattern.description,
+                                       ArgIsOptional.no
+                                  ))
+                                  .array
+                                  .sort!"a.names[0] < b.names[0]"
+                                  .array, // eww...
                             AutoAddArgDashes.no
                        )
             );
