@@ -107,6 +107,8 @@ struct CommandNode(UserDataT)
      +  Furthermore, as with `CommandResolver.finalWords`, the returned array of nodes are simply copies of the actual nodes used
      +  and returned by `CommandResolver.resolve`. So don't expect any changes to be reflected anywhere. 
      +
+     +  Technically the same could be done here, but I'm lazy, so for now you get extra GC garbage.
+     +
      + Returns:
      +  All child final words.
      + ++/
