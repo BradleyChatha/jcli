@@ -422,8 +422,8 @@ final class CommandLineInterface(Modules...)
                 else if(this._defaultCommand == CommandInfo.init)
                 {
                     parseResult.type      = ParseResultType.commandNotFound;
-                    parseResult.helpText ~= format("ERROR: Unknown command '%s'.", parseResult.argParserBeforeAttempt.front.value);
-                    parseResult.helpText ~= this.createAvailableCommandsHelpText(args).toString();
+                    parseResult.helpText ~= format("ERROR: Unknown command '%s'.\n\n", parseResult.argParserBeforeAttempt.front.value);
+                    parseResult.helpText ~= this.createAvailableCommandsHelpText(parseResult.argParserBeforeAttempt).toString();
                 }
                 else
                     parseResult.command = this._defaultCommand;
