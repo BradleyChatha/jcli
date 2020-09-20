@@ -60,6 +60,9 @@ struct CommandNode(UserDataT)
     /// User-provided data for this node. Note that partial words don't contain any user data.
     UserDataT userData;
 
+    /// A string of the entire sentence up to (and including) this word, please note that $(B currently only final words) have this field set.
+    string sentence;
+
     /// See_Also: `CommandResolver.resolve`
     CommandResolveResult!UserDataT byCommandSentence(RangeOfStrings)(RangeOfStrings range)
     {        
@@ -90,6 +93,45 @@ struct CommandNode(UserDataT)
         result.value   = current;
         result.success = range.empty && current.word != this.word;
         return result;
+    }
+    
+    /++
+     + Retrieves all child `CommandNodes` that are of type `CommandNodeType.finalWord`.
+     +
+     + Notes:
+     +  While similar to `CommandResolver.finalWords`, this function one major difference.
+     +
+     +  It is less efficient, since `CommandResolver.finalWords` builds and caches its value whenever a sentence is defined, while
+     +  this function (currently) has to recreate its value each time.
+     +
+     +  Furthermore, as with `CommandResolver.finalWords`, the returned array of nodes are simply copies of the actual nodes used
+     +  and returned by `CommandResolver.resolve`. So don't expect any changes to be reflected anywhere. 
+     +
+     + Returns:
+     +  All child final words.
+     + ++/
+    CommandNode!UserDataT[] finalWords()
+    {
+        if(this.type != CommandNodeType.partialWord && this.type != CommandNodeType.root)
+            return null;
+
+        typeof(return) nodes;
+
+        void addFinalNodes(CommandNode!UserDataT repetitionNode)
+        {
+            foreach(childNode; repetitionNode.children)
+            {
+                if(childNode.type == CommandNodeType.finalWord)
+                    nodes ~= childNode;
+                else if(childNode.type == CommandNodeType.partialWord)
+                    addFinalNodes(childNode);
+                else
+                    assert(false, "Malformed tree.");
+            }
+        }
+
+        addFinalNodes(this);
+        return nodes;
     }
 }
 
@@ -145,6 +187,8 @@ final class CommandResolver(UserDataT)
     private
     {
         CommandNode!UserDataT _rootNode;
+        string[]              _sentences;
+        NodeT[]               _finalWords;
     }
 
     this()
@@ -202,6 +246,10 @@ final class CommandResolver(UserDataT)
             node.word     = word;
             node.type     = (isLastWord) ? CommandNodeType.finalWord : CommandNodeType.partialWord;
             node.userData = (isLastWord) ? userDataForFinalNode : UserDataT.init;
+            node.sentence = (isLastWord) ? commandSentence : null;
+
+            if(isLastWord)
+                this._finalWords ~= node;
 
             if(existingNodeIndex == -1)
             {
@@ -217,6 +265,8 @@ final class CommandResolver(UserDataT)
                 .format(word, currentNode.word, currentNode.type)
             );
         }
+
+        this._sentences ~= commandSentence;
     }
     
     /++
@@ -298,12 +348,31 @@ final class CommandResolver(UserDataT)
     {
         return this._rootNode;
     }
+
+    /++
+     + Notes:
+     +  While the returned array is mutable, the nodes stored in this array are *not* the same nodes stored in the actual search tree.
+     +  This means that any changes made to this array will not be reflected by the results of `resolve` and `resolveAndAdvance`.
+     +
+     +  The reason this isn't marked `const` is because that'd mean that your user data would also be marked `const`, which, in D,
+     +  can be *very* annoying and limiting. Doubly so since your intentions can't be determined due to the nature of user data. So behave with this.
+     +
+     + Returns:
+     +  All of the final words currently defined.
+     + ++/
+    @property
+    NodeT[] finalWords()
+    {
+        return this._finalWords;
+    }
 }
 ///
 @("Main test for CommandResolver")
 @safe
 unittest
 {
+    import std.algorithm : map, equal;
+
     // Define UserData as a struct containing an execution method. Define a UserData which toggles a value.
     static struct UserData
     {
@@ -334,6 +403,7 @@ unittest
     auto result = resolver.resolve("toggle");
     assert(result.success);
     assert(result.value.word == "toggle");
+    assert(result.value.sentence == "toggle");
     assert(result.value.type == CommandNodeType.finalWord);
     assert(result.value.userData.execute !is null);
     result.value.userData.execute();
@@ -343,6 +413,7 @@ unittest
     result = resolver.resolve("please");
     assert(result.success);
     assert(result.value.word            == "please");
+    assert(result.value.sentence        is null);
     assert(result.value.type            == CommandNodeType.partialWord);
     assert(result.value.children.length == 2);
     assert(result.value.userData        == UserData.init);
@@ -351,6 +422,7 @@ unittest
     result = resolver.resolve("please toggle");
     assert(result.success);
     assert(result.value.word == "toggle");
+    assert(result.value.sentence == "please toggle");
     assert(result.value.type == CommandNodeType.finalWord);
     result.value.userData.execute();
     assert(executeValue == false);
@@ -359,6 +431,7 @@ unittest
     result = resolver.resolve("please tog");
     assert(result.success);
     assert(result.value.word == "tog");
+    assert(result.value.sentence == "please tog");
     assert(result.value.type == CommandNodeType.finalWord);
     result.value.userData.execute();
     assert(executeValue == true);
@@ -367,6 +440,13 @@ unittest
     assert(!resolver.resolve(null).success);
     assert(!resolver.resolve("toggle please").success);
     assert(!resolver.resolve("He she we, wombo.").success);
+
+    // Test that final words are properly tracked.
+    assert(resolver.finalWords.map!(w => w.word).equal(["toggle", "toggle", "tog"]));
+    assert(resolver.root.finalWords.equal(resolver.finalWords));
+
+    auto node = resolver.resolve("please").value;
+    assert(node.finalWords().map!(w => w.word).equal(["toggle", "tog"]));
 }
 
 @("Test CommandResolver.resolveAndAdvance")
