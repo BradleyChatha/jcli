@@ -1038,17 +1038,7 @@ struct AsAnsiCharRange(R)
             const ch = this._currentSection.value[this._indexIntoSection];
             switch(ch)
             {
-                // I *swear* you could do something like `case '0'..'9'`, but I appear to be wrong here?
-                case '0':
-                case '1':
-                case '2':
-                case '3':
-                case '4':
-                case '5':
-                case '6':
-                case '7':
-                case '8':
-                case '9':
+                case '0': .. case '9':
                     break;
 
                 case ';':
@@ -1271,17 +1261,7 @@ struct AsAnsiTextRange(R)
             const ch = this._currentSection.value[this._indexIntoSection];
             switch(ch)
             {
-                // I *swear* you could do something like `case '0'..'9'`, but I appear to be wrong here?
-                case '0':
-                case '1':
-                case '2':
-                case '3':
-                case '4':
-                case '5':
-                case '6':
-                case '7':
-                case '8':
-                case '9':
+                case '0': .. case '9':
                     break;
 
                 case ';':
