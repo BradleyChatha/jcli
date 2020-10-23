@@ -373,6 +373,6 @@ ServiceInfo addFileConfig(For, Adapter)(string fileName)
 /// ditto.
 ServiceInfo[] addFileConfig(For, Adapter)(ref ServiceInfo[] services, string fileName)
 {
-    services ~= addFileConfig!(For, Adapter)();
+    services ~= addFileConfig!(For, Adapter)(fileName);
     return services;
 }
