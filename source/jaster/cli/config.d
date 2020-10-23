@@ -50,10 +50,10 @@ if(is(T == struct) || is(T == class))
          +  Functionally, "rolling back on success" simply means the configuration's `value[set]` property is never used.
          +
          +  This has a consequence - if your `editFunc` modifies the internal state of the value in a way that takes immediate effect on
-         +  the original value (e.g. the value is a class type, so all changes will affect the origina value), then "rolling back" won't
+         +  the original value (e.g. the value is a class type, so all changes will affect the original value), then "rolling back" won't
          +  be able to prevent any data changes.
          +
-         +  Therefor, its best to use structs for your configuration types if you're wanting to make use of "rolling back".
+         +  Therefor, it's best to use structs for your configuration types if you're wanting to make use of "rolling back".
          +
          +  If an error occurs, then `UserIO.verboseException` is used to display the exception.
          +

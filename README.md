@@ -82,7 +82,7 @@ Basically, build and install your tool into its final resting place on your mach
 a bash completion script. Further instructions completely depend on how your system is set up.
 
 For example, systems with bash_completion.d can run a command similar to (at least, I think) `myTool __jcli:bash_complete_script > /etc/bash_completion.d/myTool`
-to automatically enable it completion.
+to automatically enable it completion. You can [see an example](https://bradley.chatha.dev/BlogPost/JcliNews/4-v0-9-0-release-changelog-jcli-dlang-library#bash-completion) over on my blog.
 
 Another example could be `eval "$(myTool __jcli:bash_complete_script)"`, which will enable completion for the current shell session.
 

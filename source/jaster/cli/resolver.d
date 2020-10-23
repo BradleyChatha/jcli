@@ -99,7 +99,7 @@ struct CommandNode(UserDataT)
      + Retrieves all child `CommandNodes` that are of type `CommandNodeType.finalWord`.
      +
      + Notes:
-     +  While similar to `CommandResolver.finalWords`, this function one major difference.
+     +  While similar to `CommandResolver.finalWords`, this function has one major difference.
      +
      +  It is less efficient, since `CommandResolver.finalWords` builds and caches its value whenever a sentence is defined, while
      +  this function (currently) has to recreate its value each time.
