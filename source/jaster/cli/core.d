@@ -256,13 +256,13 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +  For some applications, they may allow the ability for the user to provide a set of unparsed arguments. For example, dub allows the user
  +  to provide a set of arguments to the resulting output, when using the likes of `dub run`, e.g. `dub run -- value1 value2 etc.`
  +
- +  `CommandLineInterface` also provides this ability. While in the dub example, a double dash ("--") is used, `CommandLineInterface` requires a triple dash ("---").
+ +  `CommandLineInterface` also provides this ability. You can use either the double dash like in dub ('--') or a triple dash (legacy reasons, '---').
  +
  +  After that, as long as your command contains a `string[]` field marked with `@CommandRawArg`, then any args after the triple dash are treated as "raw args" - they
  +  won't be parsed, passed to the ArgBinder, etc. they'll just be passed into the variable as-is.
  +
  +  For example, you have the following member in a command `@CommandRawArg string[] rawList;`, and you are given the following command - 
- +  `["command", "value1", "---", "rawValue1", "rawValue2"]`, which will result in `rawList`'s value becoming `["rawValue1", "rawValue2"]`
+ +  `["command", "value1", "--", "rawValue1", "rawValue2"]`, which will result in `rawList`'s value becoming `["rawValue1", "rawValue2"]`
  +
  + Params:
  +  Modules = The modules that contain the commands and/or binder funcs to use.
