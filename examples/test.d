@@ -169,6 +169,17 @@ auto TEST_CASES =
               .expectStatusToBe     (-1)
               .expectOutputToMatch  ("Expected number to be odd")
               .finish               (),
+
+    testCase().inFolder             ("./09-raw-unparsed-arg-list")
+              .withParams           ("echo -- Some args")
+              .expectStatusToBe     (0)
+              .expectOutputToMatch  (`Running command 'echo' with arguments \["Some", "args"\]`)
+              .finish               (),
+    testCase().inFolder             ("./09-raw-unparsed-arg-list")
+              .withParams           ("noarg")
+              .expectStatusToBe     (0)
+              .expectOutputToMatch  (`Running command 'noarg' with arguments \[\]`)
+              .finish               (),
 ];
  
 /++ MAIN ++/
