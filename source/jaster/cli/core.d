@@ -658,7 +658,7 @@ final class CommandLineInterface(Modules...)
                             break;
 
                         case LongHandArgument:
-                            if(token.value == "-") // ---
+                            if(token.value == "-" || token.value == "") // --- || --
                             {
                                 processRawList = true;
                                 rawList = parser.unparsedArgs;
@@ -1268,9 +1268,19 @@ version(unittest)
     unittest
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
+
+        // Legacy triple dash.
         assert(
             cli.parseAndExecute(
                 ["rawListTest", "-a", "---", "raw1", "raw2"],
+                IgnoreFirstArg.no
+            ) == 0
+        );
+
+        // Double dash
+        assert(
+            cli.parseAndExecute(
+                ["rawListTest", "-a", "--", "raw1", "raw2"],
                 IgnoreFirstArg.no
             ) == 0
         );

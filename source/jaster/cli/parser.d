@@ -241,7 +241,14 @@ struct ArgPullParser
             if(slice.length >= 2 && slice[0..2] == "--")
             {
                 this._currentCharIndex += 2;
-                this._currentToken = ArgToken(this.readToEnd(OrSpace.yes, OrEqualSign.yes), ArgTokenType.LongHandArgument);
+
+                // Edge case: Since readToEnd can advance the "currentArgSlice", we get into this common situation
+                //            of ["--", "b"] where this should be an unnamed long hand arg followed by the text "b", but
+                //            instead it gets treated as "--b", which we don't want. So we're just checking for this here.
+                if(this._currentCharIndex >= this.currentArg.length || this.currentArg[this._currentCharIndex] == ' ')
+                    this._currentToken = ArgToken("", ArgTokenType.LongHandArgument);
+                else
+                    this._currentToken = ArgToken(this.readToEnd(OrSpace.yes, OrEqualSign.yes), ArgTokenType.LongHandArgument);
                 return;
             }
             else if(slice.length >= 1 && slice[0] == '-')
@@ -253,6 +260,10 @@ struct ArgPullParser
                 if(this._currentCharIndex < this.currentArg.length
                 && this.currentArg[this._currentCharIndex] == '=')
                     this._currentCharIndex++;
+
+                // If it's unnamed, then sometimes the "name" can be a space, so we'll just handle that here
+                if(this._currentToken.value == " ")
+                    this._currentToken.value = null;
 
                 return;
             }
@@ -287,12 +298,16 @@ unittest
         "-c", "MyConfig.json",
 
         // Plain text.
-        "Some Positional Argument"
+        "Some Positional Argument",
+
+        // Raw Nameless named args
+        "- a", "-", "a",
+        "-- a", "--", "a"
     ];
     auto tokens = ArgPullParser(args).array;
 
-    // import std.stdio;
-    // writeln(tokens);
+    import std.stdio;
+    writeln(tokens);
 
     // Plain text.
     assert(tokens[0]  == ArgToken("env",                         ArgTokenType.Text));
@@ -316,6 +331,16 @@ unittest
 
     // Plain text.
     assert(tokens[14] == ArgToken("Some Positional Argument",    ArgTokenType.Text));
+
+    // Raw Nameless named args.
+    assert(tokens[15] == ArgToken("", ArgTokenType.ShortHandArgument));
+    assert(tokens[16] == ArgToken("a", ArgTokenType.Text));
+    assert(tokens[17] == ArgToken("", ArgTokenType.ShortHandArgument));
+    assert(tokens[18] == ArgToken("a", ArgTokenType.Text));
+    assert(tokens[19] == ArgToken("", ArgTokenType.LongHandArgument));
+    assert(tokens[20] == ArgToken("a", ArgTokenType.Text));
+    assert(tokens[21] == ArgToken("", ArgTokenType.LongHandArgument));
+    assert(tokens[22] == ArgToken("a", ArgTokenType.Text));
 }
 
 @("Issue: .init.empty must be true")
@@ -343,15 +368,4 @@ unittest
     }
 
     assert(parser.unparsedArgs is null);
-}
-
-@("Nameless short hand args")
-@safe
-unittest
-{
-    auto args =
-    [
-        "-"
-    ];
-    auto parser = ArgPullParser(args);
 }
