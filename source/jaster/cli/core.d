@@ -416,7 +416,7 @@ final class CommandLineInterface(Modules...)
                     if(this._defaultCommand != CommandInfo.init)
                         parseResult.helpText ~= this._defaultCommand.helpText.toString();
                     
-                    //if(this._commands.length > 0)
+                    if(this._resolver.finalWords.length > 0)
                         parseResult.helpText ~= this.createAvailableCommandsHelpText(parseResult.argParserBeforeAttempt, "Available commands").toString();
                 }
                 else if(this._defaultCommand == CommandInfo.init)
