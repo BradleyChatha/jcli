@@ -70,7 +70,7 @@ JCLI has support for both a default command, and multiple sub-commands.
 To create a default command - a command that is executed if no other sub-commands are used - make sure that when using `@Command()` that the name (the first parameter) is `null`.
 e.g. `@Command()` or `@Command(null, "Some description")` would both create a default command.
 
-For sub-commands, simply populate the name field of `@Command`, e.g. `@Command("et|execute task")` would create a sub-command that can be used as either `mytool.exe et` or `mytool.exe execute test`.
+For sub-commands, simply populate the name field of `@Command`, e.g. `@Command("et|execute task")` would create a sub-command that can be used as either `mytool.exe et` or `mytool.exe execute task`.
 
 ## Bash Completion
 
