@@ -1040,7 +1040,7 @@ final class CommandLineInterface(Modules...)
         HelpTextBuilderTechnical createAvailableCommandsHelpText(ArgPullParser args, string sectionName = "Did you mean")
         {
             import std.array     : array;
-            import std.algorithm : filter, sort, map, splitter;
+            import std.algorithm : filter, sort, map, splitter, uniq;
 
             auto command = this._resolver.root;
             auto result  = this._resolver.resolveAndAdvance(args);
@@ -1052,10 +1052,10 @@ final class CommandLineInterface(Modules...)
                    .addContent(
                        new HelpSectionArgInfoContent(
                            command.finalWords
-                                  .map!(c => c.userData)
+                                  .uniq!((a, b) => a.userData.pattern == b.userData.pattern)
                                   .map!(c => HelpSectionArgInfoContent.ArgInfo(
-                                       [c.pattern.pattern],
-                                       c.pattern.description,
+                                       [c.word],
+                                       c.userData.pattern.description,
                                        ArgIsOptional.no
                                   ))
                                   .array
