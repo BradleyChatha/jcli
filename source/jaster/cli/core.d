@@ -416,7 +416,7 @@ final class CommandLineInterface(Modules...)
                     if(this._defaultCommand != CommandInfo.init)
                         parseResult.helpText ~= this._defaultCommand.helpText.toString();
                     
-                    //if(this._commands.length > 0)
+                    if(this._resolver.finalWords.length > 0)
                         parseResult.helpText ~= this.createAvailableCommandsHelpText(parseResult.argParserBeforeAttempt, "Available commands").toString();
                 }
                 else if(this._defaultCommand == CommandInfo.init)
@@ -1040,7 +1040,7 @@ final class CommandLineInterface(Modules...)
         HelpTextBuilderTechnical createAvailableCommandsHelpText(ArgPullParser args, string sectionName = "Did you mean")
         {
             import std.array     : array;
-            import std.algorithm : filter, sort, map, splitter;
+            import std.algorithm : filter, sort, map, splitter, uniq;
 
             auto command = this._resolver.root;
             auto result  = this._resolver.resolveAndAdvance(args);
@@ -1052,10 +1052,10 @@ final class CommandLineInterface(Modules...)
                    .addContent(
                        new HelpSectionArgInfoContent(
                            command.finalWords
-                                  .map!(c => c.userData)
+                                  .uniq!((a, b) => a.userData.pattern == b.userData.pattern)
                                   .map!(c => HelpSectionArgInfoContent.ArgInfo(
-                                       [c.pattern.pattern],
-                                       c.pattern.description,
+                                       [c.word],
+                                       c.userData.pattern.description,
                                        ArgIsOptional.no
                                   ))
                                   .array
