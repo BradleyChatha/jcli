@@ -27,6 +27,10 @@ As a firm believer of good documentation, JCLI is completely documented with in-
     9. [Named commands/subcommands](#named-commands)
     10. [User Defined argument binding](#user-defined-argument-binding)
     11. [User Defined argument validation](#user-defined-argument-validation)
+    12. [Unparsed Raw Arg List](#unparsed-raw-arg-list)
+    13. [Dependency Injection](#dependency-injection)
+    14. [Calling a command from another command](#calling-a-command-from-another-command)
+    15. [Configuration](#configuration)
 4. [Versions](#versions)
 5. [Contributing](#contributing)
 
@@ -660,6 +664,268 @@ Program exited with status code -1
 Excellent.
 
 **Word of warning**: Due to various reasons I won't get into, JCLI will silently skip over validators that have incorrect interfaces, so if something isn't working it's likely because JCLI has found an issue with it. Specify the version `JCLI_BinderCompilerErrors` inside of your dub.json/dub.sdl in order to try and attempt to debug why.
+
+## Unparsed Raw Arg List
+
+So far whenever we've been testing our program, I've told you to do `dub build` into a `./mytools ...` command.
+
+What if I told you we can just use a single dub command to do both at the same time?
+
+`dub run` will both build and run the program, while also allowing us to pass arguments to our own program.
+
+For example, instead of `./mytool cat dub.json` we can just do `dub run -- cat dub.json`, all the args after the double dash are passed
+unmodified to our own program. JCLI refers to this as the "raw arg list".
+
+So naturally, JCLI provides this feature as well using the exact same syntax.
+
+```d
+@Command("echo", "Echos the raw arg list.")
+struct EchoCommand
+{
+    @CommandRawArg
+    string[] rawArgs;
+
+    void onExecute()
+    {
+        import std.stdio;
+        foreach(arg; this.rawArgs)
+            writeln(arg);
+    }
+}
+```
+
+Simply make a field of type `string[]`, then mark it with `@CommandRawArg`, then voila.
+
+```bash
+$> ./mytool echo -- Hello world, please be kind.
+Hello
+world,
+please
+be
+kind.
+Program exited with status code 0
+```
+
+## Dependency Injection
+
+Commands in JCLI actually live inside an IOC container (henceforth 'Service Provider'), provided by my other library called [jioc](https://github.com/BradleyChatha/jioc).
+
+By default, JCLI will construct the Service Provider on its own and register some internal services to it.
+
+However JCLI will also allow you to provide it with an already-made Service Provider so that you can inject your own services into your commands via
+constructor injection.
+
+To start off, you'll need to run `dub add jioc`, as well as `import jaster.ioc`.
+
+```d
+import jaster.ioc;
+
+int main(string[] args)
+{
+    ServiceInfo[] services;
+    // We'll leave the array empty for now, as different sections will go over some specifics.
+
+    auto provider = new ServiceProvider(services);
+    auto executor = new CommandLineInterface!(app)(provider);
+    // same as before from here...
+}
+```
+
+To start off, build up an array of `ServiceInfo`. If you want to learn about making your own services, for now you'll need
+to take a look at the [example](https://github.com/BradleyChatha/jcli/tree/master/examples/05-dependency-injection/source) code, and maybe also some of JIOC's 
+[code](https://github.com/BradleyChatha/jioc). I'll get around to better docs *eventually*.
+
+Anyway, that's basically it to start off with. Any services you provide a `ServiceInfo` for can now be obtained via constructor injection. The section below will
+show off an example.
+
+## Calling a command from another command
+
+It can be useful to call different commands from within another command, so JCLI sort of has you covered here.
+
+JCLI, via dependency injection, provides the `ICommandLineInterface` service which exposes the `parseAndExecute` function that you already know and love.
+
+So, following on from the code in the [Dependency Injection](#dependency-injection) section, we'll inject an `ICommandLineInterface` into a new command, whose
+purpose is to call the `echo` command (from the [Raw Arg List](#unparsed-raw-arg-list) section) with a predefined set of arguments:
+
+```d
+int main(string[] args)
+{
+    ServiceInfo[] services;
+    services.addCommandLineInterfaceService();
+
+    // omitted...
+}
+
+@Command("say hello", "Says hello!")
+struct SayHelloCommand
+{
+    private ICommandLineInterface _cli;
+
+    this(ICommandLineInterface cli)
+    {
+        assert(cli !is null);
+        this._cli = cli;
+    }
+
+    int onExecute()
+    {
+        return this._cli.parseAndExecute(["echo", "--", "Hello!"], IgnoreFirstArg.no);
+    }
+}
+```
+
+Within the main function we first call `services.addCommandLineInterfaceService`, which is provided by JCLI to create the `ServiceInfo` that describes
+`ICommandLineInterface`. i.e. This tells the `ServiceProvider` on how to create a solid instance of `ICommandLineInterface` when we need one.
+
+Inside of our new command, with have our constructor (`this(ICommandLineInterface)`) that is asking for an `ICommandLineInterface`.
+
+So, when JCLI is constructing a command instance it does so via JIOC's `Injector.construct` function.
+
+The way `Injector.construct` works is: it looks at every parameter of the command's constructor (if it has one); any type that is a class or interface, it'll
+attempt to retrieve via a `ServiceProvider`; if it was successful, and instance of that class or interface is passed as that constructor parameter, otherwise `null`
+is passed through.
+
+In other words, by asking for an `ICommandLineInterface` within our constructor, we're just telling JCLI to fetch that service from the Service Provider and pass it
+through via our constructor, which from there we'll store the reference. We do a null check assert just in case our service doesn't exist within the Service Provider.
+
+After that, when we're executing our new command we essentially generate a call similar to `./mytool echo -- Hello!`, except programmatically, making sure we
+forward the status code.
+
+A note about `parseAndExecute`'s second parameter - the `args` from the main function will usually have the program's name as the 0th element, which we generally
+don't care about so `parseAndExecute` will skip it by default.
+
+However, when we want to manually pass in arguments we *don't* want it to skip over the first element, which is what the second parameter is telling it to do.
+
+## Configuration
+
+Many tools require persistent configuration, which is an easy yet tedious task to setup, so JCLI provides a rather basic yet useable configuration interface.
+
+The configuration provided by JCLI isn't meant to be overly advanced, it's more just a "get me a working config file ASAP" useful for smaller applications/prototypes,
+who don't really need something too fancy.
+
+Configuration is provided via Dependency Injection, using the `IConfig` interface.
+
+There are two implementations of `IConfig` provided by JCLI currently: an in-memory config, and a file config. Both of these implementations are `Adaptable` - as in their
+serialisation logic is provided by an external library, bridged into JCLI via an adapter.
+
+JCLI currently only has one built-in adapter which is for [asdf](https://github.com/libmir/asdf), a fast and relatively robust JSON serialisation library.
+
+Writing adapters is very easy to the point where, after all this talk about certain things following a "convention", you should be able to pick it up pretty quickly
+by looking at the [asdf adapter](https://github.com/BradleyChatha/jcli/blob/master/source/jaster/cli/adapters/config/asdf.d) itself.
+
+So to put it all together, if you want a file config that uses asdf for serialisation (which means you also get to use all the UDAs and other idiosyncrasies of
+whichever library you use), then you can go with an `AdaptableFileConfig` paired with the `AsdfConfigAdapter`.
+
+So, after all that mumbo jumbo, let's see how to use actually use it inside of a program. Before you being, you must run `dub add asdf` otherwise the asdf adapter
+won't be available.
+
+```d
+struct Config
+{
+    string file;
+    int counter;
+    bool destroyComputerOnError;
+}
+
+int main(string[] args)
+{
+    ServiceInfo[] services;
+    services.addFileConfig!(Config, AsdfConfigAdapter)("./config.json");
+
+    /// omitted.
+}
+
+@Command("seed config", "Seeds the config file with some odd data.")
+struct SeedConfigCommand
+{
+    IConfig!Config _config;
+
+    this(IConfig!Config config)
+    {
+        assert(config !is null);
+        this._config = config;
+    }
+
+    void onExecute()
+    {
+        // A shortcut for this is `editAndSave`
+        WasExceptionThrown yesOrNo = this._config.edit(
+            (scope ref config) /*VERY important you remember the `scope ref` otherwise it won't compile*/
+            {
+                config.file = "Andy's dirty secret.txt";
+                config.counter = 200;
+                config.destroyComputerOnError = true;
+            },
+            RollbackOnFailure.yes,
+            SaveOnSuccess.yes
+        );
+        assert(yesOrNo == WasExceptionThrown.no);
+    }
+}
+
+@Command("print config", "Prints the config to the screen.")
+struct PrintConfigCommand
+{
+    {
+    IConfig!Config _config;
+
+    this(IConfig!Config config)
+    {
+        assert(config !is null);
+        this._config = config;
+    }
+
+    void onExecute()
+    {
+        import std.stdio;
+        writeln(this._config.value);
+    }
+}
+```
+
+Quite a big chunk of code this time, but when broken down it's pretty simple.
+
+We first define our `Config` struct, which is just your average POD struct with some data we want to persist.
+
+Then we use the `services.addFileConfig` function to create a `ServiceInfo` that describes an `AdaptableFileConfig`.
+
+The first template parameter is the user-defined type to store into the file, so `Config` in this case.
+
+The second template parameter is the adapter to use, which is the `AsdfConfigAdapter`.
+
+The first runtime parameter is the path to where the file should be stored.
+
+So we are using asdf to store/retrieve our `Config` from the file `"./config.json"`, in essence.
+
+We can access this service from our commands by requesting an `IConfig!Config`.
+
+Over inside of the `SeedConfigCommand` struct, we have an instance of `IConfig!Config` injected, and then inside of `onExecute` we do something
+a bit more peculiar.
+
+The `IConfig.edit` function is used here, as I want to demonstrate the handful of capabilities that `IConfig` supports. As the comment says, there's
+a shortcut function for this particular usage called `editAndSave`.
+
+The first parameter is a delegate (lambda) that is given a shallow copy of the configuration's value by reference. All this delegate needs to do is
+populate the configuration value with whatever it wants to set it to, by whatever means to get the data.
+
+The second parameter is a flag called `RollbackOnFailure`. As the name implies, if the delegate in the first parameter throws an exception then the
+`IConfig` will attempt to rollback any changes. Please see [this comment](https://jcli.dpldocs.info/jaster.cli.config.IConfig.edit.html) on it works exactly.
+
+The third and final parameter is a flag called `SaveOnSuccess`, which literally does at it says on the tin. If the delegate was successful, then call
+`IConfig.save` to save any changes.
+
+Finally with this `onExecute`, we just make sure that the return value was `WasExceptionThrown.no`, which explains itself.
+
+Alternatively you can just set `IConfig.value` to something, and then call `IConfig.save`. The `IConfig.edit` function was just supposed to be a helper
+around things.
+
+We're now onto the final part of this code which is the `PrintConfigCommand`.
+
+Literally all it does it ask for the config to be injected, retrieves its value via `IConfig.value`, and then prints it to the screen
+(D's `writeln` automatically pretty prints structs).
+
+As I said, JCLI's built-in configuration isn't terribly fancy, and offloads the majority of the work onto third party code. But it gets the job
+done when you just want something up quick and easy.
 
 # Versions
 
