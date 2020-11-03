@@ -8,10 +8,11 @@
 ![Examples](https://github.com/BradleyChatha/jcli/workflows/Test%20Examples/badge.svg)
 
 JCLI is a library to aid in the creation of command line tooling, with an aim of being easy to use, while also allowing
-the individual parts of the library to be used on their own, allowing more dedicated users some tools to create their own
-customised core.
+the individual parts of the library to be used on their own, aiding more dedicated users in creation their own CLI core.
 
 As a firm believer of good documentation, JCLI is completely documented with in-depth explanations where needed. In-browser documentation can be found [here](https://jcli.dpldocs.info/jaster.cli.html).
+
+Tested on Windows and Ubuntu 18.04.
 
 1. [Overview](#overview)
 2. [Features](#features)
@@ -37,45 +38,65 @@ As a firm believer of good documentation, JCLI is completely documented with in-
 
 # Features
 
-* Parsing arguments. Named and Positional arguments are supported.
+* Argument parsing:
 
-* Dispatching to the appropriate commands.
+    * Named and positional arguments.
+    
+    * Boolean arguments (flags).
 
-* Commands are defined using UDAs, and are automatically discovered.
+    * Optional arguments using the standard `Nullable` type.
 
-* Supports a default command, as well as any number of named/sub-commands.
+    * User-Defined argument binding (string -> any_type_you_want).
 
-* Commands are provided with automatic constructor Dependency Injection.
+    * User-Defined argument validation (via UDAs that follow a convention).
 
-* User-Defined argument binding (string -> any_type_you_want).
+    * Pass through unparsed arguments. (`./mytool command -- these are unparsed args`)
 
-* User-Defined argument validation (via UDAs that follow a convention).
+    * Automatic error messages for missing and malformed arguments.
 
-* Special support for boolean arguments.
+* Commands:
 
-* Support for allowing the user to pass through unparsed arguments. (`mytool command -- these are unparsed args`)
+    * Automatic command dispatch.
 
-* Automatic support and generation for help text via `--help` on: default commands, exact matches for named/sub-commands, and partial matches for named/sub-commands.
+    * Defined using UDAs, and are automatically discovered.
 
-* Bash Completion support.
+    * Supports a default command.
 
-* Coloured, configurable logging.
+    * Supports named commands that allow for multiple words and per-command argument parsing.
 
-* Utilities for getting input from the user. Integrates with User-Defined argument binding + validation.
+    * Opt-in dependency injection via constructor injection.
 
-* Fluently built ANSI (stylised) text, with Windows' ANSI support automatically turned on.
+    * Support for command inheritance.
 
-* Good support for parsing ANSI-encoding text, so not only can you create ANSI text, you can also read it properly.
+* Help text:
 
-* Basic but flexible Configuration Providers, used alongside Dependency Injection.
+    * Automatically generated with slight ability for customisation.
 
-* An ANSI-enabled text buffer, for easier and efficient control over coloured, non-uniform text output.
+    * Works for the default command.
 
-* Shell utilities such as `pushLocation` and `popLocation`, synonymous with Powershell's `Push-Location` and `Pop-Location`.
+    * Works for exact matches for named commands.
 
-* Tested on Windows, and Ubuntu 18.04.
+    * Works for partial matches for named commands.
 
-* All individual parts of this library are intended to be reusable. Allowing you to build your own CLI core using these already-made components, if desired.
+* Utilities:
+
+    * Bash completion support.
+
+    * Coloured, configurable logging.
+
+    * User Input that integrates with User-Defined argument binding and validation.
+
+    * Decent support for writing and parsing ANSI text.
+
+    * Basic but flexible Configuration Providers, used alongside Dependency Injection.
+
+    * An ANSI-enabled text buffer, for easier and efficient control over coloured, non-uniform text output.
+
+    * Shell utilities such as `pushLocation` and `popLocation`, synonymous with Powershell's `Push-Location` and `Pop-Location`.
+
+* Uncategorised:
+
+    * All individual parts of this library are intended to be reusable. Allowing you to build your own CLI core using these already-made components, if desired.
 
 # Quick Start
 
