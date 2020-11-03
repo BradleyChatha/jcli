@@ -97,6 +97,7 @@ The default command is the command that is ran when you don't specify the name o
 To start off with, we need to import jcli and create a minimal amount of code for our command to exist.
 
 ```d
+// inside of app.d
 import jaster.cli;
 
 @Command(null, "The default command.")
@@ -117,7 +118,7 @@ Commands can either be a struct or a class, but for now we'll use structs as the
 
 ## Positional Arguments
 
-To start off, let's make this command a number as a positional arg. If this number is even then return `1`, otherwise return `0`.
+To start off, let's make our default command take a number as a positional arg. If this number is even then return `1`, otherwise return `0`.
 
 Positional arguments don't have a name, and are expected to exist in a specific position within the arguments passed to your program.
 
@@ -137,7 +138,7 @@ struct DefaultCommand
 }
 ```
 
-We create the field member `int number;` and decorate with the `@CommandPositionalArg` UDA to specify it as a positional argument.
+We create the field member `int number;` and decorate it with the `@CommandPositionalArg` UDA to specify it as a positional argument.
 
 The first parameter is the position this argument should be at, which we define as the 0th position.
 
@@ -320,7 +321,7 @@ Inside of D's standard library - Phobos - is the module [std.typecons](https://d
 
 JCLI has special support for this type, as it is used to mark an argument as optional. This type is publicly imported by JCLI, so you don't have to import anything extra.
 
-Anyway, all we want to do is make our `mode` argument a `Nullable`, so the user knows it's optional.
+Anyway, all we want to do is make our `mode` argument a `Nullable`, so JCLI knows it's optional.
 
 ```d
 @Command(null, "The default command.")
@@ -344,7 +345,7 @@ struct DefaultCommand
 
 The first change is that `Mode mode;` has now become `Nullable!Mode mode`, to make it, quite literally, a `Mode` that is `Nullable`.
 
-The other change we made is that, inside of `onExecute` we now use `this.mode.get(Mode.normal)`.
+The other change we made is that inside of `onExecute` we now use `this.mode.get(Mode.normal)`.
 
 The `Nullable.get` function will either return us the value stored in the `Nullable`, or if the `Nullable` is null it will return to us the value we pass to it.
 
