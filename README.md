@@ -31,6 +31,7 @@ As a firm believer of good documentation, JCLI is completely documented with in-
     13. [Dependency Injection](#dependency-injection)
     14. [Calling a command from another command](#calling-a-command-from-another-command)
     15. [Configuration](#configuration)
+    16. [Inheritance](#inheritance)
 4. [Versions](#versions)
 5. [Contributing](#contributing)
 
@@ -927,6 +928,70 @@ Literally all it does it ask for the config to be injected, retrieves its value 
 
 As I said, JCLI's built-in configuration isn't terribly fancy, and offloads the majority of the work onto third party code. But it gets the job
 done when you just want something up quick and easy.
+
+## Inheritance
+
+JCLI supports command inheritance.
+
+The only rules with inheritance are:
+
+* Only concrete classes can be marked with `@Command`.
+
+* Concrete classes must have `onExecute` defined, either by a base class or directly.
+
+Other than that, go wild. Every argument marked with `@CommandNamedArg` and `@CommandPostionalArg` will be discovered within the inheritance tree for a command,
+and they will all be populated as expected.
+
+```d
+abstract class CommandBase
+{
+    @CommandNamedArg("verbose|v", "Show verbose information.")
+    Nullable!bool verbose;
+
+    // This isn't recognised my JCLI, it's just a function all our
+    // child classes should call as an arbitrary design choice.
+    final void onPreExecute()
+    {
+        import std.stdio;
+
+        if(this.verbose.get(false))
+            writeln("Running in verbose mode!");
+    }
+
+    // Force our child classes to implement the function JCLI recognises.
+    abstract void onExecute();
+}
+
+@Command("verbose say hello", "Says hello!... but only when you define the verbose flag.")
+final class MyCommand : CommandBase
+{
+    override void onExecute()
+    {
+        import std.stdio;
+        super.onPreExecute();
+
+        if(super.verbose.get(false))
+            writeln("Hello!");
+    }
+}
+```
+
+Nothing here is overly new, and it should make sense to you if you've gotten this far down.
+
+```bash
+# Without flag
+$> ./mytool verbose say hello
+Program exited with status code 0
+
+# With flag
+$> ./mytool verbose say hello --verbose
+Running in verbose mode!
+Hello!
+Program exited with status code 0
+```
+
+To summarize, JCLI supports inheritance within commands, and it should for the most part function as you expect. The rest is down
+to your own design.
 
 # Versions
 
