@@ -17,22 +17,21 @@ Tested on Windows and Ubuntu 18.04.
 1. [Overview](#overview)
 2. [Features](#features)
 3. ["Quick" Start/HOWTO](#quick-start)
-    1. [Creating your project](#creating-your-project)
-    2. [Creating a default command](#creating-a-default-command)
-    3. [Positional arguments](#positional-arguments)
-    4. [Registering commands](#registering-commands)
-    5. [Compiling and running your program (and help text)](#compiling-and-running-our-program-also-show-help-text)
-    6. [Named arguments](#named-arguments)
-    7. [Optional arguments](#optional-arguments)
-    8. [Arguments with multiple names](#arguments-with-multiple-names)
-    9. [Named commands/subcommands](#named-commands)
-    10. [User Defined argument binding](#user-defined-argument-binding)
-    11. [User Defined argument validation](#user-defined-argument-validation)
-    12. [Unparsed Raw Arg List](#unparsed-raw-arg-list)
-    13. [Dependency Injection](#dependency-injection)
-    14. [Calling a command from another command](#calling-a-command-from-another-command)
-    15. [Configuration](#configuration)
-    16. [Inheritance](#inheritance)
+    1. [Creating a default command](#creating-a-default-command)
+    2. [Positional arguments](#positional-arguments)
+    3. [Registering commands](#registering-commands)
+    4. [Compiling and running your program (and help text)](#compiling-and-running-our-program-also-show-help-text)
+    5. [Named arguments](#named-arguments)
+    6. [Optional arguments](#optional-arguments)
+    7. [Arguments with multiple names](#arguments-with-multiple-names)
+    8. [Named commands/subcommands](#named-commands)
+    9. [User Defined argument binding](#user-defined-argument-binding)
+    10. [User Defined argument validation](#user-defined-argument-validation)
+    11. [Unparsed Raw Arg List](#unparsed-raw-arg-list)
+    12. [Dependency Injection](#dependency-injection)
+    13. [Calling a command from another command](#calling-a-command-from-another-command)
+    14. [Configuration](#configuration)
+    15. [Inheritance](#inheritance)
 4. [Versions](#versions)
 5. [Contributing](#contributing)
 
@@ -102,16 +101,6 @@ Tested on Windows and Ubuntu 18.04.
 
 *This is a brief overview, for slightly more in-depth examples please look at the fully-documented [examples](https://github.com/BradleyChatha/jcli/tree/master/examples) folder.*
 
-## Creating your project
-
-Install any D [compiler](https://dlang.org/download.html#dmd).
-
-Open a command prompt and run `dub init mytool` and follow the on-screen prompts.
-
-Run the command `dub add jcli` to add JCLI as a dependency.
-
-Open `source/app.d`, **add the line** `module app;` at the top of the file, and we'll get started from there.
-
 ## Creating a default command
 
 The default command is the command that is ran when you don't specify the name of a named command. e.g. `mytool 60 20 --some=args` would call the default command if it exists.
@@ -120,6 +109,7 @@ To start off with, we need to import jcli and create a minimal amount of code fo
 
 ```d
 // inside of app.d
+module app;
 import jaster.cli;
 
 @Command(null, "The default command.")
@@ -137,6 +127,8 @@ The `@Command` is a UDA (User Defined Attribute) where the first parameter is th
 All commands must define an `onExecute` function, which either returns `void`, or an `int` which will be used as the program's exit/status code.
 
 Commands can either be a struct or a class, but for now we'll use structs as they're simpler.
+
+As a side note, an initial dub project does not include the intial `module app;` shown in the example above. I've added it as we'll need the directly reference the module in a later section.
 
 ## Positional Arguments
 
