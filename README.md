@@ -205,10 +205,6 @@ Your app.d file should look something like [this](https://pastebin.com/PhRFtW9G)
 
 ## Running the program
 
-Open a command prompt inside the root of your project's folder, and run the command `dub build`.
-
-If everything went well then an executable file called `mytool` (or whatever you named your project) should've been created inside of your project's root.
-
 First, let's have a look at the help text for our default command:
 
 ```bash
