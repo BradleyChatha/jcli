@@ -67,6 +67,8 @@ Tested on Windows and Ubuntu 18.04.
 
     * Support for command inheritance.
 
+    * Both `struct` and `class` are allowed.
+
 * Help text:
 
     * Automatically generated with slight ability for customisation.
@@ -122,9 +124,7 @@ struct DefaultCommand
 
 The `@Command` is a UDA (User Defined Attribute) where the first parameter is the command's name (`null` for the default command), and the second parameter is the command's description.
 
-All commands must define an `onExecute` function, which either returns `void`, or an `int` which will be used as the program's exit/status code.
-
-Commands can either be a struct or a class, but for now we'll use structs as they're simpler.
+All commands must define an `onExecute` function, which either returns `void`, or an `int` that will be used as the program's exit/status code.
 
 As a side note, an initial dub project does not include the intial `module app;` shown in the example above. I've added it as we'll need the directly reference the module in a later section.
 
