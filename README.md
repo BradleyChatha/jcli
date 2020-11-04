@@ -263,17 +263,13 @@ struct DefaultCommand
 }
 ```
 
-To start off, we create an `enum` called `Mode`, and give the members `normal` and `reversed`. JCLI knows how to map strings into enums.
-
-Next, inside of `DefaultCommand` we create a member field called `Mode mode;` that is decorated with the `CommandNamedArg` UDA.
+Inside `DefaultCommand` we create a member field called `mode` that is decorated with the `@CommandNamedArg` UDA and has enum type. JCLI knows how to convert an argument value into an enum value.
 
 The first parameter is the name of the argument, which is actually important this time as this determines what name the user has to use.
 
 The second parameter is just the description.
 
 Then inside of `onExecute` we just check what `mode` was set to and do stuff based off of its value.
-
-Time to test! Remember to run `dub build` first.
 
 Let's have a quick look at the help text first, to see the changes being reflected:
 
@@ -305,8 +301,8 @@ $> mytool 60 --mode=reversed
 Program exited with status code 0
 
 # Bad value for mode
-$> mytool 60 --mode lol
-std.conv.ConvException@\src\phobos\std\conv.d(2817): Mode does not have a member named 'reverse'
+$> mytool 60 --mode non_existing_mode
+std.conv.ConvException@\src\phobos\std\conv.d(2817): Mode does not have a member named 'non_existing_mode'
 
 # Can safely assume Odd behaves properly.
 
@@ -320,13 +316,9 @@ We can see that `--mode` is working as expected, however notice that in the last
 
 ## Optional Arguments
 
-Optional arguments, as the name implies, are optional. Only Named arguments can be optional (technically, Positional arguments can be optional in certain use cases, but JCLI doesn't support that... yet).
+JCLI supports optional arguments through the standard [Nullable](https://dlang.org/phobos/std_typecons.html#Nullable) type. Note that only Named arguments can be optional for now (technically, Positional arguments can be optional in certain use cases, but it's not supported ... yet).
 
-Inside of D's standard library - Phobos - is the module [std.typecons](https://dlang.org/phobos/std_typecons.html) which contains a type called [Nullable](https://dlang.org/phobos/std_typecons.html#Nullable).
-
-JCLI has special support for this type, as it is used to mark an argument as optional. This type is publicly imported by JCLI, so you don't have to import anything extra.
-
-Anyway, all we want to do is make our `mode` argument a `Nullable`, so JCLI knows it's optional:
+So to make our `mode` argument optional, we need to make it `Nullable`:
 
 ```d
 @Command(null, "The default command.")
@@ -348,13 +340,7 @@ struct DefaultCommand
 }
 ```
 
-The first change is that `Mode mode;` has now become `Nullable!Mode mode`, to make it, quite literally, a `Mode` that is `Nullable`.
-
-The other change we made is that inside of `onExecute` we now use `this.mode.get(Mode.normal)`.
-
-The `Nullable.get` function will either return us the value stored in the `Nullable`, or if the `Nullable` is null it will return to us the value we pass to it.
-
-So by doing `get(Mode.normal)` we're saying "Give us the value the user passed in. Or, if the user didn't pass in a value, default to `Mode.normal`".
+The other change we've made is that `onExecute` now uses `mode.get(Mode.normal)` which returns `Mode.normal` if the `--mode` option is not provided.
 
 First, let's look at the help text, as it very slightly changes for nullable arguments:
 
