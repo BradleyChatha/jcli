@@ -103,9 +103,7 @@ Tested on Windows and Ubuntu 18.04.
 
 ## Creating a default command
 
-The default command is the command that is ran when you don't specify the name of a named command. e.g. `mytool 60 20 --some=args` would call the default command if it exists.
-
-To start off with, we need to import jcli and create a minimal amount of code for our command to exist.
+The default command is the command that is ran when you don't specify the name of a named command. e.g. `mytool 60 20 --some=args` would call the default command if it exists:
 
 ```d
 // inside of app.d
@@ -136,7 +134,7 @@ To start off, let's make our default command take a number as a positional arg. 
 
 Positional arguments don't have a name, and are expected to exist in a specific position within the arguments passed to your program.
 
-For example the command `mytool 60 yoyo true` would have `60` in the 0th position, `yoyo` in the 1st position, and `true` in the 2nd position.
+For example the command `mytool 60 yoyo true` would have `60` in the 0th position, `yoyo` in the 1st position, and `true` in the 2nd position:
 
 ```d
 @Command(null, "The default command.")
@@ -162,7 +160,7 @@ The last parameter is simply a description.
 
 ## Registering commands
 
-We can almost use our new command, we just need to register it first. As usual I'll provide an explanation after the code.
+We can almost use our new command, we just need to register it first. As usual I'll provide an explanation after the code:
 
 ```d
 import jaster.cli;
@@ -201,7 +199,7 @@ Open a command prompt inside the root of your project's folder, and run the comm
 
 If everything went well then an executable file called `mytool` (or whatever you named your project) should've been created inside of your project's root.
 
-First, let's have a look at the help text for our default command.
+First, let's have a look at the help text for our default command:
 
 ```bash
 $> ./mytool --help
@@ -284,7 +282,7 @@ Then inside of `onExecute` we just check what `mode` was set to and do stuff bas
 
 Time to test! Remember to run `dub build` first.
 
-Let's have a quick look at the help text first, to see the changes being reflected.
+Let's have a quick look at the help text first, to see the changes being reflected:
 
 ```bash
 $> ./mytool --help
@@ -300,7 +298,7 @@ Named Args:
     --mode                       - Which mode to use.
 ```
 
-And now let's test our functionality.
+And now let's test our functionality:
 
 ```bash
 # JCLI supports most common argument styles.
@@ -335,7 +333,7 @@ Inside of D's standard library - Phobos - is the module [std.typecons](https://d
 
 JCLI has special support for this type, as it is used to mark an argument as optional. This type is publicly imported by JCLI, so you don't have to import anything extra.
 
-Anyway, all we want to do is make our `mode` argument a `Nullable`, so JCLI knows it's optional.
+Anyway, all we want to do is make our `mode` argument a `Nullable`, so JCLI knows it's optional:
 
 ```d
 @Command(null, "The default command.")
@@ -365,7 +363,7 @@ The `Nullable.get` function will either return us the value stored in the `Nulla
 
 So by doing `get(Mode.normal)` we're saying "Give us the value the user passed in. Or, if the user didn't pass in a value, default to `Mode.normal`".
 
-First, let's look at the help text, as it very slightly changes for nullable arguments.
+First, let's look at the help text, as it very slightly changes for nullable arguments:
 
 ```bash
 $> ./mytool --help
@@ -383,7 +381,7 @@ Named Args:
 
 Notice the "Usage:" line. The `[mode]` has now become `<[mode]>` to indicate it is optional.
 
-So now let's test that the argument is now in fact optional.
+So now let's test that the argument is now in fact optional:
 
 ```bash
 # Even (implicitly Normal)
@@ -399,7 +397,7 @@ Program exited with status code 0
 
 While `--mode` is nice and descriptive, it'd be nice if we could also refer to it via `-m` wouldn't it?
 
-Here is where the very simple concept of "patterns" comes into play. At the moment, and honestly for the foreseeable future, patterns are just strings with a pipe ('|') between each different value.
+Here is where the very simple concept of "patterns" comes into play. At the moment, and honestly for the foreseeable future, patterns are just strings with a pipe ('|') between each different value:
 
 ```d
 @Command(null, "The default command.")
@@ -416,7 +414,7 @@ All we've done is changed `@CommandNamedArg`'s name from `"mode"` to `"mode|m"`,
 
 You can have as many values within a pattern as you want. Named Arguments cannot have whitespace within their patterns though.
 
-Let's do a quick test as usual.
+Let's do a quick test as usual:
 
 ```bash
 $> ./mytool 60 -m normal
@@ -431,7 +429,7 @@ Program exited with status code 0
 
 Named commands are commands that... have a name. For example `git commit`; `dub build`; `dub init`, etc. are all named commands.
 
-It's really easy to make a named command. Let's change our default command into a named command.
+It's really easy to make a named command. Let's change our default command into a named command:
 
 ```d
 // Renamed from DefaultCommand
@@ -446,7 +444,7 @@ Basically, we just pass a pattern (yes, commands can have multiple names!) as th
 
 Command patterns can have spaces in them, to allow a multi-word, fluent interface for your tool.
 
-As a bit of a difference, let's test the code first.
+As a bit of a difference, let's test the code first:
 
 ```bash
 # We have to specify a name now. JCLI will offer suggestions!
@@ -477,7 +475,7 @@ Let's recreate the `cat` command, which takes a filepath and then outputs the co
 
 Instead of asking JCLI for just a string though, let's create an arg binder that will construct a `File` (from [std.stdio](https://dlang.org/library/std/stdio/file.html)) from the string, so our command doesn't have to do any file loading by itself.
 
-First, we need to create the arg binder.
+First, we need to create the arg binder:
 
 ```d
 // app.d still
@@ -507,7 +505,7 @@ Finally, all our binder does is set the `output` parameter to a `File` that open
 
 Arg binders need to be marked with the `@ArgBinderFunc` UDA so that the `CommandLineInterface` class can discover them. Talking about `CommandLineInterface`, it'll automatically discover any arg binder from the modules you tell it about, just like it does with commands.
 
-Let's now create our new command.
+Let's now create our new command:
 
 ```d
 @Command("cat", "Displays the contents of a file.")
@@ -530,7 +528,7 @@ The most important thing of note here is, notice how the `file` variable has the
 
 Our `onExecute` function is nothing overly special, it just displays the file line by line.
 
-Test time. Let's make it show the contents of our `dub.json` file, which is within the root of our project.
+Test time. Let's make it show the contents of our `dub.json` file, which is within the root of our project:
 
 ```bash
 $> ./mytool cat ./dub.json
@@ -565,7 +563,7 @@ Some arguments may need validation on the pre-arg-binded string, whereas others 
 
 JCLI handles all of this via argument validators.
 
-Let's start off with the first example, making sure the user only passes in files with a `.json` extention, and apply it to our `cat` command. Code first, explanation after.
+Let's start off with the first example, making sure the user only passes in files with a `.json` extention, and apply it to our `cat` command. Code first, explanation after:
 
 ```d
 struct HasExtention
@@ -616,7 +614,7 @@ Now, inside `CatCommand` all we've done is attach our `HasExtention` struct as a
 
 Because D is wonderful, it will automatically generate a constructor for us where the first parameter sets the `wantedExtention` member. So `@HasExtention(".json")` will set the extention we want to `".json"`.
 
-And that's literally all there is to it, let's test.
+And that's literally all there is to it, let's test:
 
 ```bash
 # Passing
@@ -632,7 +630,7 @@ Program exited with status code -1
 
 The other type of validation is post-arg-binded validation, which performs validation on the final value provided by an arg binder.
 
-Let's make a validator that ensures that the file is under a certain size.
+Let's make a validator that ensures that the file is under a certain size:
 
 ```d
 struct MaxSize
@@ -668,7 +666,7 @@ The only difference is that the first parameter isn't a `string`, but instead th
 
 Validators can have different overloads of this function if required. You can even make it a template. JCLI is fine with any of that.
 
-We've set the max size to something really small, so we can easily test that it works.
+We've set the max size to something really small, so we can easily test that it works:
 
 ```bash
 $> ./mytool cat ./dub.json
@@ -691,7 +689,7 @@ What if I told you we can just use a single dub command to do both at the same t
 For example, instead of `./mytool cat dub.json` we can just do `dub run -- cat dub.json`, all the args after the double dash are passed
 unmodified to our own program. JCLI refers to this as the "raw arg list".
 
-So naturally, JCLI provides this feature as well using the exact same syntax.
+So naturally, JCLI provides this feature as well using the exact same syntax:
 
 ```d
 @Command("echo", "Echos the raw arg list.")
@@ -709,7 +707,7 @@ struct EchoCommand
 }
 ```
 
-Simply make a field of type `string[]`, then mark it with `@CommandRawArg`, then voila.
+Simply make a field of type `string[]`, then mark it with `@CommandRawArg`, and then voila:
 
 ```bash
 $> ./mytool echo -- Hello world, please be kind.
@@ -730,7 +728,7 @@ By default, JCLI will construct the Service Provider on its own and register som
 However JCLI will also allow you to provide it with an already-made Service Provider so that you can inject your own services into your commands via
 constructor injection.
 
-To start off, you'll need to run `dub add jioc`, as well as `import jaster.ioc`.
+To start off, you'll need to run `dub add jioc`, as well as `import jaster.ioc`:
 
 ```d
 import jaster.ioc;
@@ -832,7 +830,7 @@ So to put it all together, if you want a file config that uses asdf for serialis
 whichever library you use), then you can go with an `AdaptableFileConfig` paired with the `AsdfConfigAdapter`.
 
 So, after all that mumbo jumbo, let's see how to use actually use it inside of a program. Before you being, you must run `dub add asdf` otherwise the asdf adapter
-won't be available.
+won't be available:
 
 ```d
 struct Config
@@ -865,7 +863,8 @@ struct SeedConfigCommand
     {
         // A shortcut for this is `editAndSave`
         WasExceptionThrown yesOrNo = this._config.edit(
-            (scope ref config) /*VERY important you remember the `scope ref` otherwise it won't compile*/
+            // Don't forget the `scope ref`
+            (scope ref config)
             {
                 config.file = "Andy's dirty secret.txt";
                 config.counter = 200;
@@ -953,7 +952,7 @@ The only rules with inheritance are:
 * Concrete classes must have `onExecute` defined, either by a base class or directly.
 
 Other than that, go wild. Every argument marked with `@CommandNamedArg` and `@CommandPostionalArg` will be discovered within the inheritance tree for a command,
-and they will all be populated as expected.
+and they will all be populated as expected:
 
 ```d
 abstract class CommandBase
@@ -989,7 +988,7 @@ final class MyCommand : CommandBase
 }
 ```
 
-Nothing here is overly new, and it should make sense to you if you've gotten this far down.
+Nothing here is overly new, and it should make sense to you if you've gotten this far down:
 
 ```bash
 # Without flag
