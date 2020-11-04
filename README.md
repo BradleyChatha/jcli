@@ -24,7 +24,7 @@ Tested on Windows and Ubuntu 18.04.
     1. [Named arguments](#named-arguments)
     1. [Optional arguments](#optional-arguments)
     1. [Arguments with multiple names](#arguments-with-multiple-names)
-    1. [Named commands/subcommands](#named-commands)
+    1. [Named commands](#named-commands)
     1. [User Defined argument binding](#user-defined-argument-binding)
     1. [User Defined argument validation](#user-defined-argument-validation)
     1. [Unparsed Raw Arg List](#unparsed-raw-arg-list)
