@@ -134,7 +134,7 @@ As a side note, an initial dub project does not include the intial `module app;`
 
 To start off, let's make our default command take a number as a positional arg. If this number is even then return `1`, otherwise return `0`.
 
-Positional arguments don't have a name, and are expected to exist in a specific position within the arguments passed to your program.
+Positional arguments are expected to exist in a specific position within the arguments passed to your program.
 
 For example the command `mytool 60 yoyo true` would have `60` in the 0th position, `yoyo` in the 1st position, and `true` in the 2nd position:
 
