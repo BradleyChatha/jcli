@@ -95,7 +95,7 @@ Tested on Windows and Ubuntu 18.04.
 
     * Shell utilities such as `pushLocation` and `popLocation`, synonymous with Powershell's `Push-Location` and `Pop-Location`.
 
-* Uncategorised:
+* Customisable design:
 
     * All individual parts of this library are intended to be reusable. Allowing you to build your own CLI core using these already-made components, if desired.
 
