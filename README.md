@@ -55,6 +55,8 @@ Tested on Windows and Ubuntu 18.04.
 
 * Commands:
 
+    * Standard command line format (`./mytool command args --flag=value ...`).
+
     * Automatic command dispatch.
 
     * Defined using UDAs, and are automatically discovered.
@@ -105,7 +107,7 @@ Tested on Windows and Ubuntu 18.04.
 
 ## Creating a default command
 
-The default command is the command that is ran when you don't specify the name of a named command. e.g. `mytool 60 20 --some=args` would call the default command if it exists:
+The default command is the command that is ran when you don't specify any named command. e.g. `mytool 60 20 --some=args` would call the default command if it exists:
 
 ```d
 // inside of app.d
