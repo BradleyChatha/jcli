@@ -672,16 +672,9 @@ Excellent.
 
 ## Unparsed Raw Arg List
 
-So far whenever we've been testing our program, I've told you to do `dub build` into a `./mytools ...` command.
+In some cases you might want to stop parsing arguments and just get them as raw strings. JCLI supports this use case by allowing raw arguments to appear after a long double-dash (`--`) parameter in the command line: `./mytool args to parse -- args to pass as is`.
 
-What if I told you we can just use a single dub command to do both at the same time?
-
-`dub run` will both build and run the program, while also allowing us to pass arguments to our own program.
-
-For example, instead of `./mytool cat dub.json` we can just do `dub run -- cat dub.json`, all the args after the double dash are passed
-unmodified to our own program. JCLI refers to this as the "raw arg list".
-
-So naturally, JCLI provides this feature as well using the exact same syntax:
+This feature can be used with this syntax:
 
 ```d
 @Command("echo", "Echos the raw arg list.")
