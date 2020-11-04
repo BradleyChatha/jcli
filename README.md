@@ -405,6 +405,16 @@ Program exited with status code 1
 # JCLI even supports this weird syntax shorthand arguments sometimes use.
 $> ./mytool 60 -mreversed
 Program exited with status code 0
+
+# And here's the help text
+$> ./mytool --help
+Usage: DEFAULT <[mode|m]>
+
+Description:
+    The default command.
+
+Named Args:
+    --mode,-m                    - Which mode to use.
 ```
 
 ## Named Commands
