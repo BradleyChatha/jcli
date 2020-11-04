@@ -235,9 +235,7 @@ Excellent, we can see that with little to no work, our command performs as expec
 
 ## Named arguments
 
-Right, so what if the user decides that they want us to return `0` instead of `1`, and `1` instead of `0`. In other words, reverse the output?
-
-Well, let's make them pass in a named argument called `--mode`, which maps directly to an `enum` inside of our D code, to select what behavior we want. Did I forget to mention JCLI can do that?
+Now let's add a mode that will enable reversed output (return `1` for odd number and `0` for even). To do this we should add a named argument called `--mode` that maps directly to an `enum`:
 
 ```d
 enum Mode
