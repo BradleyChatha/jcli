@@ -20,7 +20,7 @@ Tested on Windows and Ubuntu 18.04.
     1. [Creating a default command](#creating-a-default-command)
     1. [Positional arguments](#positional-arguments)
     1. [Registering commands](#registering-commands)
-    1. [Compiling and running your program (and help text)](#compiling-and-running-our-program-also-show-help-text)
+    1. [Running the program](#running-the-program)
     1. [Named arguments](#named-arguments)
     1. [Optional arguments](#optional-arguments)
     1. [Arguments with multiple names](#arguments-with-multiple-names)
@@ -199,15 +199,11 @@ First, we create `executor` which is a `CommandLineInterface` instance. To disco
 
 For future reference, you can pass any amount of modules into `CommandLineInterface`, not just a single one.
 
-Second, we call `executor.parseAndExecute(args)`, which returns a status code that we store into the variable `statusCode`. This `parseAndExecute` function will parse the arguments given to it; figure out which command to call; create an instance of that command; fill out the command's argument members, and then finally call the command's `onExecute` function.
+Second, we call `executor.parseAndExecute(args)`, which returns a status code that we store into the variable `statusCode`. This `parseAndExecute` function will parse the arguments given to it; figure out which command to call; create an instance of that command; fill out the command's argument members, and then finally call the command's `onExecute` function. The rest is pretty self explanatory.
 
-Third, we simply log the status code to the console, so we can easily see what our program is doing.
+Your app.d file should look something like [this](https://pastebin.com/PhRFtW9G).
 
-Finally, we return the status code and let the OS/shell do whatever with it.
-
-Your app.d file should look something like [this](https://pastebin.com/aeAGa0gY).
-
-## Compiling and running our program (Also show help text)
+## Running the program
 
 Open a command prompt inside the root of your project's folder, and run the command `dub build`.
 
