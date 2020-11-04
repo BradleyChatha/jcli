@@ -49,7 +49,7 @@ Tested on Windows and Ubuntu 18.04.
 
     * User-Defined argument validation (via UDAs that follow a convention).
 
-    * Pass through unparsed arguments. (`./mytool command -- these are unparsed args`)
+    * Pass through unparsed arguments. (`./mytool parsed args -- these are unparsed args`)
 
     * Automatic error messages for missing and malformed arguments.
 
