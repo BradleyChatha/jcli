@@ -160,6 +160,20 @@ The second parameter is an optional name we can give the parameter, which is sho
 
 The last parameter is simply a description.
 
+The last two parameters are obviously to make your automatically generated help text more user-friendly, for example:
+
+```bash
+Usage: DEFAULT {0/number}
+
+Description:
+    The default command.
+
+Positional Args:
+    0,number                     - The number to check.
+```
+
+This makes the purpose of your positional arguments clear.
+
 ## Registering commands
 
 We can almost use our new command, we just need to register it first. As usual I'll provide an explanation after the code:
