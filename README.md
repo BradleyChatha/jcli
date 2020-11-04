@@ -243,7 +243,7 @@ Well, let's make them pass in a named argument called `--mode`, which maps direc
 enum Mode
 {
     normal,  // Even returns 1. Odd returns 0.
-    reversed // Even returns 0. Odd return 1.
+    reversed // Even returns 0. Odd returns 1.
 }
 
 @Command(null, "The default command.")
