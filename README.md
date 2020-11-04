@@ -176,7 +176,7 @@ This makes the purpose of your positional arguments clear.
 
 ## Registering commands
 
-We can almost use our new command, we just need to register it first. As usual I'll provide an explanation after the code:
+To use our new command, we just need to register it first:
 
 ```d
 import jaster.cli;
@@ -195,9 +195,7 @@ int main(string[] args)
 
 Our main function is defined to return an `int` (status code) while also taking in any arguments passed to us via the `args` parameter.
 
-First, we create `executor` which is a `CommandLineInterface` instance. If you are not familiar with D, the `!(app)` construct is how we pass template parameters in D, so this would be analogous to `<app>()` in C++.
-
-For `CommandLineInterface` to discover commands, it must know which modules (in D, this is a code file) to look in. Remember at the start I told you to write `module app;` at the start of the file? So all `!(app)` is doing is passing the module called `app` into `CommandLineInterface`, so that it can find all our commands there.
+First, we create `executor` which is a `CommandLineInterface` instance. To discover commands, it must know which modules to look in. Remember at the start I told you to write `module app;` at the start of the file? So what we're doing here is passing our module called `app` into `CommandLineInterface`, so that it can find all our commands there.
 
 For future reference, you can pass any amount of modules into `CommandLineInterface`, not just a single one.
 
