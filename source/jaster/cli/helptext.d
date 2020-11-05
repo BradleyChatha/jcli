@@ -211,6 +211,7 @@ final class HelpTextBuilderTechnical
                     
                 output ~= section.name~":\n";
                 section.content.map!(c => c.getContent(section.options))
+                               .joiner("\n")
                                .each!(c => output ~= c);
             }
 
@@ -441,7 +442,7 @@ final class HelpTextBuilderSimple
                     assert(section !is null);
 
                     if(group.description !is null)
-                        section.addContent(new HelpSectionTextContent(group.description~"\n\n"));
+                        section.addContent(new HelpSectionTextContent(group.description~"\n"));
                     writePositionalArgs(*section, group.positional);
                     writeNamedArgs(*section, group.named);
                 }
@@ -459,6 +460,7 @@ unittest
 
     builder.addPositionalArg(0, "The input file.", ArgIsOptional.no, "InputFile")
            .addPositionalArg(1, "The output file.", ArgIsOptional.no, "OutputFile")
+           .addPositionalArg("Utility", 2, "How much to compress the file.", ArgIsOptional.no, "CompressionLevel")
            .addNamedArg(["v","verbose"], "Verbose output", ArgIsOptional.yes)
            .addNamedArg("Utility", "encoding", "Sets the encoding to use.", ArgIsOptional.yes)
            .setCommandName("MyCommand")
@@ -466,7 +468,7 @@ unittest
            .setGroupDescription("Utility", "Utility arguments used to modify the output.");
 
     assert(builder.toString() == 
-        "Usage: MyCommand <InputFile> <OutputFile> [-v|--verbose] [--encoding] \n"
+        "Usage: MyCommand <InputFile> <OutputFile> [-v|--verbose] <CompressionLevel> [--encoding] \n"
        ~"\n"
        ~"Description:\n"
        ~"    This is a command that transforms the InputFile into an OutputFile\n"
@@ -481,6 +483,7 @@ unittest
        ~"Utility:\n"
        ~"    Utility arguments used to modify the output.\n"
        ~"\n"
+       ~"    CompressionLevel             - How much to compress the file.\n"
        ~"    --encoding                   - Sets the encoding to use.",
 
         "\n"~builder.toString()
