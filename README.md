@@ -164,7 +164,7 @@ The second parameter is an optional name we can give the parameter, which is sho
 The last parameter is simply a description.
 
 An example of the help text is shown in the [Running your program](#running-your-program) section, which demonstrates why
-you should be provide a name to positional arguments.
+you should provide a name to positional arguments.
 
 ## Registering commands
 
