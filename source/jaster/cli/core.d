@@ -920,6 +920,9 @@ final class CommandLineInterface(Modules...)
                             {
                                 PositionalArgInfo!T arg;
                                 arg.uda = getSingleUDA!(Symbol, CommandPositionalArg);
+
+                                if(arg.uda.name.length == 0)
+                                    arg.uda.name = "VALUE";
                             }
                             else static assert(false, "Bug with parent if statement.");
 
