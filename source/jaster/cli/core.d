@@ -1065,7 +1065,7 @@ final class CommandLineInterface(Modules...)
                            command.finalWords
                                   .uniq!((a, b) => a.userData.pattern == b.userData.pattern)
                                   .map!(c => HelpSectionArgInfoContent.ArgInfo(
-                                       [c.word],
+                                       [c.userData.pattern.pattern.splitter('|').front],
                                        c.userData.pattern.description,
                                        ArgIsOptional.no
                                   ))
