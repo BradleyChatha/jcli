@@ -903,20 +903,38 @@ final class CommandLineInterface(Modules...)
         {
             import std.algorithm : filter, map;
             import std.format    : format;
+            import std.exception : assumeUnique;
+
+            char[] error;
+            error.reserve(512);
 
             // Check for missing args.
             auto missingNamedArgs      = namedArgs.filter!(a => !a.isNullable && !a.wasFound);
             auto missingPositionalArgs = positionalArgs.filter!(a => !a.isNullable && !a.wasFound);
             if(!missingNamedArgs.empty)
             {
-                executionError = "The following required named arguments were not provided: %s"
-                                    .format(missingNamedArgs.map!(a => a.uda.pattern));
-                return false;
+                foreach(arg; missingNamedArgs)
+                {
+                    const name = arg.uda.pattern.byPatternNames.front;
+                    error ~= (name.length == 1) ? "-" : "--";
+                    error ~= name;
+                    error ~= ", ";
+                }
             }
             if(!missingPositionalArgs.empty)
             {
-                executionError = "The following required positional arguments were not provided: %s"
-                                    .format(missingPositionalArgs.map!(a => format("[%s] %s", a.uda.position, a.uda.name)));
+                foreach(arg; missingPositionalArgs)
+                {
+                    error ~= "<";
+                    error ~= arg.uda.name;
+                    error ~= ">, ";
+                }
+            }
+
+            if(error.length > 0)
+            {
+                error = error[0..$-2]; // Skip extra ", "
+                executionError = "Missing required arguments " ~ error.assumeUnique;
                 return false;
             }
 
