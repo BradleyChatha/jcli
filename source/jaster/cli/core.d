@@ -325,24 +325,35 @@ final class CommandLineInterface(Modules...)
         CommandResolver!CommandInfo _resolver;
         ServiceProvider             _services;
         CommandInfo                 _defaultCommand;
+        string                      _appName;
     }
 
     /+ PUBLIC INTERFACE +/
     public final
     {
+        this(ServiceProvider services = null)
+        {
+            import std.file : thisExePath;
+            import std.path : baseName;
+
+            this(thisExePath().baseName, services);
+        }
+
         /++
          + Params:
          +  services = The `ServiceProvider` to use for dependency injection.
          +             If this value is `null`, then a new `ServiceProvider` will be created containing an `ICommandLineInterface` service.
          + ++/
-        this(ServiceProvider services = null)
+        this(string appName, ServiceProvider services = null)
         {
             import std.algorithm : sort;
 
             if(services is null)
                 services = new ServiceProvider([addCommandLineInterfaceService()]);
+
             this._services = services;
             this._resolver = new CommandResolver!CommandInfo();
+            this._appName  = appName;
 
             static foreach(mod; Modules)
                 this.addCommandsFromModule!mod();
@@ -390,7 +401,7 @@ final class CommandLineInterface(Modules...)
 
             if(args.empty && this._defaultCommand == CommandInfo.init)
             {
-                writefln("ERROR: No command was given.");
+                this.writeErrorf("No command was given.");
                 writefln(this.createAvailableCommandsHelpText(args, "Available commands").toString());
                 return -1;
             }
@@ -422,7 +433,7 @@ final class CommandLineInterface(Modules...)
                 else if(this._defaultCommand == CommandInfo.init)
                 {
                     parseResult.type      = ParseResultType.commandNotFound;
-                    parseResult.helpText ~= format("ERROR: Unknown command '%s'.\n\n", parseResult.argParserBeforeAttempt.front.value);
+                    parseResult.helpText ~= this.makeErrorf("Unknown command '%s'.\n", parseResult.argParserBeforeAttempt.front.value);
                     parseResult.helpText ~= this.createAvailableCommandsHelpText(parseResult.argParserBeforeAttempt).toString();
                 }
                 else
@@ -472,7 +483,7 @@ final class CommandLineInterface(Modules...)
             auto statusCode = result.command.doExecute(result.argParserAfterAttempt, /*ref*/ errorMessage, result.services, result.command.helpText);
 
             if(errorMessage !is null)
-                writefln("ERROR: %s", errorMessage);
+                this.writeErrorf(errorMessage);
 
             return statusCode;
         }
@@ -1111,6 +1122,20 @@ final class CommandLineInterface(Modules...)
                 foreach(pattern; info.pattern.pattern.splitter('|'))
                     this._resolver.define(pattern, info);
             }
+        }
+
+        void writeErrorf(Args...)(string formatString, Args args)
+        {
+            import std.stdio : writeln;
+
+            writeln(this.makeErrorf(formatString, args));
+        }
+        
+        string makeErrorf(Args...)(string formatString, Args args)
+        {
+            import std.format : format;
+
+            return"%s: %s".format(this._appName, formatString.format(args));
         }
     }
 }
