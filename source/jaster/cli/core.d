@@ -66,6 +66,34 @@ struct CommandPositionalArg
 }
 
 /++
+ + Attach this to any member field to add it to a help text group.
+ +
+ + See_Also:
+ +  `jaster.cli.core.CommandLineInterface` for more details.
+ + +/
+struct CommandArgGroup
+{
+    /// The name of the group to put the arg under.
+    string group;
+
+    /++
+     + The description of the group.
+     +
+     + Notes:
+     +  The intended usage of this UDA is to apply it to a group of args at the same time, instead of attaching it onto
+     +  singular args:
+     +
+     +  ```
+     +  @CommandArgGroup("group1", "Some description")
+     +  {
+     +      @CommandPositionalArg...
+     +  }
+     +  ```
+     + ++/
+    string description;
+}
+
+/++
  + Attach this onto a `string[]` member field to mark it as the "raw arg list".
  +
  + TLDR; Given the command `"tool.exe command value1 value2 --- value3 value4 value5"`, the member field this UDA is attached to
@@ -311,6 +339,7 @@ final class CommandLineInterface(Modules...)
     {
         UDA uda;
         ArgValueSetterFunc!T setter;
+        Nullable!CommandArgGroup group;
         bool wasFound; // For nullables, this is ignore. Otherwise, anytime this is false we need to throw.
         bool isNullable;
         bool isBool;
@@ -642,23 +671,35 @@ final class CommandLineInterface(Modules...)
             enum UDA = getSingleUDA!(T, Command);
             auto builder = new HelpTextBuilderSimple();
 
+            void handleGroup(Nullable!CommandArgGroup uda)
+            {
+                if(uda.isNull)
+                    return;
+
+                builder.setGroupDescription(uda.get.group, uda.get.description);
+            }
+
             foreach(arg; namedArgs)
             {
                 builder.addNamedArg(
+                    (arg.group.isNull) ? null : arg.group.get.group,
                     arg.uda.pattern.byPatternNames.array,
                     arg.uda.description,
                     cast(ArgIsOptional)arg.isNullable
                 );
+                handleGroup(arg.group);
             }
 
             foreach(arg; positionalArgs)
             {
                 builder.addPositionalArg(
+                    (arg.group.isNull) ? null : arg.group.get.group,
                     arg.uda.position,
                     arg.uda.description,
                     cast(ArgIsOptional)arg.isNullable,
                     arg.uda.name
                 );
+                handleGroup(arg.group);
             }
 
             builder.commandName = this._appName ~ " " ~ UDA.pattern;
@@ -1034,6 +1075,7 @@ final class CommandLineInterface(Modules...)
                         {
                             alias SymbolUDAs = __traits(getAttributes, Symbol);
 
+                            // Determine the argument type.
                             static if(hasUDA!(Symbol, CommandNamedArg))
                             {
                                 NamedArgInfo!T arg;
@@ -1049,6 +1091,11 @@ final class CommandLineInterface(Modules...)
                             }
                             else static assert(false, "Bug with parent if statement.");
 
+                            // See if the arg is part of a group.
+                            static if(hasUDA!(Symbol, CommandArgGroup))
+                                arg.group = getSingleUDA!(Symbol, CommandArgGroup);
+
+                            // Generate the setter func + transfer some Compile-time info into runtime.
                             arg.setter = (ArgToken tok, ref T commandInstance)
                             {
                                 import std.exception : enforce;
@@ -1446,5 +1493,42 @@ version(unittest)
                 IgnoreFirstArg.no
             ) == -1
         );
+    }
+
+    @Command("arg group test", "Test arg groups work")
+    private struct ArgGroupTestCommand
+    {
+        @CommandPositionalArg(0)
+        string a;
+
+        @CommandNamedArg("b")
+        string b;
+
+        @CommandArgGroup("group1", "This is group 1")
+        {
+            @CommandPositionalArg(1)
+            string c;
+
+            @CommandNamedArg("d")
+            string d;
+        }
+
+        void onExecute(){}
+    }
+    @("Test that @CommandArgGroup is handled properly.")
+    unittest
+    {
+        import std.algorithm : canFind;
+
+        // Accessing a lot of private state here, but that's because we don't have a mechanism to extract the output properly.
+        auto cli = new CommandLineInterface!(jaster.cli.core);
+        auto helpText = cli._resolver.resolve("arg group test").value.userData.helpText;
+
+        assert(helpText.toString().canFind(
+            "group1:\n"
+           ~"    This is group 1\n"
+           ~"\n"
+           ~"    VALUE"
+        ));
     }
 }
