@@ -496,7 +496,6 @@ final class CommandLineInterface(Modules...)
                     "Multiple default commands defined: Second default command is %s"
                     .format(T.stringof)
                 );
-                info.helpText.setCommandName("DEFAULT");
                 this._defaultCommand = info;
             }
             else
@@ -662,7 +661,7 @@ final class CommandLineInterface(Modules...)
                 );
             }
 
-            builder.commandName = UDA.pattern;
+            builder.commandName = this._appName ~ " " ~ UDA.pattern;
             builder.description = UDA.description;
 
             return builder;
