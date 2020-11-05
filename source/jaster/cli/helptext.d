@@ -272,7 +272,7 @@ final class HelpTextBuilderSimple
             this._positionalArgs ~= PositionalArg(
                 position,
                 HelpSectionArgInfoContent.ArgInfo(
-                    [position.to!string] ~ ((displayName is null) ? [] : [displayName]),
+                    (displayName is null) ? [] : [displayName],
                     description,
                     isOptional
                 )
@@ -337,11 +337,11 @@ final class HelpTextBuilderSimple
                            this._positionalArgs
                                 .tee!((p)
                                 {
-                                    auto text = "{%s}".format(p.info.names.joiner("/"));
-
+                                    // Using git as a precedant for the angle brackets.
+                                    auto name = "%s".format(p.info.names.joiner("/"));
                                     usageString ~= (p.info.isOptional)
-                                                    ? "<"~text~">"
-                                                    : text;
+                                                    ? "["~name~"]"
+                                                    : "<"~name~">";
                                     usageString ~= ' ';
                                 })
                                 .map!(p => p.info)
@@ -358,11 +358,15 @@ final class HelpTextBuilderSimple
                            this._namedArgs
                                .tee!((a)
                                {
-                                    auto text = "[%s]".format(a.names.joiner("|"));
+                                    auto name = "%s".format(
+                                        a.names
+                                         .map!(n => (n.length == 1) ? "-"~n : "--"~n)
+                                         .joiner("|")
+                                    );
 
                                     usageString ~= (a.isOptional)
-                                                    ? "<"~text~">"
-                                                    : text;
+                                                    ? "["~name~"]"
+                                                    : name;
                                     usageString ~= ' ';
                                })
                                .array,
@@ -388,14 +392,14 @@ unittest
            .setDescription("This is a command that transforms the InputFile into an OutputFile");
 
     assert(builder.toString() == 
-        "Usage: MyCommand {0/InputFile} {1/OutputFile} <[v|verbose]> \n"
+        "Usage: MyCommand <InputFile> <OutputFile> [-v|--verbose] \n"
        ~"\n"
        ~"Description:\n"
        ~"    This is a command that transforms the InputFile into an OutputFile\n"
        ~"\n"
        ~"Positional Args:\n"
-       ~"    0,InputFile                  - The input file.\n"
-       ~"    1,OutputFile                 - The output file.\n"
+       ~"    InputFile                    - The input file.\n"
+       ~"    OutputFile                   - The output file.\n"
        ~"\n"
        ~"Named Args:\n"
        ~"    -v,--verbose                 - Verbose output",
