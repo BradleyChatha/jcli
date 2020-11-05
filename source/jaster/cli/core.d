@@ -659,7 +659,7 @@ final class CommandLineInterface(Modules...)
                         case Text:
                             if(positionalArgIndex >= positionalArgs.length)
                             {
-                                executionError = "Stray positional arg found: '"~token.value~"'";
+                                executionError = "too many arguments starting at '"~token.value~"'";
                                 return -1;
                             }
 
