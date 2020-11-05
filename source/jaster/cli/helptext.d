@@ -155,6 +155,20 @@ final class HelpTextBuilderTechnical
             return this._sections[$-1];
         }
 
+        ///
+        ref HelpSection getOrAddSection(string sectionName)
+        {
+            // If this is too slow then we can move to an AA
+            // (p.s. std.algorithm doesn't see _sections as an input range, even if I import std.range for the array primitives)
+            foreach(ref section; this._sections)
+            {
+                if(section.name == sectionName)
+                    return section;
+            }
+
+            return this.addSection(sectionName);
+        }
+
         /++
          + Modifies an existing section (by returning it by reference).
          +
@@ -205,6 +219,9 @@ final class HelpTextBuilderTechnical
             // Sections
             foreach(ref section; this._sections)
             {
+                if(section.content.length == 0)
+                    continue;
+
                 // This could all technically be 'D-ified'/'rangeified' but I couldn't make it look nice.
                 if(output.length > 0)
                     output ~= "\n\n";
@@ -366,7 +383,7 @@ final class HelpTextBuilderSimple
 
         override string toString()
         {
-            import std.algorithm : map, joiner, sort;
+            import std.algorithm : map, joiner, sort, filter;
             import std.array     : array;
             import std.range     : tee;
             import std.format    : format;
@@ -404,8 +421,11 @@ final class HelpTextBuilderSimple
                 );
             }
 
-            void writeNamedArgs(ref HelpSection section, NamedArg[] args)
+            void writeNamedArgs(Range)(ref HelpSection section, Range args)
             {
+                if(args.empty)
+                    return;
+
                 section.addContent(new HelpSectionArgInfoContent(
                     args.tee!((a)
                         {
@@ -425,27 +445,55 @@ final class HelpTextBuilderSimple
                     )
                 );
             }
-            
-            this._groupOrders.sort!"a.order < b.order"();
-            foreach(groupOrder; this._groupOrders)
+
+            ref HelpSection getGroupSection(ArgGroup group)
             {
-                auto group = this._groups[groupOrder.name];
-
-                if(group.isDefaultGroup)
+                scope section = &builder.getOrAddSection(group.name);
+                if(section.content.length == 0 && group.description !is null)
                 {
-                    writePositionalArgs(builder.addSection("Positional Args"), group.positional);
-                    writeNamedArgs(builder.addSection("Named Args"), group.named);
+                    // Section was just made, so add in the description.
+                    section.addContent(new HelpSectionTextContent(group.description~"\n"));
                 }
-                else
-                {
-                    scope section = &builder.addSection(group.name);
-                    assert(section !is null);
 
-                    if(group.description !is null)
-                        section.addContent(new HelpSectionTextContent(group.description~"\n"));
-                    writePositionalArgs(*section, group.positional);
-                    writeNamedArgs(*section, group.named);
-                }
+                return *section;
+            }
+
+            // Not overly efficient, but keep in mind in most programs this function will only ever be called once per run (if even that).
+            // The speed is fast enough not to be annoying either.
+            // O(3n) + whatever .sort is.
+            //
+            // The reason we're doing it this way is to ensure everything is shown in this order:
+            //  Positional args
+            //  Required named args
+            //  Optional named args
+            //
+            // Otherwise you get a mess like: Usage: tool.exe complex <file> --iterations|-i [--verbose|-v] <output> --config|-c
+            this._groupOrders.sort!"a.order < b.order"();
+            auto groupsInOrder = this._groupOrders.map!(go => this._groups[go.name]);
+
+            // Pre-make certain sections
+            builder.addSection("Positional Args");
+            builder.addSection("Named Args");
+
+            // Pass #1: Write positional args first, since that puts the usage string in the right order.
+            foreach(group; groupsInOrder)
+            {
+                scope section = (group.isDefaultGroup) ? &builder.getOrAddSection("Positional Args") : &getGroupSection(group);
+                writePositionalArgs(*section, group.positional);
+            }
+
+            // Pass #2: Write required named args.
+            foreach(group; groupsInOrder)
+            {
+                scope section = (group.isDefaultGroup) ? &builder.getOrAddSection("Named Args") : &getGroupSection(group);
+                writeNamedArgs(*section, group.named.filter!(arg => !arg.isOptional));
+            }
+
+            // Pass #3: Write optional named args.
+            foreach(group; groupsInOrder)
+            {
+                scope section = (group.isDefaultGroup) ? &builder.getOrAddSection("Named Args") : &getGroupSection(group);
+                writeNamedArgs(*section, group.named.filter!(arg => arg.isOptional));
             }
 
             builder.addUsage(usageString.assumeUnique);
@@ -468,7 +516,7 @@ unittest
            .setGroupDescription("Utility", "Utility arguments used to modify the output.");
 
     assert(builder.toString() == 
-        "Usage: MyCommand <InputFile> <OutputFile> [-v|--verbose] <CompressionLevel> [--encoding] \n"
+        "Usage: MyCommand <InputFile> <OutputFile> <CompressionLevel> [-v|--verbose] [--encoding] \n"
        ~"\n"
        ~"Description:\n"
        ~"    This is a command that transforms the InputFile into an OutputFile\n"
