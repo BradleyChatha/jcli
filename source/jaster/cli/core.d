@@ -273,7 +273,6 @@ final class CommandLineInterface(Modules...)
     alias CommandCompleteFunc   = void function(string[] before, string current, string[] after, ref char[] buffer);
     alias ArgValueSetterFunc(T) = void function(ArgToken, ref T);
     alias ArgBinderInstance     = ArgBinder!Modules;
-    alias AllowPartialMatch     = Flag!"partialMatch";
     immutable BASH_COMPLETION   = import("bash_completion.sh");
 
     private struct CommandInfo
@@ -401,7 +400,7 @@ final class CommandLineInterface(Modules...)
 
             if(args.empty && this._defaultCommand == CommandInfo.init)
             {
-                this.writeErrorf("No command was given.");
+                writefln(this.makeErrorf("No command was given."));
                 writefln(this.createAvailableCommandsHelpText(args, "Available commands").toString());
                 return -1;
             }
@@ -421,7 +420,7 @@ final class CommandLineInterface(Modules...)
 
             if(!result.success || result.value.type == CommandNodeType.partialWord)
             {
-                if(this.containsHelpArgument(args))
+                if(args.containsHelpArgument())
                 {
                     parseResult.type = ParseResultType.showHelpText;
                     if(this._defaultCommand != CommandInfo.init)
@@ -459,6 +458,55 @@ final class CommandLineInterface(Modules...)
         }
     }
 
+    /+ COMMAND DISCOVERY AND REGISTRATION +/
+    private final
+    {
+        void addCommandsFromModule(alias Module)()
+        {
+            import std.traits : getSymbolsByUDA;
+
+            static foreach(symbol; getSymbolsByUDA!(Module, Command))
+            {
+                static assert(is(symbol == struct) || is(symbol == class), 
+                    "Only structs and classes can be marked with @Command. Issue Symbol = " ~ __traits(identifier, symbol)
+                );
+
+                pragma(msg, "Found command: ", __traits(identifier, symbol));
+                this.addCommand!symbol();
+            }
+        }
+
+        void addCommand(alias T)()
+        if(is(T == struct) || is(T == class))
+        {
+            import std.algorithm : splitter;
+            import std.format    : format;
+            import std.exception : enforce;
+
+            CommandInfo info;
+            info.helpText   = this.createHelpText!T();
+            info.pattern    = getSingleUDA!(T, Command);
+            info.doExecute  = this.createCommandExecuteFunc!T();
+            info.doComplete = this.createCommandCompleteFunc!T();
+
+            if(info.pattern.pattern is null)
+            {
+                enforce(
+                    this._defaultCommand == CommandInfo.init, 
+                    "Multiple default commands defined: Second default command is %s"
+                    .format(T.stringof)
+                );
+                info.helpText.setCommandName("DEFAULT");
+                this._defaultCommand = info;
+            }
+            else
+            {
+                foreach(pattern; info.pattern.pattern.byPatternNames)
+                    this._resolver.define(pattern, info);
+            }
+        }
+    }
+
     /+ MODE EXECUTORS +/
     private final
     {
@@ -483,7 +531,7 @@ final class CommandLineInterface(Modules...)
             auto statusCode = result.command.doExecute(result.argParserAfterAttempt, /*ref*/ errorMessage, result.services, result.command.helpText);
 
             if(errorMessage !is null)
-                this.writeErrorf(errorMessage);
+                writeln(this.makeErrorf(errorMessage));
 
             return statusCode;
         }
@@ -598,8 +646,7 @@ final class CommandLineInterface(Modules...)
             foreach(arg; namedArgs)
             {
                 builder.addNamedArg(
-                    arg.uda.pattern.splitter('|')
-                                   .array,
+                    arg.uda.pattern.byPatternNames.array,
                     arg.uda.description,
                     cast(ArgIsOptional)arg.isNullable
                 );
@@ -621,176 +668,6 @@ final class CommandLineInterface(Modules...)
             return builder;
         }
 
-        CommandExecuteFunc createCommandExecuteFunc(alias T)()
-        {
-            import std.format    : format;
-            import std.algorithm : filter, map;
-            import std.exception : enforce, collectException;
-
-            // This is expecting the parser to have already read in the command's name, leaving only the args.
-            return (ArgPullParser parser, ref string executionError, scope ref ServiceScope services, HelpTextBuilderSimple helpText)
-            {
-                if(containsHelpArgument(parser))
-                {
-                    import std.stdio : writeln;
-                    writeln(helpText.toString());
-                    return 0;
-                }
-
-                T commandInstance = Injector.construct!T(services);
-                static if(is(T == class))
-                    assert(commandInstance !is null, "Dependency injection failed somehow.");
-                
-                // Get arg info.
-                NamedArgInfo!T[]      namedArgs;
-                PositionalArgInfo!T[] positionalArgs;
-                /*static member*/ getArgs!T(/*ref*/ namedArgs, /*ref*/ positionalArgs);
-
-                // Parse args.
-                size_t   positionalArgIndex = 0;
-                bool     processRawList = false;
-                string[] rawList;
-                for(; !parser.empty && !processRawList; parser.popFront())
-                {
-                    const  token = parser.front;
-                    string debugName; // Used for when there's a validation error
-                    try final switch(token.type) with(ArgTokenType)
-                    {
-                        case Text:
-                            if(positionalArgIndex >= positionalArgs.length)
-                            {
-                                executionError = "too many arguments starting at '"~token.value~"'";
-                                return -1;
-                            }
-
-                            debugName = "positional arg %s(%s)".format(positionalArgIndex, positionalArgs[positionalArgIndex].uda.name);
-                            positionalArgs[positionalArgIndex].setter(token, /*ref*/ commandInstance);
-                            positionalArgs[positionalArgIndex++].wasFound = true;
-                            break;
-
-                        case LongHandArgument:
-                            if(token.value == "-" || token.value == "") // --- || --
-                            {
-                                processRawList = true;
-                                rawList = parser.unparsedArgs;
-                                break;
-                            }
-                            goto case;
-                        case ShortHandArgument:
-                            NamedArgInfo!T result;
-                            foreach(ref arg; namedArgs)
-                            {
-                                if(/*static member*/matchSpacelessPattern(arg.uda.pattern, token.value))
-                                {
-                                    arg.wasFound = true;
-                                    result       = arg;
-                                    debugName    = "named argument "~arg.uda.pattern;
-                                    break;
-                                }
-                            }
-
-                            if(result == NamedArgInfo!T.init)
-                            {
-                                executionError = "Unknown named argument: '"~token.value~"'";
-                                return -1;
-                            }
-                            
-                            if(result.isBool)
-                            {
-                                import std.algorithm : canFind;
-                                // Bools have special support:
-                                //  If they are defined, they are assumed to be true, however:
-                                //      If the next token is Text, and its value is one of a predefined list, then it is then sent to the ArgBinder instead of defaulting to true.
-                                
-                                auto parserCopy = parser;
-                                parserCopy.popFront();
-                                
-                                if(parserCopy.empty 
-                                || parserCopy.front.type != ArgTokenType.Text
-                                || !["true", "false"].canFind(parserCopy.front.value))
-                                {
-                                    result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
-                                    break;
-                                }
-
-                                result.setter(parserCopy.front, /*ref*/ commandInstance);
-                                parser.popFront(); // Keep the main parser up to date.
-                            }
-                            else
-                            {
-                                parser.popFront();
-
-                                if(parser.front.type == ArgTokenType.EOF)
-                                {
-                                    executionError = "Named arg '"~result.uda.pattern~"' was specified, but wasn't given a value.";
-                                    return -1;
-                                }
-
-                                result.setter(parser.front, /*ref*/ commandInstance);
-                            }
-                            break;
-
-                        case None:
-                            throw new Exception("An Unknown error occured when parsing the arguments.");
-
-                        case EOF:
-                            break;
-                    }
-                    catch(ArgBinderValidationException ex)
-                    {
-                        executionError = "For "~debugName~": "~ex.msg;
-                        return -1;
-                    }
-                }
-
-                // Check for missing args.
-                auto missingNamedArgs      = namedArgs.filter!(a => !a.isNullable && !a.wasFound);
-                auto missingPositionalArgs = positionalArgs.filter!(a => !a.isNullable && !a.wasFound);
-                if(!missingNamedArgs.empty)
-                {
-                    executionError = "The following required named arguments were not provided: %s"
-                                     .format(missingNamedArgs.map!(a => a.uda.pattern));
-                    return -1;
-                }
-                if(!missingPositionalArgs.empty)
-                {
-                    executionError = "The following required positional arguments were not provided: %s"
-                                      .format(missingPositionalArgs.map!(a => format("[%s] %s", a.uda.position, a.uda.name)));
-                    return -1;
-                }
-
-                // Process the raw list if we can
-                if(processRawList)
-                    insertRawList!T(/*ref*/ commandInstance, rawList);
-
-                // Execute the command.
-                static assert(
-                    __traits(compiles, commandInstance.onExecute())
-                 || __traits(compiles, { int code = commandInstance.onExecute(); }),
-                    "Unable to call the `onExecute` function for command `"~__traits(identifier, T)~"` please ensure it's signature matches either:"
-                   ~"\n\tvoid onExecute();"
-                   ~"\n\tint onExecute();"
-                );
-
-                try
-                {
-                    static if(__traits(compiles, {int i = commandInstance.onExecute();}))
-                        return commandInstance.onExecute();
-                    else 
-                    {
-                        commandInstance.onExecute();
-                        return 0;
-                    }
-                }
-                catch(Exception ex)
-                {
-                    executionError = ex.msg;
-                    debug executionError ~= "\n\nSTACK TRACE:\n" ~ ex.info.toString(); // trace info
-                    return -1;
-                }
-            };
-        }
-        
         CommandCompleteFunc createCommandCompleteFunc(alias T)()
         {
             import std.algorithm : filter, map, startsWith, splitter, canFind;
@@ -825,7 +702,7 @@ final class CommandLineInterface(Modules...)
 
                 foreach(arg; namedArgs)
                 {
-                    foreach(pattern; arg.uda.pattern.splitter('|'))
+                    foreach(pattern; arg.uda.pattern.byPatternNames)
                     {
                         // Reminder: Confusingly for this use case, arguments don't have their leading dashes in the before and after arrays.
                         if(before.canFind(pattern) || after.canFind(pattern))
@@ -842,6 +719,239 @@ final class CommandLineInterface(Modules...)
                     output ~= ' ';
                 }
             };
+        }
+
+        CommandExecuteFunc createCommandExecuteFunc(alias T)()
+        {
+            import std.format    : format;
+            import std.algorithm : filter, map;
+            import std.exception : enforce, collectException;
+
+            // This is expecting the parser to have already read in the command's name, leaving only the args.
+            return (ArgPullParser parser, ref string executionError, scope ref ServiceScope services, HelpTextBuilderSimple helpText)
+            {
+                if(containsHelpArgument(parser))
+                {
+                    import std.stdio : writeln;
+                    writeln(helpText.toString());
+                    return 0;
+                }
+                
+                // Cross-stage state.
+                T                     commandInstance;
+                NamedArgInfo!T[]      namedArgs;
+                PositionalArgInfo!T[] positionalArgs;
+                bool                  processRawList = false;
+                string[]              rawList;
+
+                // Create the command and fetch its arg info.
+                commandInstance = Injector.construct!T(services);
+                static if(is(T == class))
+                    assert(commandInstance !is null, "Dependency injection failed somehow.");
+                getArgs!T(/*ref*/ namedArgs, /*ref*/ positionalArgs);
+
+                // Execute stages
+                const argsWereParsed = onExecuteParseArgs!T(
+                    namedArgs, 
+                    positionalArgs,
+                    /*ref*/ commandInstance,
+                    /*ref*/ parser,
+                    /*ref*/ executionError,
+                    /*ref*/ processRawList, 
+                    /*ref*/ rawList,
+                );
+                if(!argsWereParsed)
+                    return -1;
+
+                const argsWereValidated = onExecuteValidateArgs!T(
+                    namedArgs,
+                    positionalArgs,
+                    /*ref*/ executionError
+                );
+                if(!argsWereValidated)
+                    return -1;
+
+                if(processRawList)
+                    insertRawList!T(/*ref*/ commandInstance, rawList);
+
+                return onExecuteRunCommand!T(
+                    /*ref*/ commandInstance,
+                    /*ref*/ executionError
+                );
+            };
+        }
+    }
+
+    /+ COMMAND EXECUTION STAGES +/
+    private static
+    {
+        bool onExecuteParseArgs(alias T)(
+                NamedArgInfo!T[]        namedArgs, 
+                PositionalArgInfo!T[]   positionalArgs,
+            ref T                       commandInstance,
+            ref ArgPullParser           parser,
+            ref string                  executionError,
+            ref bool                    processRawList, 
+            ref string[]                rawList
+        )
+        {
+            import std.format : format;
+
+            // Parse args.
+            size_t positionalArgIndex = 0;
+            for(; !parser.empty && !processRawList; parser.popFront())
+            {
+                const  token = parser.front;
+                string debugName; // Used for when there's a validation error
+                try final switch(token.type) with(ArgTokenType)
+                {
+                    case Text:
+                        if(positionalArgIndex >= positionalArgs.length)
+                        {
+                            executionError = "Stray positional arg found: '"~token.value~"'";
+                            return false;
+                        }
+
+                        debugName = "positional arg %s(%s)".format(positionalArgIndex, positionalArgs[positionalArgIndex].uda.name);
+                        positionalArgs[positionalArgIndex].setter(token, /*ref*/ commandInstance);
+                        positionalArgs[positionalArgIndex++].wasFound = true;
+                        break;
+
+                    case LongHandArgument:
+                        if(token.value == "-" || token.value == "") // --- || --
+                        {
+                            processRawList = true;
+                            rawList = parser.unparsedArgs;
+                            break;
+                        }
+                        goto case;
+                    case ShortHandArgument:
+                        NamedArgInfo!T result;
+                        foreach(ref arg; namedArgs)
+                        {
+                            if(/*static member*/matchSpacelessPattern(arg.uda.pattern, token.value))
+                            {
+                                arg.wasFound = true;
+                                result       = arg;
+                                debugName    = "named argument "~arg.uda.pattern;
+                                break;
+                            }
+                        }
+
+                        if(result == NamedArgInfo!T.init)
+                        {
+                            executionError = "Unknown named argument: '"~token.value~"'";
+                            return false;
+                        }
+                        
+                        if(result.isBool)
+                        {
+                            import std.algorithm : canFind;
+                            // Bools have special support:
+                            //  If they are defined, they are assumed to be true, however:
+                            //      If the next token is Text, and its value is one of a predefined list, then it is then sent to the ArgBinder instead of defaulting to true.
+                            
+                            auto parserCopy = parser;
+                            parserCopy.popFront();
+                            
+                            if(parserCopy.empty 
+                            || parserCopy.front.type != ArgTokenType.Text
+                            || !["true", "false"].canFind(parserCopy.front.value))
+                            {
+                                result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
+                                break;
+                            }
+
+                            result.setter(parserCopy.front, /*ref*/ commandInstance);
+                            parser.popFront(); // Keep the main parser up to date.
+                        }
+                        else
+                        {
+                            parser.popFront();
+
+                            if(parser.front.type == ArgTokenType.EOF)
+                            {
+                                executionError = "Named arg '"~result.uda.pattern~"' was specified, but wasn't given a value.";
+                                return false;
+                            }
+
+                            result.setter(parser.front, /*ref*/ commandInstance);
+                        }
+                        break;
+
+                    case None:
+                        throw new Exception("An Unknown error occured when parsing the arguments.");
+
+                    case EOF:
+                        break;
+                }
+                catch(ArgBinderValidationException ex)
+                {
+                    executionError = "For "~debugName~": "~ex.msg;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool onExecuteValidateArgs(alias T)(
+            NamedArgInfo!T[]        namedArgs,
+            PositionalArgInfo!T[]   positionalArgs,
+            ref string              executionError
+        )
+        {
+            import std.algorithm : filter, map;
+            import std.format    : format;
+
+            // Check for missing args.
+            auto missingNamedArgs      = namedArgs.filter!(a => !a.isNullable && !a.wasFound);
+            auto missingPositionalArgs = positionalArgs.filter!(a => !a.isNullable && !a.wasFound);
+            if(!missingNamedArgs.empty)
+            {
+                executionError = "The following required named arguments were not provided: %s"
+                                    .format(missingNamedArgs.map!(a => a.uda.pattern));
+                return false;
+            }
+            if(!missingPositionalArgs.empty)
+            {
+                executionError = "The following required positional arguments were not provided: %s"
+                                    .format(missingPositionalArgs.map!(a => format("[%s] %s", a.uda.position, a.uda.name)));
+                return false;
+            }
+
+            return true;
+        }
+
+        int onExecuteRunCommand(alias T)(
+            ref T      commandInstance,
+            ref string executionError
+        )
+        {
+            static assert(
+                __traits(compiles, commandInstance.onExecute())
+                || __traits(compiles, { int code = commandInstance.onExecute(); }),
+                "Unable to call the `onExecute` function for command `"~__traits(identifier, T)~"` please ensure it's signature matches either:"
+                ~"\n\tvoid onExecute();"
+                ~"\n\tint onExecute();"
+            );
+
+            try
+            {
+                static if(__traits(compiles, {int i = commandInstance.onExecute();}))
+                    return commandInstance.onExecute();
+                else 
+                {
+                    commandInstance.onExecute();
+                    return 0;
+                }
+            }
+            catch(Exception ex)
+            {
+                executionError = ex.msg;
+                debug executionError ~= "\n\nSTACK TRACE:\n" ~ ex.info.toString(); // trace info
+                return -1;
+            }
         }
     }
 
@@ -957,97 +1067,6 @@ final class CommandLineInterface(Modules...)
         }
     }
 
-    /+ PARSING HELPERS +/
-    private final
-    {
-        static bool containsHelpArgument(ArgPullParser args)
-        {
-            import std.algorithm : any;
-
-            return args.any!(t => t.type == ArgTokenType.ShortHandArgument && t.value == "h"
-                               || t.type == ArgTokenType.LongHandArgument && t.value == "help");
-        }
-
-        static bool matchSpacelessPattern(string pattern, string toTestAgainst)
-        {
-            import std.algorithm : splitter, any;
-
-            return pattern.splitter("|").any!(str => str == toTestAgainst);
-        }
-        ///
-        unittest
-        {
-            assert(matchSpacelessPattern("v|verbose", "v"));
-            assert(matchSpacelessPattern("v|verbose", "verbose"));
-            assert(!matchSpacelessPattern("v|verbose", "lalafell"));
-        }
-
-        static bool matchSpacefullPattern(string pattern, ref ArgPullParser parser, AllowPartialMatch allowPartial = AllowPartialMatch.no)
-        {
-            import std.algorithm : splitter;
-
-            foreach(subpattern; pattern.splitter("|"))
-            {
-                auto savedParser = parser.save();
-                bool isAMatch = true;
-                bool isAPartialMatch = false;
-                foreach(split; subpattern.splitter(" "))
-                {
-                    // import std.stdio;
-                    // writeln(subpattern, " > ", split, " > ", savedParser.front, " > ", savedParser.empty, " > ", (savedParser.front.type == ArgTokenType.Text && savedParser.front.value == split));
-
-                    if(savedParser.empty
-                    || !(savedParser.front.type == ArgTokenType.Text && savedParser.front.value == split))
-                    {
-                        isAMatch = false;
-                        break;
-                    }
-
-                    isAPartialMatch = true;
-                    savedParser.popFront();
-                }
-
-                if(isAMatch
-                || (isAPartialMatch && allowPartial))
-                {
-                    parser = savedParser;
-                    return true;
-                }
-            }
-
-            return false;
-        }
-        ///
-        unittest
-        {
-            // Test empty parsers.
-            auto parser = ArgPullParser([]);
-            assert(!matchSpacefullPattern("v", parser));
-
-            // Test that the parser's position is moved forward correctly.
-            parser = ArgPullParser(["v", "verbose"]);
-            assert(matchSpacefullPattern("v", parser));
-            assert(matchSpacefullPattern("verbose", parser));
-            assert(parser.empty);
-
-            // Test that a parser that fails to match isn't moved forward at all.
-            parser = ArgPullParser(["v", "verbose"]);
-            assert(!matchSpacefullPattern("lel", parser));
-            assert(parser.front.value == "v");
-
-            // Test that a pattern with spaces works.
-            parser = ArgPullParser(["give", "me", "chocolate"]);
-            assert(matchSpacefullPattern("give me", parser));
-            assert(parser.front.value == "chocolate");
-
-            // Test that multiple patterns work.
-            parser = ArgPullParser(["v", "verbose"]);
-            assert(matchSpacefullPattern("lel|v|verbose", parser));
-            assert(matchSpacefullPattern("lel|v|verbose", parser));
-            assert(parser.empty);
-        }
-    }
-
     /+ UNCATEGORISED HELPERS +/
     private final
     {
@@ -1082,49 +1101,79 @@ final class CommandLineInterface(Modules...)
             return builder;
         }
 
-        void addCommandsFromModule(alias Module)()
+        string makeErrorf(Args...)(string formatString, Args args)
         {
-            import std.traits : getSymbolsByUDA;
+            import std.format : format;
+            return "%s: %s".format(this._appName, formatString.format(args));
+        }
+    }
+}
 
-            static foreach(symbol; getSymbolsByUDA!(Module, Command))
+// HELPER FUNCS
+
+private alias AllowPartialMatch = Flag!"partialMatch";
+
+private auto byPatternNames(string pattern)
+{
+    import std.algorithm : splitter;
+    return pattern.splitter('|');
+}
+
+private auto byPatternNames(T)(T uda)
+if(is(T == struct))
+{
+    return uda.pattern.byPatternNames();
+}
+
+bool containsHelpArgument(ArgPullParser args)
+{
+    import std.algorithm : any;
+
+    return args.any!(t => t.type == ArgTokenType.ShortHandArgument && t.value == "h"
+                       || t.type == ArgTokenType.LongHandArgument && t.value == "help");
+}
+
+bool matchSpacelessPattern(string pattern, string toTestAgainst)
+{
+    import std.algorithm : any;
+
+    return pattern.byPatternNames.any!(str => str == toTestAgainst);
+}
+///
+unittest
+{
+    assert(matchSpacelessPattern("v|verbose", "v"));
+    assert(matchSpacelessPattern("v|verbose", "verbose"));
+    assert(!matchSpacelessPattern("v|verbose", "lalafell"));
+}
+
+bool matchSpacefullPattern(string pattern, ref ArgPullParser parser, AllowPartialMatch allowPartial = AllowPartialMatch.no)
+{
+    import std.algorithm : splitter;
+
+    foreach(subpattern; pattern.byPatternNames)
+    {
+        auto savedParser = parser.save();
+        bool isAMatch = true;
+        bool isAPartialMatch = false;
+        foreach(split; subpattern.splitter(" "))
+        {
+            if(savedParser.empty
+            || !(savedParser.front.type == ArgTokenType.Text && savedParser.front.value == split))
             {
-                static assert(is(symbol == struct) || is(symbol == class), 
-                    "Only structs and classes can be marked with @Command. Issue Symbol = " ~ __traits(identifier, symbol)
-                );
-
-                pragma(msg, "Found command: ", __traits(identifier, symbol));
-                this.addCommand!symbol();
+                isAMatch = false;
+                break;
             }
+
+            isAPartialMatch = true;
+            savedParser.popFront();
         }
 
-        void addCommand(alias T)()
-        if(is(T == struct) || is(T == class))
+        if(isAMatch
+        || (isAPartialMatch && allowPartial))
         {
-            import std.algorithm : splitter;
-            import std.format    : format;
-            import std.exception : enforce;
-
-            CommandInfo info;
-            info.helpText   = this.createHelpText!T();
-            info.pattern    = getSingleUDA!(T, Command);
-            info.doExecute  = this.createCommandExecuteFunc!T();
-            info.doComplete = this.createCommandCompleteFunc!T();
-
-            if(info.pattern.pattern is null)
-            {
-                enforce(
-                    this._defaultCommand == CommandInfo.init, 
-                    "Multiple default commands defined: Second default command is %s"
-                    .format(T.stringof)
-                );
-                info.helpText.setCommandName("DEFAULT");
-                this._defaultCommand = info;
-            }
-            else
-            {
-                foreach(pattern; info.pattern.pattern.splitter('|'))
-                    this._resolver.define(pattern, info);
-            }
+            parser = savedParser;
+            return true;
         }
 
         void writeErrorf(Args...)(string formatString, Args args)
@@ -1141,6 +1190,37 @@ final class CommandLineInterface(Modules...)
             return"%s: %s".format(this._appName, formatString.format(args));
         }
     }
+
+    return false;
+}
+///
+unittest
+{
+    // Test empty parsers.
+    auto parser = ArgPullParser([]);
+    assert(!matchSpacefullPattern("v", parser));
+
+    // Test that the parser's position is moved forward correctly.
+    parser = ArgPullParser(["v", "verbose"]);
+    assert(matchSpacefullPattern("v", parser));
+    assert(matchSpacefullPattern("verbose", parser));
+    assert(parser.empty);
+
+    // Test that a parser that fails to match isn't moved forward at all.
+    parser = ArgPullParser(["v", "verbose"]);
+    assert(!matchSpacefullPattern("lel", parser));
+    assert(parser.front.value == "v");
+
+    // Test that a pattern with spaces works.
+    parser = ArgPullParser(["give", "me", "chocolate"]);
+    assert(matchSpacefullPattern("give me", parser));
+    assert(parser.front.value == "chocolate");
+
+    // Test that multiple patterns work.
+    parser = ArgPullParser(["v", "verbose"]);
+    assert(matchSpacefullPattern("lel|v|verbose", parser));
+    assert(matchSpacefullPattern("lel|v|verbose", parser));
+    assert(parser.empty);
 }
 
 version(unittest)
