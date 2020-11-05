@@ -247,6 +247,7 @@ final class HelpTextBuilderSimple
         struct ArgGroup
         {
             string name;
+            string description;
             NamedArg[] named;
             PositionalArg[] positional;
 
@@ -325,6 +326,13 @@ final class HelpTextBuilderSimple
         HelpTextBuilderSimple addPositionalArg(size_t position, string description, ArgIsOptional isOptional, string displayName = null)
         {
             return this.addPositionalArg(null, position, description, isOptional, displayName);
+        }
+
+        ///
+        HelpTextBuilderSimple setGroupDescription(string group, string description)
+        {
+            this.groupByName(group).description = description;
+            return this;
         }
 
         ///
@@ -431,6 +439,9 @@ final class HelpTextBuilderSimple
                 {
                     scope section = &builder.addSection(group.name);
                     assert(section !is null);
+
+                    if(group.description !is null)
+                        section.addContent(new HelpSectionTextContent(group.description~"\n\n"));
                     writePositionalArgs(*section, group.positional);
                     writeNamedArgs(*section, group.named);
                 }
@@ -451,7 +462,8 @@ unittest
            .addNamedArg(["v","verbose"], "Verbose output", ArgIsOptional.yes)
            .addNamedArg("Utility", "encoding", "Sets the encoding to use.", ArgIsOptional.yes)
            .setCommandName("MyCommand")
-           .setDescription("This is a command that transforms the InputFile into an OutputFile");
+           .setDescription("This is a command that transforms the InputFile into an OutputFile")
+           .setGroupDescription("Utility", "Utility arguments used to modify the output.");
 
     assert(builder.toString() == 
         "Usage: MyCommand <InputFile> <OutputFile> [-v|--verbose] [--encoding] \n"
@@ -467,6 +479,8 @@ unittest
        ~"    -v,--verbose                 - Verbose output\n"
        ~"\n"
        ~"Utility:\n"
+       ~"    Utility arguments used to modify the output.\n"
+       ~"\n"
        ~"    --encoding                   - Sets the encoding to use.",
 
         "\n"~builder.toString()
