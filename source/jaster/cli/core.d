@@ -292,6 +292,22 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +  For example, you have the following member in a command `@CommandRawArg string[] rawList;`, and you are given the following command - 
  +  `["command", "value1", "--", "rawValue1", "rawValue2"]`, which will result in `rawList`'s value becoming `["rawValue1", "rawValue2"]`
  +
+ + Arguments_Groups:
+ +  Arguments can be grouped together so they are displayed in a more logical manner within your command's help text.
+ +
+ +  The recommended way to make an argument group, is to create an `@CommandArgGroup` UDA block:
+ +
+ +  ```
+ +  @CommandArgGroup("Debug", "Flags relating the debugging.")
+ +  {
+ +      @CommandNamedArg("trace|t", "Enable tracing") Nullable!bool trace;
+ +      ...
+ +  }
+ +  ```
+ +
+ +  While you *can* apply the UDA individually to each argument, there's one behaviour that you should be aware of - the group's description
+ +  as displayed in the help text will use the description of the $(B last) found `@CommandArgGroup` UDA.
+ +
  + Params:
  +  Modules = The modules that contain the commands and/or binder funcs to use.
  + +/
