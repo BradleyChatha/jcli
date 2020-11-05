@@ -722,10 +722,6 @@ final class CommandLineInterface(Modules...)
 
         CommandExecuteFunc createCommandExecuteFunc(alias T)()
         {
-            import std.format    : format;
-            import std.algorithm : filter, map;
-            import std.exception : enforce, collectException;
-
             // This is expecting the parser to have already read in the command's name, leaving only the args.
             return (ArgPullParser parser, ref string executionError, scope ref ServiceScope services, HelpTextBuilderSimple helpText)
             {
