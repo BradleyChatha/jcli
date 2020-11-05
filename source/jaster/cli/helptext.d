@@ -518,7 +518,7 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
     string getContent(const HelpSectionOptions options)
     {
         import std.array     : array;
-        import std.algorithm : map, fold, count, max, splitter, substitute;
+        import std.algorithm : map, reduce, filter, count, max, splitter, substitute;
         import std.conv      : to;
         import std.exception : assumeUnique;
         import std.utf       : byChar;
@@ -554,7 +554,8 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
                                      ? (n.length == 1) ? "-"~n : "--"~n
                                      : n
                          )
-                         .fold!((a, b) => a~","~b)("")
+                         .filter!(n => n.length > 0)
+                         .reduce!((a, b) => a~","~b)
                          .byChar
                          .array
             );
