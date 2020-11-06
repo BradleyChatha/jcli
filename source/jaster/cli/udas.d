@@ -11,7 +11,14 @@ template getSingleUDA(alias Symbol, alias UDA)
 {
     import std.traits : getUDAs;
 
-    enum UDAs = getUDAs!(Symbol, UDA);
+    // Check if they created an instance `@UDA()`
+    //
+    // or if they just attached the type itself `@UDA`
+    static if(__traits(compiles, {enum UDAs = getUDAs!(Symbol, UDA);}))
+        enum UDAs = getUDAs!(Symbol, UDA);
+    else
+        enum UDAs = [UDA.init];
+    
     static if(UDAs.length == 0)
         static assert(false, "The symbol `"~Symbol.stringof~"` does not have the `@"~UDA.stringof~"` UDA");
     else static if(UDAs.length > 1)

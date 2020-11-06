@@ -35,7 +35,7 @@ struct Is
     }
 }
 
-@Command(null)
+@CommandDefault
 struct DefaultCommand
 {
     @CommandPositionalArg(0, "Even", "Should be even")

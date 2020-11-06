@@ -4,7 +4,7 @@ module jaster.cli.core;
 private
 {
     import std.typecons : Flag;
-    import std.traits   : isSomeChar;
+    import std.traits   : isSomeChar, hasUDA;
     import jaster.cli.parser, jaster.cli.udas, jaster.cli.binder, jaster.cli.helptext, jaster.cli.resolver;
     import jaster.ioc;
 }
@@ -44,6 +44,18 @@ struct CommandNamedArg
     string pattern;
 
     /// The description of this argument.
+    string description;
+}
+
+/++
+ + Attach this to any struct/class that represents the default command.
+ +
+ + See_Also:
+ +  `jaster.cli
+ + ++/
+struct CommandDefault
+{
+    /// The description of this command.
     string description;
 }
 
@@ -153,6 +165,8 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
  +
  + Commands:
  +  A command is a struct or class that is marked with `@Command`.
+ +
+ +  A default command can be specified using `@CommandDefault` instead.
  +
  +  Commands have only one requirement - They have a function called `onExecute`.
  +
@@ -453,8 +467,9 @@ final class CommandLineInterface(Modules...)
         void addCommandsFromModule(alias Module)()
         {
             import std.traits : getSymbolsByUDA;
+            import std.meta   : AliasSeq;
 
-            static foreach(symbol; getSymbolsByUDA!(Module, Command))
+            static foreach(symbol; AliasSeq!(getSymbolsByUDA!(Module, Command), getSymbolsByUDA!(Module, CommandDefault)))
             {
                 static assert(is(symbol == struct) || is(symbol == class), 
                     "Only structs and classes can be marked with @Command. Issue Symbol = " ~ __traits(identifier, symbol)
@@ -471,14 +486,21 @@ final class CommandLineInterface(Modules...)
             import std.algorithm : splitter;
             import std.format    : format;
             import std.exception : enforce;
-
             CommandInfo info;
             info.helpText   = this.createHelpText!T();
-            info.pattern    = getSingleUDA!(T, Command);
             info.doExecute  = this.createCommandExecuteFunc!T();
             info.doComplete = this.createCommandCompleteFunc!T();
 
-            if(info.pattern.pattern is null)
+            static if(hasUDA!(T, Command))
+            {
+                enum UDA = getSingleUDA!(T, Command);
+                static assert(UDA.pattern !is null, "Null command names are deprecated, please use `@CommandDefault` instead.");
+                info.pattern = UDA;
+
+                foreach(pattern; info.pattern.pattern.byPatternNames)
+                    this._resolver.define(pattern, info);
+            }
+            else static if(hasUDA!(T, CommandDefault))
             {
                 enforce(
                     this._defaultCommand == CommandInfo.init, 
@@ -488,11 +510,7 @@ final class CommandLineInterface(Modules...)
                 info.helpText.setCommandName("DEFAULT");
                 this._defaultCommand = info;
             }
-            else
-            {
-                foreach(pattern; info.pattern.pattern.byPatternNames)
-                    this._resolver.define(pattern, info);
-            }
+            else static assert(false, "This shouldn't happen.");
         }
     }
 
@@ -629,7 +647,11 @@ final class CommandLineInterface(Modules...)
             /*static member*/ getArgs!T(/*ref*/ namedArgs, /*ref*/ positionalArgs);
 
             // Get UDA
-            enum UDA = getSingleUDA!(T, Command);
+            static if(hasUDA!(T, Command))
+                enum UDA = getSingleUDA!(T, Command);
+            else
+                enum UDA = Command(null, getSingleUDA!(T, CommandDefault).description);
+
             auto builder = new HelpTextBuilderSimple();
 
             foreach(arg; namedArgs)
@@ -1241,7 +1263,7 @@ version(unittest)
         }
     }
 
-    @Command(null, "This is the default command.")
+    @CommandDefault("This is the default command.")
     private struct DefaultCommandTest
     {
         @CommandNamedArg("var", "A variable")

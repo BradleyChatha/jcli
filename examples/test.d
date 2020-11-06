@@ -189,7 +189,7 @@ int main(string[] args)
 }
 
 /++ COMMANDS ++/
-@Command(null, "Runs all test cases")
+@CommandDefault("Runs all test cases")
 struct DefaultCommand
 {
     int onExecute()

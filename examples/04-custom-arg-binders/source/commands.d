@@ -3,7 +3,7 @@ module commands;
 import std.stdio : writeln, File;
 import jaster.cli;
 
-@Command(null, "Displays the contents of a file.")
+@CommandDefault("Displays the contents of a file.")
 class CatCommand
 {
     // Because this is of type `File`, JCLI will use our custom arg binder (in binders.d) to perform the conversion.
