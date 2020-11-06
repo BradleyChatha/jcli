@@ -161,19 +161,19 @@ private HelpTextBuilderSimple createHelpText(alias T)(in CommandArguments!T comm
     foreach(arg; commandArgs.namedArgs)
     {
         builder.addNamedArg(
-        arg.uda.pattern.byPatternNames.array,
-        arg.uda.description,
-        cast(ArgIsOptional)arg.isNullable
+            arg.uda.pattern.byPatternNames.array,
+            arg.uda.description,
+            cast(ArgIsOptional)arg.isNullable
         );
     }
 
     foreach(arg; commandArgs.positionalArgs)
     {
         builder.addPositionalArg(
-        arg.uda.position,
-        arg.uda.description,
-        cast(ArgIsOptional)arg.isNullable,
-        arg.uda.name
+            arg.uda.position,
+            arg.uda.description,
+            cast(ArgIsOptional)arg.isNullable,
+            arg.uda.name
         );
     }
 
@@ -248,9 +248,9 @@ private CommandExecuteFunc createCommandExecuteFunc(alias T)(CommandArguments!T 
         }
 
         // Cross-stage state.
-        T                     commandInstance;
-        bool                  processRawList = false;
-        string[]              rawList;
+        T        commandInstance;
+        bool     processRawList = false;
+        string[] rawList;
 
         // Create the command and fetch its arg info.
         commandInstance = Injector.construct!T(services);
@@ -259,19 +259,19 @@ private CommandExecuteFunc createCommandExecuteFunc(alias T)(CommandArguments!T 
 
         // Execute stages
         const argsWereParsed = onExecuteParseArgs!T(
-        commandArgs,
-        /*ref*/ commandInstance,
-        /*ref*/ parser,
-        /*ref*/ executionError,
-        /*ref*/ processRawList,
-        /*ref*/ rawList,
+            commandArgs,
+            /*ref*/ commandInstance,
+            /*ref*/ parser,
+            /*ref*/ executionError,
+            /*ref*/ processRawList,
+            /*ref*/ rawList,
         );
         if(!argsWereParsed)
             return -1;
 
         const argsWereValidated = onExecuteValidateArgs!T(
-        commandArgs,
-        /*ref*/ executionError
+            commandArgs,
+            /*ref*/ executionError
         );
         if(!argsWereValidated)
             return -1;
@@ -280,8 +280,8 @@ private CommandExecuteFunc createCommandExecuteFunc(alias T)(CommandArguments!T 
             insertRawList!T(/*ref*/ commandInstance, rawList);
 
         return onExecuteRunCommand!T(
-        /*ref*/ commandInstance,
-        /*ref*/ executionError
+            /*ref*/ commandInstance,
+            /*ref*/ executionError
         );
     };
 }
@@ -308,84 +308,84 @@ private bool onExecuteParseArgs(alias T)(
         try final switch(token.type) with(ArgTokenType)
         {
             case Text:
-            if(positionalArgIndex >= commandArgs.positionalArgs.length)
-            {
-                executionError = "Stray positional arg found: '"~token.value~"'";
-                return false;
-            }
-
-            debugName = "positional arg %s(%s)".format(positionalArgIndex, commandArgs.positionalArgs[positionalArgIndex].uda.name);
-            commandArgs.positionalArgs[positionalArgIndex].setter(token, /*ref*/ commandInstance);
-            commandArgs.positionalArgs[positionalArgIndex++].wasFound = true;
-            break;
-
-            case LongHandArgument:
-            if(token.value == "-" || token.value == "") // --- || --
-            {
-                processRawList = true;
-                rawList = parser.unparsedArgs;
-                break;
-            }
-            goto case;
-            case ShortHandArgument:
-            NamedArgInfo!T result;
-            foreach(ref arg; commandArgs.namedArgs)
-            {
-                if(/*static member*/matchSpacelessPattern(arg.uda.pattern, token.value))
+                if(positionalArgIndex >= commandArgs.positionalArgs.length)
                 {
-                    arg.wasFound = true;
-                    result       = arg;
-                    debugName    = "named argument "~arg.uda.pattern;
-                    break;
-                }
-            }
-
-            if(result == NamedArgInfo!T.init)
-            {
-                executionError = "Unknown named argument: '"~token.value~"'";
-                return false;
-            }
-
-            if(result.isBool)
-            {
-                import std.algorithm : canFind;
-                // Bools have special support:
-                //  If they are defined, they are assumed to be true, however:
-                //      If the next token is Text, and its value is one of a predefined list, then it is then sent to the ArgBinder instead of defaulting to true.
-
-                auto parserCopy = parser;
-                parserCopy.popFront();
-
-                if(parserCopy.empty
-                || parserCopy.front.type != ArgTokenType.Text
-                || !["true", "false"].canFind(parserCopy.front.value))
-                {
-                    result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
-                    break;
-                }
-
-                result.setter(parserCopy.front, /*ref*/ commandInstance);
-                parser.popFront(); // Keep the main parser up to date.
-            }
-            else
-            {
-                parser.popFront();
-
-                if(parser.front.type == ArgTokenType.EOF)
-                {
-                    executionError = "Named arg '"~result.uda.pattern~"' was specified, but wasn't given a value.";
+                    executionError = "Stray positional arg found: '"~token.value~"'";
                     return false;
                 }
 
-                result.setter(parser.front, /*ref*/ commandInstance);
-            }
-            break;
+                debugName = "positional arg %s(%s)".format(positionalArgIndex, commandArgs.positionalArgs[positionalArgIndex].uda.name);
+                commandArgs.positionalArgs[positionalArgIndex].setter(token, /*ref*/ commandInstance);
+                commandArgs.positionalArgs[positionalArgIndex++].wasFound = true;
+                break;
+
+                case LongHandArgument:
+                if(token.value == "-" || token.value == "") // --- || --
+                {
+                    processRawList = true;
+                    rawList = parser.unparsedArgs;
+                    break;
+                }
+                goto case;
+            case ShortHandArgument:
+                NamedArgInfo!T result;
+                foreach(ref arg; commandArgs.namedArgs)
+                {
+                    if(/*static member*/matchSpacelessPattern(arg.uda.pattern, token.value))
+                    {
+                        arg.wasFound = true;
+                        result       = arg;
+                        debugName    = "named argument "~arg.uda.pattern;
+                        break;
+                    }
+                }
+
+                if(result == NamedArgInfo!T.init)
+                {
+                    executionError = "Unknown named argument: '"~token.value~"'";
+                    return false;
+                }
+
+                if(result.isBool)
+                {
+                    import std.algorithm : canFind;
+                    // Bools have special support:
+                    //  If they are defined, they are assumed to be true, however:
+                    //      If the next token is Text, and its value is one of a predefined list, then it is then sent to the ArgBinder instead of defaulting to true.
+
+                    auto parserCopy = parser;
+                    parserCopy.popFront();
+
+                    if(parserCopy.empty
+                    || parserCopy.front.type != ArgTokenType.Text
+                    || !["true", "false"].canFind(parserCopy.front.value))
+                    {
+                        result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
+                        break;
+                    }
+
+                    result.setter(parserCopy.front, /*ref*/ commandInstance);
+                    parser.popFront(); // Keep the main parser up to date.
+                }
+                else
+                {
+                    parser.popFront();
+
+                    if(parser.front.type == ArgTokenType.EOF)
+                    {
+                        executionError = "Named arg '"~result.uda.pattern~"' was specified, but wasn't given a value.";
+                        return false;
+                    }
+
+                    result.setter(parser.front, /*ref*/ commandInstance);
+                }
+                break;
 
             case None:
-            throw new Exception("An Unknown error occured when parsing the arguments.");
+                throw new Exception("An Unknown error occured when parsing the arguments.");
 
             case EOF:
-            break;
+                break;
         }
         catch(ArgBinderValidationException ex)
         {
@@ -430,11 +430,11 @@ private int onExecuteRunCommand(alias T)(
 )
 {
     static assert(
-    __traits(compiles, commandInstance.onExecute())
-    || __traits(compiles, { int code = commandInstance.onExecute(); }),
-    "Unable to call the `onExecute` function for command `"~__traits(identifier, T)~"` please ensure it's signature matches either:"
-    ~"\n\tvoid onExecute();"
-    ~"\n\tint onExecute();"
+        __traits(compiles, commandInstance.onExecute())
+     || __traits(compiles, { int code = commandInstance.onExecute(); }),
+        "Unable to call the `onExecute` function for command `"~__traits(identifier, T)~"` please ensure it's signature matches either:"
+        ~"\n\tvoid onExecute();"
+        ~"\n\tint onExecute();"
     );
 
     try
@@ -468,8 +468,8 @@ private void insertRawList(T)(ref T command, string[] rawList)
     {
         alias RawListArg = RawListArgs[0];
         static assert(
-        is(typeof(RawListArg) == string[]),
-        "`@CommandRawArg` can ONLY be used with `string[]`, not `" ~ typeof(RawListArg).stringof ~ "` in command " ~ T.stringof
+            is(typeof(RawListArg) == string[]),
+            "`@CommandRawArg` can ONLY be used with `string[]`, not `" ~ typeof(RawListArg).stringof ~ "` in command " ~ T.stringof
         );
 
         const RawListName = __traits(identifier, RawListArg);
