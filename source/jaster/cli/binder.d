@@ -15,6 +15,14 @@ private
 struct ArgBinderFunc {}
 
 /++
+ + Attach this to any struct to specify that it can be used as an arg validator.
+ +
+ + See_Also:
+ +  `jaster.cli.binder.ArgBinder` for more details.
+ + ++/
+struct ArgValidator {}
+
+/++
  + A static struct providing functionality for binding a string (the argument) to a value, as well as optionally validating it.
  +
  + Description:
@@ -60,7 +68,7 @@ struct ArgBinderFunc {}
  +
  +  If you are using `CommandLineInterface` (JCLI's default core), then a field's UDAs are passed through automatically as validator structs.
  +
- +  A validator is simply a struct that defines either, or both of these function signatures (or compatible signatures):
+ +  A validator is simply a struct marked with `@ArgValidator` that defines either, or both of these function signatures (or compatible signatures):
  +
  +  ```
  +      bool onPreValidate(string arg, ref string errorMessage);
@@ -104,7 +112,7 @@ static struct ArgBinder(Modules...)
          + document comment for `ArgBinder`.
          +
          + Validators:
-         +  The `Validators` template parameter is used to pass in validator structs (see ArgBinder's documentation comment).
+         +  The `UDAs` template parameter is used to pass in different UDA structs, including validator structs (see ArgBinder's documentation comment).
          +
          +  Anything inside of this template parameter that isn't a struct, and doesn't define any valid
          +  validator interface, will be completely ignored, so it is safe to simply pass the results of
@@ -121,21 +129,21 @@ static struct ArgBinder(Modules...)
          +  If no appropriate binder func was found, then an assert(false) is used.
          +
          + Params:
-         +  arg        = The argument to bind.
-         +  value      = The value to put the result in.
-         +  Validators = A tuple of validator structs to use.
+         +  arg   = The argument to bind.
+         +  value = The value to put the result in.
+         +  UDAs  = A tuple of UDA structs to use.
          + ++/
-        void bind(T, Validators...)(string arg, ref T value)
+        void bind(T, UDAs...)(string arg, ref T value)
         {
-            import std.traits    : isType;
+            import std.traits    : isType, hasUDA;
             import std.format    : format; // Only for exceptions/compile time logging.
             import std.exception : enforce;
             import std.meta      : staticMap;
 
             // Get all the validators we need.
-            enum isStruct(alias V)       = is(typeof(V) == struct);
-            enum canPreValidate(alias V) = isStruct!V && __traits(compiles, { string s; bool a = typeof(V).init.onPreValidate("", s); });
-            enum canValidate(alias V)    = isStruct!V && __traits(compiles, { string s; bool a = typeof(V).init.onValidate(T.init, s); });
+            enum isValidator(alias V)    = is(typeof(V) == struct) && hasUDA!(typeof(V), ArgValidator);
+            enum canPreValidate(alias V) = isValidator!V && __traits(hasMember, V, "onPreValidate");
+            enum canValidate(alias V)    = isValidator!V && __traits(hasMember, V, "onValidate");
 
             // The user might specify `@Struct` instead of `@Struct()`, so this is just to handle that.
             template ctorValidatorIfNeeded(alias V)
@@ -145,23 +153,7 @@ static struct ArgBinder(Modules...)
                 else
                     alias ctorValidatorIfNeeded = V;
             }
-            alias ValidatorsMapped = staticMap!(ctorValidatorIfNeeded, Validators);
-
-            version(JCLI_BinderCompilerErrors)
-            {
-                pragma(msg, "Type:             %s".format(T.stringof));
-                pragma(msg, "Validators:       ", Validators);
-                pragma(msg, "ValidatorsMapped: ", ValidatorsMapped);
-                static foreach(v; ValidatorsMapped)
-                {
-                    pragma(msg, "Validator:        %s".format(v));
-                    pragma(msg, "canPreValidate:   %s".format(canPreValidate!v));
-                    pragma(msg, "canValueValidate: %s".format(canValidate!v));
-                    pragma(msg, "");
-                    { string s; bool a = typeof(v).init.onPreValidate("", s); }
-                    { string s; bool a = typeof(v).init.onValidate(T.init, s); }
-                }
-            }
+            alias ValidatorsMapped = staticMap!(ctorValidatorIfNeeded, UDAs);
 
             // Runtime variables
             bool handled = false;
@@ -274,6 +266,7 @@ unittest
     assert(strValue == "200");
 
     // Validated bindings
+    @ArgValidator
     static struct GreaterThan
     {
         import std.traits : isNumeric;
@@ -311,6 +304,7 @@ unittest
 {
     import std.exception : assertThrown;
 
+    @ArgValidator
     static struct Dummy
     {
         bool onPreValidate(string arg, ref string error)

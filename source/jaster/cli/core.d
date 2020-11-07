@@ -1360,6 +1360,7 @@ version(unittest)
         );
     }
 
+    @ArgValidator
     private struct Expect(T)
     {
         T value;
