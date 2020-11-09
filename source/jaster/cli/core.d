@@ -33,6 +33,18 @@ struct Command
 }
 
 /++
+ + Attach this to any struct/class that represents the default command.
+ +
+ + See_Also:
+ +  `jaster.cli
+ + ++/
+struct CommandDefault
+{
+    /// The description of this command.
+    string description;
+}
+
+/++
  + Attach this to any member field to mark it as a named argument.
  +
  + See_Also:
@@ -44,18 +56,6 @@ struct CommandNamedArg
     string pattern;
 
     /// The description of this argument.
-    string description;
-}
-
-/++
- + Attach this to any struct/class that represents the default command.
- +
- + See_Also:
- +  `jaster.cli
- + ++/
-struct CommandDefault
-{
-    /// The description of this command.
     string description;
 }
 
@@ -189,16 +189,9 @@ private struct CommandInfo
 }
 
 /+ COMMAND INFO CREATOR FUNCTIONS +/
-private HelpTextBuilderSimple createHelpText(alias T)(string appName, in CommandArguments!T commandArgs)
+private HelpTextBuilderSimple createHelpText(T, Command UDA)(string appName, in CommandArguments!T commandArgs)
 {
-    import std.algorithm : splitter;
     import std.array     : array;
-
-    // Get UDA
-    static if(hasUDA!(T, Command))
-        enum UDA = getSingleUDA!(T, Command);
-    else
-        enum UDA = Command(null, getSingleUDA!(T, CommandDefault).description);
 
     auto builder = new HelpTextBuilderSimple();
 
@@ -461,7 +454,7 @@ private bool onExecuteValidateArgs(alias T)(
     import std.algorithm : filter, map;
     import std.format    : format;
     import std.exception : assumeUnique;
-  
+
     char[] error;
     error.reserve(512);
 
@@ -487,7 +480,7 @@ private bool onExecuteValidateArgs(alias T)(
             error ~= ">, ";
         }
     }
-  
+
     if(error.length > 0)
     {
         error = error[0..$-2]; // Skip extra ", "
@@ -901,51 +894,53 @@ final class CommandLineInterface(Modules...)
             import std.traits : getSymbolsByUDA;
             import std.meta   : AliasSeq;
 
-            static foreach(symbol; AliasSeq!(getSymbolsByUDA!(Module, Command), getSymbolsByUDA!(Module, CommandDefault)))
-            {
-                static assert(is(symbol == struct) || is(symbol == class), 
+            alias cmdDefault = getSymbolsByUDA!(Module, CommandDefault);
+            static assert(cmdDefault.length <= 1, "Multiple default commands defined " ~ cmdDefault.stringof);
+
+            static if(cmdDefault.length > 0)
+            {{
+                alias symbol = cmdDefault[0];
+
+                static assert(is(symbol == struct) || is(symbol == class),
+                    "Only structs and classes can be marked with @CommandDefault. Issue Symbol = " ~ __traits(identifier, symbol)
+                );
+                static assert(!hasUDA!(symbol, Command),
+                    "Both @CommandDefault and @Command are used for symbol " ~ __traits(identifier, symbol)
+                );
+
+                enum UDA = Command("DEFAULT", getSingleUDA!(symbol, CommandDefault).description);
+
+                _defaultCommand = getCommand!(symbol, UDA);
+            }}
+
+            static foreach(symbol; getSymbolsByUDA!(Module, Command))
+            {{
+                static assert(is(symbol == struct) || is(symbol == class),
                     "Only structs and classes can be marked with @Command. Issue Symbol = " ~ __traits(identifier, symbol)
                 );
 
-                pragma(msg, "Found command: ", __traits(identifier, symbol));
-                this.addCommand!symbol();
-            }
-        }
-
-        void addCommand(alias T)()
-        if(is(T == struct) || is(T == class))
-        {
-            import std.algorithm : splitter;
-            import std.format    : format;
-            import std.exception : enforce;
-          
-            // Get arg info.
-            CommandArguments!T commandArgs = getArgs!T;
-
-            CommandInfo info;
-            info.helpText   = createHelpText!T(this._appName, commandArgs);
-            info.doExecute  = createCommandExecuteFunc!T(commandArgs);
-            info.doComplete = createCommandCompleteFunc!T(commandArgs);
-
-            static if(hasUDA!(T, Command))
-            {
-                enum UDA = getSingleUDA!(T, Command);
+                enum UDA = getSingleUDA!(symbol, Command);
                 static assert(UDA.pattern !is null, "Null command names are deprecated, please use `@CommandDefault` instead.");
+
+                auto info = getCommand!(symbol, UDA);
                 info.pattern = UDA;
 
                 foreach(pattern; info.pattern.pattern.byPatternNames)
                     this._resolver.define(pattern, info);
-            }
-            else static if(hasUDA!(T, CommandDefault))
-            {
-                enforce(
-                    this._defaultCommand == CommandInfo.init, 
-                    "Multiple default commands defined: Second default command is %s"
-                    .format(T.stringof)
-                );
-                this._defaultCommand = info;
-            }
-            else static assert(false, "This shouldn't happen.");
+            }}
+        }
+
+        CommandInfo getCommand(T, Command UDA)()
+        {
+            // Get arg info.
+            CommandArguments!T commandArgs = getArgs!T;
+
+            CommandInfo info;
+            info.helpText   = createHelpText!(T, UDA)(this._appName, commandArgs);
+            info.doExecute  = createCommandExecuteFunc!T(commandArgs);
+            info.doComplete = createCommandCompleteFunc!T(commandArgs);
+
+            return info;
         }
     }
 
@@ -1522,7 +1517,7 @@ version(unittest)
             ) == -1
         );
     }
-  
+
     @Command("arg group test", "Test arg groups work")
     private struct ArgGroupTestCommand
     {
