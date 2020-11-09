@@ -741,7 +741,7 @@ final class CommandLineInterface(Modules...)
             import std.stdio     : writefln;
             import std.format    : format;
 
-            if(args.empty && _defaultCommand.isNull)
+            if(args.empty && this._defaultCommand.isNull)
             {
                 writefln("ERROR: No command was given.");
                 writefln(this.createAvailableCommandsHelpText(args, "Available commands").toString());
