@@ -677,7 +677,7 @@ final class CommandLineInterface(Modules...)
     {
         CommandResolver!CommandInfo _resolver;
         ServiceProvider             _services;
-        CommandInfo                 _defaultCommand;
+        Nullable!CommandInfo        _defaultCommand;
     }
 
     /+ PUBLIC INTERFACE +/
@@ -741,7 +741,7 @@ final class CommandLineInterface(Modules...)
             import std.stdio     : writefln;
             import std.format    : format;
 
-            if(args.empty && this._defaultCommand == CommandInfo.init)
+            if(args.empty && _defaultCommand.isNull)
             {
                 writefln("ERROR: No command was given.");
                 writefln(this.createAvailableCommandsHelpText(args, "Available commands").toString());
@@ -766,20 +766,20 @@ final class CommandLineInterface(Modules...)
                 if(args.containsHelpArgument())
                 {
                     parseResult.type = ParseResultType.showHelpText;
-                    if(this._defaultCommand != CommandInfo.init)
-                        parseResult.helpText ~= this._defaultCommand.helpText.toString();
+                    if(!_defaultCommand.isNull)
+                        parseResult.helpText ~= _defaultCommand.get.helpText.toString();
                     
                     if(this._resolver.finalWords.length > 0)
                         parseResult.helpText ~= this.createAvailableCommandsHelpText(parseResult.argParserBeforeAttempt, "Available commands").toString();
                 }
-                else if(this._defaultCommand == CommandInfo.init)
+                else if(_defaultCommand.isNull)
                 {
                     parseResult.type      = ParseResultType.commandNotFound;
                     parseResult.helpText ~= format("ERROR: Unknown command '%s'.\n\n", parseResult.argParserBeforeAttempt.front.value);
                     parseResult.helpText ~= this.createAvailableCommandsHelpText(parseResult.argParserBeforeAttempt).toString();
                 }
                 else
-                    parseResult.command = this._defaultCommand;
+                    parseResult.command = _defaultCommand.get;
             }
             else
                 parseResult.command = result.value.userData;
