@@ -923,7 +923,7 @@ final class CommandLineInterface(Modules...)
             CommandArguments!T commandArgs = getArgs!T;
 
             CommandInfo info;
-            info.helpText   = createHelpText!T(commandArgs);
+            info.helpText   = createHelpText!T(this._appName, commandArgs);
             info.doExecute  = createCommandExecuteFunc!T(commandArgs);
             info.doComplete = createCommandCompleteFunc!T(commandArgs);
 
