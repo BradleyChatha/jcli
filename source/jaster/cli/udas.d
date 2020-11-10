@@ -37,3 +37,16 @@ unittest
     static assert(!__traits(compiles, getSingleUDA!(C, Command)));
     static assert(getSingleUDA!(B, Command).pattern == "One");
 }
+
+/++
+ + Sometimes code needs to support both `@UDA` and `@UDA()`, so this template is used
+ + to ensure that the given `UDA` is an actual object, not just a type.
+ + ++/
+template ctorUdaIfNeeded(alias UDA)
+{
+    import std.traits : isType;
+    static if(isType!UDA)
+        enum ctorUdaIfNeeded = UDA.init;
+    else
+        alias ctorUdaIfNeeded = UDA;
+}

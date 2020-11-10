@@ -1,7 +1,7 @@
 module binders;
 
 import std.stdio : File;
-import jaster.cli : ArgBinderFunc;
+import jaster.cli : ArgBinderFunc, Result;
 
 /++
  + Please review jaster.cli.binder.ArgBinder's documentation for detailed information.
@@ -11,12 +11,12 @@ import jaster.cli : ArgBinderFunc;
  + For example, if a command had an arg called "file", and it was of type "File", then an arg binder matching
  + the following signature is used to perform the conversion:
  +
- + void MyArgBinder(string argAsString, ref File outputData_StartsAs_TypeDotInit);
+ + Result!File MyArgBinder(string argAsString);
  + ++/
 
  // Arg binder that opens a file in read mode.
  @ArgBinderFunc
- void fileBinder(string arg, ref File output)
+ Result!File fileBinder(string arg)
  {
-     output = File(arg, "r");
+    return Result!File.success(File(arg, "r"));
  }

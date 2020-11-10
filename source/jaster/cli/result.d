@@ -63,6 +63,8 @@ struct Result(T)
 
     /// Constructs a successful result, returning the given value.
     static Result!T success()(T value){ return typeof(this)(Success(value)); }
+    static if(is(T == void))
+        static Result!void success()(){ return typeof(this)(Success()); }
 
     /// Constructs a failure result, returning the given error.
     static Result!T failure()(string error){ return typeof(this)(Failure(error)); }
