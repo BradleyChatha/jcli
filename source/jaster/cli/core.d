@@ -719,6 +719,19 @@ private void insertRawList(T)(ref T command, string[] rawList)
  + +/
 final class CommandLineInterface(Modules...)
 {
+    private alias defaultCommands = getSymbolsByUDAInModules!(CommandDefault, Modules);
+    static assert(defaultCommands.length <= 1, "Multiple default commands defined " ~ defaultCommands.stringof);
+
+    static if(defaultCommands.length > 0)
+    {
+        static assert(is(defaultCommands[0] == struct) || is(defaultCommands[0] == class),
+            "Only structs and classes can be marked with @CommandDefault. Issue Symbol = " ~ __traits(identifier, defaultCommands[0])
+        );
+        static assert(!hasUDA!(defaultCommands[0], Command),
+            "Both @CommandDefault and @Command are used for symbol " ~ __traits(identifier, defaultCommands[0])
+        );
+    }
+
     alias ArgBinderInstance     = ArgBinder!Modules;
     immutable BASH_COMPLETION   = import("bash_completion.sh");
 
@@ -781,6 +794,8 @@ final class CommandLineInterface(Modules...)
             this._services = services;
             this._resolver = new CommandResolver!CommandInfo();
             this._appName  = appName;
+
+            addDefaultCommand();
 
             static foreach(mod; Modules)
                 this.addCommandsFromModule!mod();
@@ -889,29 +904,19 @@ final class CommandLineInterface(Modules...)
     /+ COMMAND DISCOVERY AND REGISTRATION +/
     private final
     {
+        void addDefaultCommand()
+        {
+            static if(defaultCommands.length > 0)
+            {
+                enum UDA = Command("DEFAULT", getSingleUDA!(defaultCommands[0], CommandDefault).description);
+
+                _defaultCommand = getCommand!(defaultCommands[0], UDA);
+            }
+        }
+
         void addCommandsFromModule(alias Module)()
         {
             import std.traits : getSymbolsByUDA;
-            import std.meta   : AliasSeq;
-
-            alias cmdDefault = getSymbolsByUDA!(Module, CommandDefault);
-            static assert(cmdDefault.length <= 1, "Multiple default commands defined " ~ cmdDefault.stringof);
-
-            static if(cmdDefault.length > 0)
-            {{
-                alias symbol = cmdDefault[0];
-
-                static assert(is(symbol == struct) || is(symbol == class),
-                    "Only structs and classes can be marked with @CommandDefault. Issue Symbol = " ~ __traits(identifier, symbol)
-                );
-                static assert(!hasUDA!(symbol, Command),
-                    "Both @CommandDefault and @Command are used for symbol " ~ __traits(identifier, symbol)
-                );
-
-                enum UDA = Command("DEFAULT", getSingleUDA!(symbol, CommandDefault).description);
-
-                _defaultCommand = getCommand!(symbol, UDA);
-            }}
 
             static foreach(symbol; getSymbolsByUDA!(Module, Command))
             {{
