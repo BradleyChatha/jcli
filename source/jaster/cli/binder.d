@@ -65,15 +65,15 @@ struct ArgValidator {}
  +  While not perfect, this does go over the entire process the arg binder is doing to select which `@ArgBinderFunc` it will use.
  +
  + Validation_:
- +  Validation structs can be passed via the `Validators` template parameter present for the `ArgBinder.bind` function.
+ +  Validation structs can be passed via the `UDAs` template parameter present for the `ArgBinder.bind` function.
  +
  +  If you are using `CommandLineInterface` (JCLI's default core), then a field's UDAs are passed through automatically as validator structs.
  +
  +  A validator is simply a struct marked with `@ArgValidator` that defines either, or both of these function signatures (or compatible signatures):
  +
  +  ```
- +      bool onPreValidate(string arg, ref string errorMessage);
- +      bool onValidate(VALUE_TYPE value, ref string errorMessage); // Can be templated of course.
+ +      Result!void onPreValidate(string arg);
+ +      Result!void onValidate(VALUE_TYPE value); // Can be templated of course.
  +  ```
  +
  +  A validator containing the `onPreValidate` function can be used to validate the argument prior to it being ran through
@@ -81,13 +81,10 @@ struct ArgValidator {}
  +
  +  A validator containing the `onValidate` function can be used to validate the argument after it has been bound by an `@ArgBinderFunc`.
  +
- +  If validation fails, the vaildator can set a user-friendly `errorMessage` to display. If this is left as `null`, then one will be automatically
+ +  If validation fails, the vaildator can set the error message with `Result!void.failure()`. If this is left as `null`, then one will be automatically
  +  generated for you.
  +
  +  By specifying the "JCLI_Verbose" version, the `ArgBinder` will detail what validators are being used for what types, and for which stages of binding.
- +
- +  If a type does not pass any of the previously mentioned interfaces, then it is silently ignored. You can specify the `JCLI_BinderCompilerErrors` version
- +  to make `ArgBinder` display some compiler errors, which may help you pinpoint why your validator struct is failing to be used.
  +
  + Notes:
  +  While other parts of this library have special support for `Nullable` types. This struct doesn't directly have any special
@@ -116,17 +113,19 @@ static struct ArgBinder(Modules...)
          + Validators:
          +  The `UDAs` template parameter is used to pass in different UDA structs, including validator structs (see ArgBinder's documentation comment).
          +
-         +  Anything inside of this template parameter that isn't a struct, and doesn't define any valid
-         +  validator interface, will be completely ignored, so it is safe to simply pass the results of
+         +  Anything inside of this template parameter that isn't a struct, and doesn't have the `ArgValidator` UDA
+         +  will be completely ignored, so it is safe to simply pass the results of
          +  `__traits(getAttributes, someField)` without having to worry about filtering.
          +
          + Throws:
          +  `Exception` if any validator fails.
          +
          + Assertions:
-         +  When an `@ArgBinderFunc` is found, it must have only 2 parameters.
+         +  When an `@ArgBinderFunc` is found, it must have only 1 parameter.
          + 
          +  The first parameter of an `@ArgBinderFunc` must be a `string`.
+         +
+         +  It must return an instance of the `Result` struct. It is recommended to use `Result!void` as the result's `Success.value` is ignored.
          +
          +  If no appropriate binder func was found, then an assert(false) is used.
          +
@@ -322,7 +321,7 @@ unittest
 
 /+ HELPERS +/
 @safe
-string createValidatorError(
+private string createValidatorError(
     string stageName,
     string validatorName,
     string typeName,
