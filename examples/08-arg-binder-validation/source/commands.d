@@ -8,6 +8,7 @@ alias Even = Flag!"even";
 // This is a validation struct
 //
 // It performs value validation (`onValidate`)
+@ArgValidator
 struct Is
 {
     import std.traits : isNumeric;
