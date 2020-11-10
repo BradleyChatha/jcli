@@ -11,7 +11,14 @@ template getSingleUDA(alias Symbol, alias UDA)
 {
     import std.traits : getUDAs;
 
-    enum UDAs = getUDAs!(Symbol, UDA);
+    // Check if they created an instance `@UDA()`
+    //
+    // or if they just attached the type itself `@UDA`
+    static if(__traits(compiles, {enum UDAs = getUDAs!(Symbol, UDA);}))
+        enum UDAs = getUDAs!(Symbol, UDA);
+    else
+        enum UDAs = [UDA.init];
+    
     static if(UDAs.length == 0)
         static assert(false, "The symbol `"~Symbol.stringof~"` does not have the `@"~UDA.stringof~"` UDA");
     else static if(UDAs.length > 1)
@@ -20,18 +27,23 @@ template getSingleUDA(alias Symbol, alias UDA)
     enum getSingleUDA = UDAs[0];
 }
 ///
-unittest
+version(unittest)
 {
     import jaster.cli.core : Command;
-    
-    struct A {}
+
+    private struct A {}
 
     @Command("One")
-    struct B {}
+    private struct B {}
 
     @Command("One")
     @Command("Two")
-    struct C {}
+    private struct C {}
+}
+
+unittest
+{
+    import jaster.cli.core : Command;
 
     static assert(!__traits(compiles, getSingleUDA!(A, Command)));
     static assert(!__traits(compiles, getSingleUDA!(C, Command)));
@@ -49,4 +61,33 @@ template ctorUdaIfNeeded(alias UDA)
         enum ctorUdaIfNeeded = UDA.init;
     else
         alias ctorUdaIfNeeded = UDA;
+}
+
+/++
+ + Gets all symbols that have specified UDA from all specified modules
+ + ++/
+template getSymbolsByUDAInModules(alias attribute, Modules...)
+{
+    import std.meta: AliasSeq;
+    import std.traits: getSymbolsByUDA;
+
+    static if(Modules.length == 0)
+    {
+        alias getSymbolsByUDAInModules = AliasSeq!();
+    }
+    else
+    {
+        alias tail = getSymbolsByUDAInModules!(attribute, Modules[1 .. $]);
+
+        alias getSymbolsByUDAInModules = AliasSeq!(getSymbolsByUDA!(Modules[0], attribute), tail);
+    }
+}
+
+unittest
+{
+    import std.meta: AliasSeq;
+    import jaster.cli.core : Command;
+
+    static assert(is(getSymbolsByUDAInModules!(Command, jaster.cli.udas) == AliasSeq!(B, C)));
+    static assert(is(getSymbolsByUDAInModules!(Command, jaster.cli.udas, jaster.cli.udas) == AliasSeq!(B, C, B, C)));
 }

@@ -1,5 +1,4 @@
-on:
-  push
+on: [push, pull_request]
 
 name: Test Examples
 
@@ -11,7 +10,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Setup LDC
-        uses: mihails-strasuns/setup-dlang@v0.3.0
+        uses: dlang-community/setup-dlang@v1
         with:
           compiler: ldc-latest
       - name: "Run tests"
