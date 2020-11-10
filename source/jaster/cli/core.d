@@ -841,7 +841,7 @@ final class CommandLineInterface(Modules...)
             import std.stdio     : writefln;
             import std.format    : format;
 
-            if(args.empty && _defaultCommand.isNull)
+            if(args.empty && this._defaultCommand.isNull)
             {
                 writefln(this.makeErrorf("No command was given."));
                 writefln(this.createAvailableCommandsHelpText(args, "Available commands").toString());
@@ -866,20 +866,20 @@ final class CommandLineInterface(Modules...)
                 if(args.containsHelpArgument())
                 {
                     parseResult.type = ParseResultType.showHelpText;
-                    if(!_defaultCommand.isNull)
-                        parseResult.helpText ~= _defaultCommand.get.helpText.toString();
-                    
+                    if(!this._defaultCommand.isNull)
+                        parseResult.helpText ~= this._defaultCommand.get.helpText.toString();
+
                     if(this._resolver.finalWords.length > 0)
                         parseResult.helpText ~= this.createAvailableCommandsHelpText(parseResult.argParserBeforeAttempt, "Available commands").toString();
                 }
-                else if(_defaultCommand.isNull)
+                else if(this._defaultCommand.isNull)
                 {
                     parseResult.type      = ParseResultType.commandNotFound;
                     parseResult.helpText ~= this.makeErrorf("Unknown command '%s'.\n", parseResult.argParserBeforeAttempt.front.value);
                     parseResult.helpText ~= this.createAvailableCommandsHelpText(parseResult.argParserBeforeAttempt).toString();
                 }
                 else
-                    parseResult.command = _defaultCommand.get;
+                    parseResult.command = this._defaultCommand.get;
             }
             else
                 parseResult.command = result.value.userData;
