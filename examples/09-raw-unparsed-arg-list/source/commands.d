@@ -16,7 +16,7 @@ and then this variable's value will contain the entirety of the raw arg list.
 
 ++/
 
-@Command(null, "Runs a command with the given arguments.")
+@CommandDefault("Runs a command with the given arguments.")
 struct RunCommand
 {
     @CommandPositionalArg(0, "command", "The command to run.")

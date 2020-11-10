@@ -4,7 +4,7 @@ import std.stdio : writeln, File;
 import jaster.cli;
 import services;
 
-@Command(null, "Determines if your password is correct.")
+@CommandDefault("Determines if your password is correct.")
 class PasswordCommand
 {
     private IPasswordManager _passwords;

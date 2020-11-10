@@ -3,10 +3,7 @@ module commands;
 import jaster.cli;
 
 // Use either a struct or class. JCLI supports both (including inheritence).
-//
-// Passing `null` as the name will create the "default" command - the command that is ran if no sub-command is specified.
-// e.g. "mytool.exe param1 --param2" would execute the default command.
-@Command(null, "Asserts that the given number is even.")
+@CommandDefault("Asserts that the given number is even.")
 struct AssertEvenCommand
 {
     // Positional args are args that aren't defined by a command line flag.
