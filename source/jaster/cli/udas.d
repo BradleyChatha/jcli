@@ -27,20 +27,56 @@ template getSingleUDA(alias Symbol, alias UDA)
     enum getSingleUDA = UDAs[0];
 }
 ///
-unittest
+version(unittest)
 {
     import jaster.cli.core : Command;
-    
-    struct A {}
+
+    private struct A {}
 
     @Command("One")
-    struct B {}
+    private struct B {}
 
     @Command("One")
     @Command("Two")
-    struct C {}
+    private struct C {}
+}
+
+unittest
+{
+    import jaster.cli.core : Command;
 
     static assert(!__traits(compiles, getSingleUDA!(A, Command)));
     static assert(!__traits(compiles, getSingleUDA!(C, Command)));
     static assert(getSingleUDA!(B, Command).pattern == "One");
 }
+
+
+/++
+ + Gets all symbols that have specified UDA from all specified modules
+ + ++/
+template getSymbolsByUDAInModules(alias attribute, Modules...)
+{
+    import std.meta: AliasSeq;
+    import std.traits: getSymbolsByUDA;
+
+    static if(Modules.length == 0)
+    {
+        alias getSymbolsByUDAInModules = AliasSeq!();
+    }
+    else
+    {
+        alias tail = getSymbolsByUDAInModules!(attribute, Modules[1 .. $]);
+
+        alias getSymbolsByUDAInModules = AliasSeq!(getSymbolsByUDA!(Modules[0], attribute), tail);
+    }
+}
+
+unittest
+{
+    import std.meta: AliasSeq;
+    import jaster.cli.core : Command;
+
+    static assert(is(getSymbolsByUDAInModules!(Command, jaster.cli.udas) == AliasSeq!(B, C)));
+    static assert(is(getSymbolsByUDAInModules!(Command, jaster.cli.udas, jaster.cli.udas) == AliasSeq!(B, C, B, C)));
+}
+
