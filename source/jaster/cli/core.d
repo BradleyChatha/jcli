@@ -66,6 +66,34 @@ struct CommandPositionalArg
 }
 
 /++
+ + Attach this to any member field to add it to a help text group.
+ +
+ + See_Also:
+ +  `jaster.cli.core.CommandLineInterface` for more details.
+ + +/
+struct CommandArgGroup
+{
+    /// The name of the group to put the arg under.
+    string group;
+
+    /++
+     + The description of the group.
+     +
+     + Notes:
+     +  The intended usage of this UDA is to apply it to a group of args at the same time, instead of attaching it onto
+     +  singular args:
+     +
+     +  ```
+     +  @CommandArgGroup("group1", "Some description")
+     +  {
+     +      @CommandPositionalArg...
+     +  }
+     +  ```
+     + ++/
+    string description;
+}
+
+/++
  + Attach this onto a `string[]` member field to mark it as the "raw arg list".
  +
  + TLDR; Given the command `"tool.exe command value1 value2 --- value3 value4 value5"`, the member field this UDA is attached to
@@ -126,6 +154,7 @@ private struct ArgInfo(UDA, T)
 {
     UDA uda;
     ArgValueSetterFunc!T setter;
+    Nullable!CommandArgGroup group;
     bool wasFound; // For nullables, this is ignore. Otherwise, anytime this is false we need to throw.
     bool isNullable;
     bool isBool;
@@ -147,9 +176,8 @@ private struct CommandInfo
     CommandCompleteFunc   doComplete;
 }
 
-
 /+ COMMAND INFO CREATOR FUNCTIONS +/
-private HelpTextBuilderSimple createHelpText(alias T)(in CommandArguments!T commandArgs)
+private HelpTextBuilderSimple createHelpText(alias T)(string appName, in CommandArguments!T commandArgs)
 {
     import std.algorithm : splitter;
     import std.array     : array;
@@ -158,26 +186,38 @@ private HelpTextBuilderSimple createHelpText(alias T)(in CommandArguments!T comm
     enum UDA = getSingleUDA!(T, Command);
     auto builder = new HelpTextBuilderSimple();
 
+    void handleGroup(Nullable!CommandArgGroup uda)
+    {
+        if(uda.isNull)
+            return;
+
+        builder.setGroupDescription(uda.get.group, uda.get.description);
+    }
+
     foreach(arg; commandArgs.namedArgs)
     {
         builder.addNamedArg(
+            (arg.group.isNull) ? null : arg.group.get.group,
             arg.uda.pattern.byPatternNames.array,
             arg.uda.description,
             cast(ArgIsOptional)arg.isNullable
         );
+        handleGroup(arg.group);
     }
 
     foreach(arg; commandArgs.positionalArgs)
     {
         builder.addPositionalArg(
+            (arg.group.isNull) ? null : arg.group.get.group,
             arg.uda.position,
             arg.uda.description,
             cast(ArgIsOptional)arg.isNullable,
             arg.uda.name
         );
+        handleGroup(arg.group);
     }
 
-    builder.commandName = UDA.pattern;
+    builder.commandName = appName ~ " " ~ UDA.pattern;
     builder.description = UDA.description;
 
     return builder;
@@ -310,7 +350,7 @@ private bool onExecuteParseArgs(alias T)(
             case Text:
                 if(positionalArgIndex >= commandArgs.positionalArgs.length)
                 {
-                    executionError = "Stray positional arg found: '"~token.value~"'";
+                    executionError = "too many arguments starting at '"~token.value~"'";
                     return false;
                 }
 
@@ -404,20 +444,38 @@ private bool onExecuteValidateArgs(alias T)(
 {
     import std.algorithm : filter, map;
     import std.format    : format;
+    import std.exception : assumeUnique;
+  
+    char[] error;
+    error.reserve(512);
 
     // Check for missing args.
     auto missingNamedArgs      = commandArgs.namedArgs.filter!(a => !a.isNullable && !a.wasFound);
     auto missingPositionalArgs = commandArgs.positionalArgs.filter!(a => !a.isNullable && !a.wasFound);
     if(!missingNamedArgs.empty)
     {
-        executionError = "The following required named arguments were not provided: %s"
-        .format(missingNamedArgs.map!(a => a.uda.pattern));
-        return false;
+        foreach(arg; missingNamedArgs)
+        {
+            const name = arg.uda.pattern.byPatternNames.front;
+            error ~= (name.length == 1) ? "-" : "--";
+            error ~= name;
+            error ~= ", ";
+        }
     }
     if(!missingPositionalArgs.empty)
     {
-        executionError = "The following required positional arguments were not provided: %s"
-        .format(missingPositionalArgs.map!(a => format("[%s] %s", a.uda.position, a.uda.name)));
+        foreach(arg; missingPositionalArgs)
+        {
+            error ~= "<";
+            error ~= arg.uda.name;
+            error ~= ">, ";
+        }
+    }
+  
+    if(error.length > 0)
+    {
+        error = error[0..$-2]; // Skip extra ", "
+        executionError = "Missing required arguments " ~ error.assumeUnique;
         return false;
     }
 
@@ -629,6 +687,22 @@ private void insertRawList(T)(ref T command, string[] rawList)
  +  For example, you have the following member in a command `@CommandRawArg string[] rawList;`, and you are given the following command - 
  +  `["command", "value1", "--", "rawValue1", "rawValue2"]`, which will result in `rawList`'s value becoming `["rawValue1", "rawValue2"]`
  +
+ + Arguments_Groups:
+ +  Arguments can be grouped together so they are displayed in a more logical manner within your command's help text.
+ +
+ +  The recommended way to make an argument group, is to create an `@CommandArgGroup` UDA block:
+ +
+ +  ```
+ +  @CommandArgGroup("Debug", "Flags relating the debugging.")
+ +  {
+ +      @CommandNamedArg("trace|t", "Enable tracing") Nullable!bool trace;
+ +      ...
+ +  }
+ +  ```
+ +
+ +  While you *can* apply the UDA individually to each argument, there's one behaviour that you should be aware of - the group's description
+ +  as displayed in the help text will use the description of the $(B last) found `@CommandArgGroup` UDA.
+ +
  + Params:
  +  Modules = The modules that contain the commands and/or binder funcs to use.
  + +/
@@ -667,24 +741,35 @@ final class CommandLineInterface(Modules...)
         CommandResolver!CommandInfo _resolver;
         ServiceProvider             _services;
         CommandInfo                 _defaultCommand;
+        string                      _appName;
     }
 
     /+ PUBLIC INTERFACE +/
     public final
     {
+        this(ServiceProvider services = null)
+        {
+            import std.file : thisExePath;
+            import std.path : baseName;
+
+            this(thisExePath().baseName, services);
+        }
+
         /++
          + Params:
          +  services = The `ServiceProvider` to use for dependency injection.
          +             If this value is `null`, then a new `ServiceProvider` will be created containing an `ICommandLineInterface` service.
          + ++/
-        this(ServiceProvider services = null)
+        this(string appName, ServiceProvider services = null)
         {
             import std.algorithm : sort;
 
             if(services is null)
                 services = new ServiceProvider([addCommandLineInterfaceService()]);
+
             this._services = services;
             this._resolver = new CommandResolver!CommandInfo();
+            this._appName  = appName;
 
             static foreach(mod; Modules)
                 this.addCommandsFromModule!mod();
@@ -732,7 +817,7 @@ final class CommandLineInterface(Modules...)
 
             if(args.empty && this._defaultCommand == CommandInfo.init)
             {
-                writefln("ERROR: No command was given.");
+                writefln(this.makeErrorf("No command was given."));
                 writefln(this.createAvailableCommandsHelpText(args, "Available commands").toString());
                 return -1;
             }
@@ -764,7 +849,7 @@ final class CommandLineInterface(Modules...)
                 else if(this._defaultCommand == CommandInfo.init)
                 {
                     parseResult.type      = ParseResultType.commandNotFound;
-                    parseResult.helpText ~= format("ERROR: Unknown command '%s'.\n\n", parseResult.argParserBeforeAttempt.front.value);
+                    parseResult.helpText ~= this.makeErrorf("Unknown command '%s'.\n", parseResult.argParserBeforeAttempt.front.value);
                     parseResult.helpText ~= this.createAvailableCommandsHelpText(parseResult.argParserBeforeAttempt).toString();
                 }
                 else
@@ -819,7 +904,7 @@ final class CommandLineInterface(Modules...)
             CommandArguments!T commandArgs = getArgs!T;
 
             CommandInfo info;
-            info.helpText   = createHelpText!T(commandArgs);
+            info.helpText   = createHelpText!T(this._appName, commandArgs);
             info.pattern    = getSingleUDA!(T, Command);
             info.doExecute  = createCommandExecuteFunc!T(commandArgs);
             info.doComplete = createCommandCompleteFunc!T(commandArgs);
@@ -831,7 +916,6 @@ final class CommandLineInterface(Modules...)
                     "Multiple default commands defined: Second default command is %s"
                     .format(T.stringof)
                 );
-                info.helpText.setCommandName("DEFAULT");
                 this._defaultCommand = info;
             }
             else
@@ -866,7 +950,7 @@ final class CommandLineInterface(Modules...)
             auto statusCode = result.command.doExecute(result.argParserAfterAttempt, /*ref*/ errorMessage, result.services, result.command.helpText);
 
             if(errorMessage !is null)
-                writefln("ERROR: %s", errorMessage);
+                writeln(this.makeErrorf(errorMessage));
 
             return statusCode;
         }
@@ -960,7 +1044,7 @@ final class CommandLineInterface(Modules...)
             return 0;
         }
     }
-
+  
     /+ COMMAND RUNTIME HELPERS +/
     private final
     {
@@ -1007,6 +1091,7 @@ final class CommandLineInterface(Modules...)
                         {
                             alias SymbolUDAs = __traits(getAttributes, Symbol);
 
+                            // Determine the argument type.
                             static if(hasUDA!(Symbol, CommandNamedArg))
                             {
                                 NamedArgInfo!T arg;
@@ -1016,9 +1101,17 @@ final class CommandLineInterface(Modules...)
                             {
                                 PositionalArgInfo!T arg;
                                 arg.uda = getSingleUDA!(Symbol, CommandPositionalArg);
+
+                                if(arg.uda.name.length == 0)
+                                    arg.uda.name = "VALUE";
                             }
                             else static assert(false, "Bug with parent if statement.");
 
+                            // See if the arg is part of a group.
+                            static if(hasUDA!(Symbol, CommandArgGroup))
+                                arg.group = getSingleUDA!(Symbol, CommandArgGroup);
+
+                            // Generate the setter func + transfer some Compile-time info into runtime.
                             arg.setter = (ArgToken tok, ref T commandInstance)
                             {
                                 import std.exception : enforce;
@@ -1072,7 +1165,7 @@ final class CommandLineInterface(Modules...)
                            command.finalWords
                                   .uniq!((a, b) => a.userData.pattern == b.userData.pattern)
                                   .map!(c => HelpSectionArgInfoContent.ArgInfo(
-                                       [c.word],
+                                       [c.userData.pattern.byPatternNames.front],
                                        c.userData.pattern.description,
                                        ArgIsOptional.no
                                   ))
@@ -1084,6 +1177,12 @@ final class CommandLineInterface(Modules...)
             );
 
             return builder;
+        }
+
+        string makeErrorf(Args...)(string formatString, Args args)
+        {
+            import std.format : format;
+            return "%s: %s".format(this._appName, formatString.format(args));
         }
     }
 }
@@ -1401,5 +1500,42 @@ version(unittest)
                 IgnoreFirstArg.no
             ) == -1
         );
+    }
+  
+    @Command("arg group test", "Test arg groups work")
+    private struct ArgGroupTestCommand
+    {
+        @CommandPositionalArg(0)
+        string a;
+
+        @CommandNamedArg("b")
+        string b;
+
+        @CommandArgGroup("group1", "This is group 1")
+        {
+            @CommandPositionalArg(1)
+            string c;
+
+            @CommandNamedArg("d")
+            string d;
+        }
+
+        void onExecute(){}
+    }
+    @("Test that @CommandArgGroup is handled properly.")
+    unittest
+    {
+        import std.algorithm : canFind;
+
+        // Accessing a lot of private state here, but that's because we don't have a mechanism to extract the output properly.
+        auto cli = new CommandLineInterface!(jaster.cli.core);
+        auto helpText = cli._resolver.resolve("arg group test").value.userData.helpText;
+
+        assert(helpText.toString().canFind(
+            "group1:\n"
+           ~"    This is group 1\n"
+           ~"\n"
+           ~"    VALUE"
+        ));
     }
 }

@@ -155,6 +155,20 @@ final class HelpTextBuilderTechnical
             return this._sections[$-1];
         }
 
+        ///
+        ref HelpSection getOrAddSection(string sectionName)
+        {
+            // If this is too slow then we can move to an AA
+            // (p.s. std.algorithm doesn't see _sections as an input range, even if I import std.range for the array primitives)
+            foreach(ref section; this._sections)
+            {
+                if(section.name == sectionName)
+                    return section;
+            }
+
+            return this.addSection(sectionName);
+        }
+
         /++
          + Modifies an existing section (by returning it by reference).
          +
@@ -205,12 +219,16 @@ final class HelpTextBuilderTechnical
             // Sections
             foreach(ref section; this._sections)
             {
+                if(section.content.length == 0)
+                    continue;
+
                 // This could all technically be 'D-ified'/'rangeified' but I couldn't make it look nice.
                 if(output.length > 0)
                     output ~= "\n\n";
                     
                 output ~= section.name~":\n";
                 section.content.map!(c => c.getContent(section.options))
+                               .joiner("\n")
                                .each!(c => output ~= c);
             }
 
@@ -236,48 +254,102 @@ final class HelpTextBuilderSimple
 {
     private
     {
+        alias NamedArg = HelpSectionArgInfoContent.ArgInfo;
+
         struct PositionalArg
         {
             size_t position;
             HelpSectionArgInfoContent.ArgInfo info;
         }
 
-        string                              _commandName;
-        HelpSectionArgInfoContent.ArgInfo[] _namedArgs;
-        PositionalArg[]                     _positionalArgs;
-        string                              _description;
+        struct ArgGroup
+        {
+            string name;
+            string description;
+            NamedArg[] named;
+            PositionalArg[] positional;
+
+            bool isDefaultGroup()
+            {
+                return this.name is null;
+            }
+        }
+
+        struct ArgGroupOrder
+        {
+            string name;
+            int order;
+        }
+
+        string           _commandName;
+        string           _description;
+        ArgGroup[string] _groups;
+        ArgGroupOrder[]  _groupOrders;
+
+        ref ArgGroup groupByName(string name)
+        {
+            return this._groups.require(name, () 
+            { 
+                this._groupOrders ~= ArgGroupOrder(name, cast(int)this._groupOrders.length);
+                return ArgGroup(name); 
+            }());
+        }
     }
 
     public final
     {
         ///
+        HelpTextBuilderSimple addNamedArg(string group, string[] names, string description, ArgIsOptional isOptional)
+        {
+            this.groupByName(group).named ~= HelpSectionArgInfoContent.ArgInfo(names, description, isOptional);
+            return this;
+        }
+
+        ///
+        HelpTextBuilderSimple addNamedArg(string group, string name, string description, ArgIsOptional isOptional)
+        {
+            return this.addNamedArg(group, [name], description, isOptional);
+        }
+
+        ///
         HelpTextBuilderSimple addNamedArg(string[] names, string description, ArgIsOptional isOptional)
         {
-            this._namedArgs ~= HelpSectionArgInfoContent.ArgInfo(names, description, isOptional);
-            return this;
+            return this.addNamedArg(null, names, description, isOptional);
         }
 
         ///
         HelpTextBuilderSimple addNamedArg(string name, string description, ArgIsOptional isOptional)
         {
-            this.addNamedArg([name], description, isOptional);
+            return this.addNamedArg(null, name, description, isOptional);
+        }
+
+        ///
+        HelpTextBuilderSimple addPositionalArg(string group, size_t position, string description, ArgIsOptional isOptional, string displayName = null)
+        {
+            import std.conv : to;
+
+            this.groupByName(group).positional ~= PositionalArg(
+                position,
+                HelpSectionArgInfoContent.ArgInfo(
+                    (displayName is null) ? [] : [displayName],
+                    description,
+                    isOptional
+                )
+            );
+
             return this;
         }
 
         ///
         HelpTextBuilderSimple addPositionalArg(size_t position, string description, ArgIsOptional isOptional, string displayName = null)
         {
-            import std.conv : to;
+            return this.addPositionalArg(null, position, description, isOptional, displayName);
+        }
 
-            this._positionalArgs ~= PositionalArg(
-                position,
-                HelpSectionArgInfoContent.ArgInfo(
-                    [position.to!string] ~ ((displayName is null) ? [] : [displayName]),
-                    description,
-                    isOptional
-                )
-            );
-
+        ///
+        HelpTextBuilderSimple setGroupDescription(string group, string description)
+        {
+            this.groupByName(group).description = description;
             return this;
         }
 
@@ -311,7 +383,7 @@ final class HelpTextBuilderSimple
 
         override string toString()
         {
-            import std.algorithm : map, joiner;
+            import std.algorithm : map, joiner, sort, filter;
             import std.array     : array;
             import std.range     : tee;
             import std.format    : format;
@@ -330,45 +402,98 @@ final class HelpTextBuilderSimple
                        .addContent(new HelpSectionTextContent(this._description));
             }
 
-            if(this._positionalArgs.length > 0)
+            void writePositionalArgs(ref HelpSection section, PositionalArg[] args)
             {
-                builder.addSection("Positional Args")
-                       .addContent(new HelpSectionArgInfoContent(
-                           this._positionalArgs
-                                .tee!((p)
-                                {
-                                    auto text = "{%s}".format(p.info.names.joiner("/"));
-
-                                    usageString ~= (p.info.isOptional)
-                                                    ? "<"~text~">"
-                                                    : text;
-                                    usageString ~= ' ';
-                                })
-                                .map!(p => p.info)
-                                .array, 
-                            AutoAddArgDashes.no
-                        )
+                section.addContent(new HelpSectionArgInfoContent(
+                    args.tee!((p)
+                        {
+                            // Using git as a precedant for the angle brackets.
+                            auto name = "%s".format(p.info.names.joiner("/"));
+                            usageString ~= (p.info.isOptional)
+                                            ? "["~name~"]"
+                                            : "<"~name~">";
+                            usageString ~= ' ';
+                        })
+                        .map!(p => p.info)
+                        .array,
+                        AutoAddArgDashes.no
+                    )
                 );
             }
 
-            if(this._namedArgs.length > 0)
+            void writeNamedArgs(Range)(ref HelpSection section, Range args)
             {
-                builder.addSection("Named Args")
-                       .addContent(new HelpSectionArgInfoContent(
-                           this._namedArgs
-                               .tee!((a)
-                               {
-                                    auto text = "[%s]".format(a.names.joiner("|"));
+                if(args.empty)
+                    return;
 
-                                    usageString ~= (a.isOptional)
-                                                    ? "<"~text~">"
-                                                    : text;
-                                    usageString ~= ' ';
-                               })
-                               .array,
-                           AutoAddArgDashes.yes
-                        )
+                section.addContent(new HelpSectionArgInfoContent(
+                    args.tee!((a)
+                        {
+                            auto name = "%s".format(
+                                a.names
+                                    .map!(n => (n.length == 1) ? "-"~n : "--"~n)
+                                    .joiner("|")
+                            );
+
+                            usageString ~= (a.isOptional)
+                                            ? "["~name~"]"
+                                            : name;
+                            usageString ~= ' ';
+                        })
+                        .array,
+                        AutoAddArgDashes.yes
+                    )
                 );
+            }
+
+            ref HelpSection getGroupSection(ArgGroup group)
+            {
+                scope section = &builder.getOrAddSection(group.name);
+                if(section.content.length == 0 && group.description !is null)
+                {
+                    // Section was just made, so add in the description.
+                    section.addContent(new HelpSectionTextContent(group.description~"\n"));
+                }
+
+                return *section;
+            }
+
+            // Not overly efficient, but keep in mind in most programs this function will only ever be called once per run (if even that).
+            // The speed is fast enough not to be annoying either.
+            // O(3n) + whatever .sort is.
+            //
+            // The reason we're doing it this way is to ensure everything is shown in this order:
+            //  Positional args
+            //  Required named args
+            //  Optional named args
+            //
+            // Otherwise you get a mess like: Usage: tool.exe complex <file> --iterations|-i [--verbose|-v] <output> --config|-c
+            this._groupOrders.sort!"a.order < b.order"();
+            auto groupsInOrder = this._groupOrders.map!(go => this._groups[go.name]);
+
+            // Pre-make certain sections
+            builder.addSection("Positional Args");
+            builder.addSection("Named Args");
+
+            // Pass #1: Write positional args first, since that puts the usage string in the right order.
+            foreach(group; groupsInOrder)
+            {
+                scope section = (group.isDefaultGroup) ? &builder.getOrAddSection("Positional Args") : &getGroupSection(group);
+                writePositionalArgs(*section, group.positional);
+            }
+
+            // Pass #2: Write required named args.
+            foreach(group; groupsInOrder)
+            {
+                scope section = (group.isDefaultGroup) ? &builder.getOrAddSection("Named Args") : &getGroupSection(group);
+                writeNamedArgs(*section, group.named.filter!(arg => !arg.isOptional));
+            }
+
+            // Pass #3: Write optional named args.
+            foreach(group; groupsInOrder)
+            {
+                scope section = (group.isDefaultGroup) ? &builder.getOrAddSection("Named Args") : &getGroupSection(group);
+                writeNamedArgs(*section, group.named.filter!(arg => arg.isOptional));
             }
 
             builder.addUsage(usageString.assumeUnique);
@@ -383,22 +508,31 @@ unittest
 
     builder.addPositionalArg(0, "The input file.", ArgIsOptional.no, "InputFile")
            .addPositionalArg(1, "The output file.", ArgIsOptional.no, "OutputFile")
+           .addPositionalArg("Utility", 2, "How much to compress the file.", ArgIsOptional.no, "CompressionLevel")
            .addNamedArg(["v","verbose"], "Verbose output", ArgIsOptional.yes)
+           .addNamedArg("Utility", "encoding", "Sets the encoding to use.", ArgIsOptional.yes)
            .setCommandName("MyCommand")
-           .setDescription("This is a command that transforms the InputFile into an OutputFile");
+           .setDescription("This is a command that transforms the InputFile into an OutputFile")
+           .setGroupDescription("Utility", "Utility arguments used to modify the output.");
 
     assert(builder.toString() == 
-        "Usage: MyCommand {0/InputFile} {1/OutputFile} <[v|verbose]> \n"
+        "Usage: MyCommand <InputFile> <OutputFile> <CompressionLevel> [-v|--verbose] [--encoding] \n"
        ~"\n"
        ~"Description:\n"
        ~"    This is a command that transforms the InputFile into an OutputFile\n"
        ~"\n"
        ~"Positional Args:\n"
-       ~"    0,InputFile                  - The input file.\n"
-       ~"    1,OutputFile                 - The output file.\n"
+       ~"    InputFile                    - The input file.\n"
+       ~"    OutputFile                   - The output file.\n"
        ~"\n"
        ~"Named Args:\n"
-       ~"    -v,--verbose                 - Verbose output",
+       ~"    -v,--verbose                 - Verbose output\n"
+       ~"\n"
+       ~"Utility:\n"
+       ~"    Utility arguments used to modify the output.\n"
+       ~"\n"
+       ~"    CompressionLevel             - How much to compress the file.\n"
+       ~"    --encoding                   - Sets the encoding to use.",
 
         "\n"~builder.toString()
     );
@@ -514,7 +648,7 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
     string getContent(const HelpSectionOptions options)
     {
         import std.array     : array;
-        import std.algorithm : map, reduce, count, max, splitter, substitute;
+        import std.algorithm : map, reduce, filter, count, max, splitter, substitute;
         import std.conv      : to;
         import std.exception : assumeUnique;
         import std.utf       : byChar;
@@ -550,6 +684,7 @@ final class HelpSectionArgInfoContent : IHelpSectionContent
                                      ? (n.length == 1) ? "-"~n : "--"~n
                                      : n
                          )
+                         .filter!(n => n.length > 0)
                          .reduce!((a, b) => a~","~b)
                          .byChar
                          .array
