@@ -436,7 +436,7 @@ private bool onExecuteParseArgs(alias T)(
             case EOF:
                 break;
         }
-        catch(ArgBinderValidationException ex)
+        catch(Exception ex)
         {
             executionError = "For "~debugName~": "~ex.msg;
             return false;
@@ -1144,15 +1144,15 @@ final class CommandLineInterface(Modules...)
                                 static if(isInstanceOf!(Nullable, SymbolType))
                                 {
                                     // The Unqual removes the `inout` that `get` uses.
-                                    alias SymbolUnderlyingType = Unqual!(ReturnType!(SymbolType.get));
-
-                                    SymbolUnderlyingType proxy;
-                                    ArgBinderInstance.bind!(SymbolUnderlyingType, SymbolUDAs)(tok.value, /*ref*/ proxy);
-
-                                    mixin("commandInstance.%s = proxy;".format(SymbolName));
+                                    alias ResultT = Unqual!(ReturnType!(SymbolType.get));
                                 }
                                 else
-                                    ArgBinderInstance.bind!(SymbolType, SymbolUDAs)(tok.value, /*ref*/ mixin("commandInstance.%s".format(SymbolName)));
+                                    alias ResultT = SymbolType;
+
+                                auto result = ArgBinderInstance.bind!(ResultT, SymbolUDAs)(tok.value);
+                                enforce(result.isSuccess, result.asFailure.error);
+
+                                mixin("commandInstance.%s = result.asSuccess.value;".format(SymbolName));
                             };
                             arg.isNullable = isInstanceOf!(Nullable, SymbolType);
                             arg.isBool     = is(SymbolType == bool) || is(SymbolType == Nullable!bool);
@@ -1312,6 +1312,7 @@ unittest
 
 version(unittest)
 {
+    import jaster.cli.result;
     private alias InstansiationTest = CommandLineInterface!(jaster.cli.core);
 
     // NOTE: The only reason it can see and use private @Commands is because they're in the same module.
@@ -1486,12 +1487,13 @@ version(unittest)
     {
         T value;
 
-        bool onValidate(T boundValue, ref string error)
+        Result!void onValidate(T boundValue)
         {
             import std.format : format;
-            error = "Expected value to equal '%s', not '%s'.".format(this.value, boundValue);
 
-            return this.value == boundValue;
+            return this.value == boundValue
+            ? Result!void.success()
+            : Result!void.failure("Expected value to equal '%s', not '%s'.".format(this.value, boundValue));
         }
     }
 

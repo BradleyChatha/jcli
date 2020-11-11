@@ -16,23 +16,15 @@ struct Is
     // Because D is magical, you can store whatever state you want in UDAs, so validators get the same pleasure.
     Even isEven;
 
-    bool onValidate(T)(T number, ref string error)
+    Result!void onValidate(T)(T number)
     if(isNumeric!T)
     {
         // Validators can create user-friendly error messages, instead of the ugly generated one.
-        // These errors are only shown if this function returns `false`, so it's safe to set it
-        // even for a truthy condition.
 
         if(this.isEven)
-        {
-            error = "Expected number to be even.";
-            return number % 2 == 0;
-        }
+            return number % 2 == 0 ? Result!void.success() : Result!void.failure("Expected number to be even.");
         else
-        {
-            error = "Expected number to be odd";
-            return number % 2 == 1;
-        }
+            return number % 2 == 1 ? Result!void.success() : Result!void.failure("Expected number to be odd");
     }
 }
 

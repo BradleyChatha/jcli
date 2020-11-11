@@ -50,6 +50,18 @@ unittest
     static assert(getSingleUDA!(B, Command).pattern == "One");
 }
 
+/++
+ + Sometimes code needs to support both `@UDA` and `@UDA()`, so this template is used
+ + to ensure that the given `UDA` is an actual object, not just a type.
+ + ++/
+template ctorUdaIfNeeded(alias UDA)
+{
+    import std.traits : isType;
+    static if(isType!UDA)
+        enum ctorUdaIfNeeded = UDA.init;
+    else
+        alias ctorUdaIfNeeded = UDA;
+}
 
 /++
  + Gets all symbols that have specified UDA from all specified modules
@@ -79,4 +91,3 @@ unittest
     static assert(is(getSymbolsByUDAInModules!(Command, jaster.cli.udas) == AliasSeq!(B, C)));
     static assert(is(getSymbolsByUDAInModules!(Command, jaster.cli.udas, jaster.cli.udas) == AliasSeq!(B, C, B, C)));
 }
-

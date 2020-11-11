@@ -109,7 +109,7 @@ auto TEST_CASES =
               .finish           (),
     testCase().inFolder         ("./04-custom-arg-binders/")
               .withParams       ("./lalaland.txt")
-              .expectStatusToBe (1) // idk why this returns 1, I should probably figure that out...
+              .expectStatusToBe (-1)
               .finish           (),
 
     testCase().inFolder         ("./05-dependency-injection/")
