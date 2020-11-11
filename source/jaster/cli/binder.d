@@ -428,6 +428,16 @@ if(isNumeric!T || is(T == bool) || is(T == enum))
 
 /+ BUILT-IN VALIDATORS +/
 
+/++
+ + An `@ArgValidator` that runs the given `Func` during post-binding validation.
+ +
+ + Notes:
+ +  This validator is loosely typed, so if your validator function doesn't compile or doesn't work with whatever
+ +  type you attach this validator to, you might get some long-winded errors.
+ +
+ + Params:
+ +  Func = The function that provides validation on a value.
+ + ++/
 @ArgValidator
 struct PostValidate(alias Func)
 {
@@ -439,15 +449,16 @@ struct PostValidate(alias Func)
     {
         return Func(arg);
     }
-
-    string toString()
-    {
-        return "PostValidate()";
-    }
 }
 
 // I didn't *want* this to be templated, but when it's not templated and asks directly for a
 // `Result!void function(string)`, I get a very very odd error message: "expression __lambda2 is not a valid template value argument"
+/++
+ + An `@ArgValidator` that runs the given `Func` during pre-binding validation.
+ +
+ + Params:
+ +  Func = The function that provides validation on an argument.
+ + ++/
 @ArgValidator
 struct PreValidate(alias Func)
 {
@@ -455,12 +466,8 @@ struct PreValidate(alias Func)
     {
         return Func(arg);
     }
-
-    string toString()
-    {
-        return "PreValidate()";
-    }
 }
+///
 @("PostValidate and PreValidate")
 unittest
 {
