@@ -425,3 +425,46 @@ if(isNumeric!T || is(T == bool) || is(T == enum))
     catch(ConvException ex)
         return Result!T.failure(ex.msg);
 }
+
+/+ BUILT-IN VALIDATORS +/
+
+@ArgValidator
+struct PostValidate(alias Func)
+{
+    // We don't do any static checking of the parameter type, as we can utilise a very interesting use case of anonymous lambdas here
+    // by allowing the compiler to perform the checks for us.
+    //
+    // However that does mean we can't provide our own error message, but the scope is so small that a compiler generated one should suffice.
+    Result!void onValidate(ParamT)(ParamT arg)
+    {
+        return Func(arg);
+    }
+}
+
+// I didn't *want* this to be templated, but when it's not templated and asks directly for a
+// `Result!void function(string)`, I get a very very odd error message: "expression __lambda2 is not a valid template value argument"
+@ArgValidator
+struct PreValidate(alias Func)
+{
+    Result!void onPreValidate(string arg)
+    {
+        return Func(arg);
+    }
+}
+@("PostValidate and PreValidate")
+unittest
+{
+    static struct S
+    {
+        @PreValidate!(str => Result!void.failureIf(str.length != 3, "Number must be 3 digits long."))
+        @PostValidate!(i => Result!void.failureIf(i <= 200, "Number must be larger than 200."))   
+        int arg;
+    }
+    
+    alias Binder = ArgBinder!(jaster.cli.binder);
+    alias UDAs   = __traits(getAttributes, S.arg);
+
+    assert(Binder.bind!(int, UDAs)("20").isFailure);
+    assert(Binder.bind!(int, UDAs)("199").isFailure);
+    assert(Binder.bind!(int, UDAs)("300").asSuccess.value == 300);
+}
