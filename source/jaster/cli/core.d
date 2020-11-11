@@ -733,13 +733,15 @@ final class CommandLineInterface(Modules...)
     }
 
     alias ArgBinderInstance     = ArgBinder!Modules;
-    immutable BASH_COMPLETION   = import("bash_completion.sh");
 
-    private enum Mode
+    version(JCLI_BashCompletion)
     {
-        execute,
-        complete,
-        bashCompletion
+        private enum Mode
+        {
+            execute,
+            complete,
+            bashCompletion
+        }
     }
 
     private enum ParseResultType
@@ -848,12 +850,15 @@ final class CommandLineInterface(Modules...)
                 return -1;
             }
 
-            Mode mode = Mode.execute;
+            version(JCLI_BashCompletion)
+            {
+                Mode mode = Mode.execute;
 
-            if(args.front.type == ArgTokenType.Text && args.front.value == "__jcli:complete")
-                mode = Mode.complete;
-            else if(args.front.type == ArgTokenType.Text && args.front.value == "__jcli:bash_complete_script")
-                mode = Mode.bashCompletion;
+                if (args.front.type == ArgTokenType.Text && args.front.value == "__jcli:complete")
+                    mode = Mode.complete;
+                else if (args.front.type == ArgTokenType.Text && args.front.value == "__jcli:bash_complete_script")
+                    mode = Mode.bashCompletion;
+            }
 
             ParseResult parseResult;
 
@@ -892,12 +897,17 @@ final class CommandLineInterface(Modules...)
             if(proxy !is null)
                 proxy._func = &this.parseAndExecute;
 
-            final switch(mode) with(Mode)
+            version(JCLI_BashCompletion)
             {
-                case execute:        return this.onExecute(parseResult);
-                case complete:       return this.onComplete(parseResult);
-                case bashCompletion: return this.onBashCompletionScript();
+                final switch(mode) with(Mode)
+                {
+                    case execute:        return this.onExecute(parseResult);
+                    case complete:       return this.onComplete(parseResult);
+                    case bashCompletion: return this.onBashCompletionScript();
+                }
             }
+            else
+                return this.onExecute(parseResult);
         }
     }
 
@@ -978,93 +988,98 @@ final class CommandLineInterface(Modules...)
             return statusCode;
         }
 
-        int onComplete(ref ParseResult result)
+        version(JCLI_BashCompletion)
         {
-            // Parsing here shouldn't be affected by user-defined ArgBinders, so stuff being done here is done manually.
-            // This way we gain reliability.
-            //
-            // Since this is also an internal function, error checking is much more lax.
-            import std.array     : array;
-            import std.algorithm : map, filter, splitter, equal, startsWith;
-            import std.conv      : to;
-            import std.stdio     : writeln;
-
-            // Expected args:
-            //  [0]    = COMP_CWORD
-            //  [1..$] = COMP_WORDS
-            result.argParserAfterAttempt.popFront(); // Skip __jcli:complete
-            auto cword = result.argParserAfterAttempt.front.value.to!uint;
-            result.argParserAfterAttempt.popFront();
-            auto  words = result.argParserAfterAttempt.map!(t => t.value).array;
-
-            cword -= 1;
-            words = words[1..$]; // [0] is the exe name, which we don't care about.
-            auto before  = words[0..cword];
-            auto current = (cword < words.length)     ? words[cword]      : [];
-            auto after   = (cword + 1 < words.length) ? words[cword+1..$] : [];
-
-            auto beforeParser = ArgPullParser(before);
-            auto commandInfo  = this._resolver.resolveAndAdvance(beforeParser);
-
-            // Can't find command, so we're in "display command name" mode.
-            if(!commandInfo.success || commandInfo.value.type == CommandNodeType.partialWord)
+            int onComplete(ref ParseResult result)
             {
-                char[] output;
-                output.reserve(1024); // Gonna be doing a good bit of concat.
-
-                // Special case: When we have no text to look for, just display the first word of every command path.
-                if(before.length == 0 && current is null)
-                    commandInfo.value = this._resolver.root;
-
-                // Otherwise try to match using the existing text.
-
-                // Display the word of all children of the current command word.
+                // Parsing here shouldn't be affected by user-defined ArgBinders, so stuff being done here is done manually.
+                // This way we gain reliability.
                 //
-                // If the current argument word isn't null, then use that as a further filter.
-                //
-                // e.g.
-                // Before  = ["name"]
-                // Pattern = "name get"
-                // Output  = "get"
-                foreach(child; commandInfo.value.children)
+                // Since this is also an internal function, error checking is much more lax.
+                import std.array     : array;
+                import std.algorithm : map, filter, splitter, equal, startsWith;
+                import std.conv      : to;
+                import std.stdio     : writeln;
+
+                // Expected args:
+                //  [0]    = COMP_CWORD
+                //  [1..$] = COMP_WORDS
+                result.argParserAfterAttempt.popFront(); // Skip __jcli:complete
+                auto cword = result.argParserAfterAttempt.front.value.to!uint;
+                result.argParserAfterAttempt.popFront();
+                auto  words = result.argParserAfterAttempt.map!(t => t.value).array;
+
+                cword -= 1;
+                words = words[1..$]; // [0] is the exe name, which we don't care about.
+                auto before  = words[0..cword];
+                auto current = (cword < words.length)     ? words[cword]      : [];
+                auto after   = (cword + 1 < words.length) ? words[cword+1..$] : [];
+
+                auto beforeParser = ArgPullParser(before);
+                auto commandInfo  = this._resolver.resolveAndAdvance(beforeParser);
+
+                // Can't find command, so we're in "display command name" mode.
+                if(!commandInfo.success || commandInfo.value.type == CommandNodeType.partialWord)
                 {
-                    if(current.length > 0 && !child.word.startsWith(current))
-                        continue;
+                    char[] output;
+                    output.reserve(1024); // Gonna be doing a good bit of concat.
 
-                    output ~= child.word;
-                    output ~= " ";
+                    // Special case: When we have no text to look for, just display the first word of every command path.
+                    if(before.length == 0 && current is null)
+                        commandInfo.value = this._resolver.root;
+
+                    // Otherwise try to match using the existing text.
+
+                    // Display the word of all children of the current command word.
+                    //
+                    // If the current argument word isn't null, then use that as a further filter.
+                    //
+                    // e.g.
+                    // Before  = ["name"]
+                    // Pattern = "name get"
+                    // Output  = "get"
+                    foreach(child; commandInfo.value.children)
+                    {
+                        if(current.length > 0 && !child.word.startsWith(current))
+                            continue;
+
+                        output ~= child.word;
+                        output ~= " ";
+                    }
+
+                    writeln(output);
+                    return 0;
                 }
 
+                // Found command, so we're in "display possible args" mode.
+                char[] output;
+                output.reserve(1024);
+
+                commandInfo.value.userData.doComplete(before, current, after, /*ref*/ output); // We need black magic, so this is generated in addCommand.
                 writeln(output);
+
                 return 0;
             }
 
-            // Found command, so we're in "display possible args" mode.
-            char[] output;
-            output.reserve(1024);
+            int onBashCompletionScript()
+            {
+                import std.stdio : writefln;
+                import std.file  : thisExePath;
+                import std.path  : baseName;
 
-            commandInfo.value.userData.doComplete(before, current, after, /*ref*/ output); // We need black magic, so this is generated in addCommand.
-            writeln(output);
+                const fullPath = thisExePath;
+                const exeName  = fullPath.baseName;
 
-            return 0;
-        }
+                enum BASH_COMPLETION   = import("bash_completion.sh");
 
-        int onBashCompletionScript()
-        {
-            import std.stdio : writefln;
-            import std.file  : thisExePath;
-            import std.path  : baseName;
-
-            const fullPath = thisExePath;
-            const exeName  = fullPath.baseName;
-
-            writefln(BASH_COMPLETION,
-                exeName,
-                fullPath,
-                exeName,
-                exeName
-            );
-            return 0;
+                writefln(BASH_COMPLETION,
+                    exeName,
+                    fullPath,
+                    exeName,
+                    exeName
+                );
+                return 0;
+            }
         }
     }
   

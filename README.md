@@ -76,6 +76,8 @@ For sub-commands, simply populate the name field of `@Command`, e.g. `@Command("
 
 *Note: JCLI can technically support any shell's autocomplete, but only Bash is supported for now*.
 
+To enable this feature, you should define `JCLI_BashCompletion` version during compilation.
+
 This feature is still in the preliminary phase, so may not be *quite* correct or useable, but it's better than nothing.
 
 Basically, build and install your tool into its final resting place on your machine, then run `myTool __jcli:bash_complete_script` to make it output
@@ -228,6 +230,7 @@ defined by dub if you have `asdf` as a dependency of your project. If you do not
 
 | Version                   | Description                                                                                                                    |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| JCLI_BashCompletion       | When defined, enables bash completion support.                                                                                 |
 | JCLI_Verbose              | When defined, enables certain verbose compile-time logging, such as how `ArgBinder` is deciding which `@ArgBinderFunc` to use. |
 | JCLI_BinderCompilerErrors | Tells `ArgBinder` to intentionally cause compiler errors, allowing an attempt to figure out instantiation issues.              |
 | Have_asdf                 | Enables the `AsdfConfigAdapter`, which uses the `asdf` library to serialise the configuration value.                           |
