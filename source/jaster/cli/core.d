@@ -732,8 +732,7 @@ final class CommandLineInterface(Modules...)
         );
     }
 
-    alias ArgBinderInstance     = ArgBinder!Modules;
-    immutable BASH_COMPLETION   = import("bash_completion.sh");
+    alias ArgBinderInstance = ArgBinder!Modules;
 
     private enum Mode
     {
@@ -1054,11 +1053,12 @@ final class CommandLineInterface(Modules...)
             import std.stdio : writefln;
             import std.file  : thisExePath;
             import std.path  : baseName;
+            import jaster.cli.views.bash_complete : BASH_COMPLETION_TEMPLATE;
 
             const fullPath = thisExePath;
             const exeName  = fullPath.baseName;
 
-            writefln(BASH_COMPLETION,
+            writefln(BASH_COMPLETION_TEMPLATE,
                 exeName,
                 fullPath,
                 exeName,
