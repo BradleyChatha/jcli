@@ -4,7 +4,7 @@ module jaster.cli.binder;
 private
 {
     import std.traits : isNumeric, hasUDA;
-    import jaster.cli.result;
+    import jaster.cli.result, jaster.cli.internal;
 }
 
 /++
@@ -143,44 +143,8 @@ static struct ArgBinder(Modules...)
             if(preValidateResult.isFailure)
                 return Result!T.failure(preValidateResult.asFailure.error);
 
-            Result!T result;
-
-            static foreach(mod; AllModules)
-            static foreach(binder; getSymbolsByUDA!(mod, ArgBinderFunc))
-            {{
-                enum Info = BinderInfo!(T, binder)();
-
-                static if(!Info.IsFunction)
-                {
-                    debugPragma!("Skipping arg binder `"~Info.FQN~"` for type `"~T.stringof~"` because `isFunction` is returning false.");
-                    static if(Info.IsTemplated)
-                        debugPragma!("This binder is templated, so it is likely that the binder's contract failed, or its code doesn't compile for this given type.");
-                }
-                else static if(!__traits(compiles, { Result!T r = Info.Binder(""); }))
-                {
-                    debugPragma!("Skipping arg binder `"~Info.FQN~"` for type `"~T.stringof~"` because it does not compile for the given type.");
-                }
-                else
-                {
-                    debugPragma!("Using arg binder `"~Info.FQN~"` for type `"~T.stringof~"`.");
-
-                    static assert(Info.Params.length == 1,
-                        "The arg binder `"~Info.FQN~"` must only have `1` parameter, not `"~Info.Params.length.to!string~"` parameters."
-                    );
-                    static assert(is(Info.Params[0] == string),
-                        "The arg binder `"~Info.FQN~"` must have a `string` as their first parameter, not a(n) `"~Info.Params[0].stringof~"`."
-                    );
-                    static assert(isInstanceOf!(Result, Info.RetType),
-                        "The arg binder `"~Info.FQN~"` must return a `Result`, not `"~Info.RetType.stringof~"`"
-                    );
-                    
-                    if(result == Result!T.init)
-                        result = Info.Binder(arg);
-                }
-            }}
-
-            if(result == Result!T.init)
-                assert(false, "No arg binder found for type: "~T.stringof);
+            enum Binder = ArgBinderFor!(T, AllModules);
+            auto result = Binder.Binder(arg);
 
             if(result.isSuccess)
             {
@@ -375,6 +339,70 @@ private struct BinderInfo(alias T, alias Symbol)
         alias Params  = Parameters!Binder;
         alias RetType = ReturnType!Binder;
     }
+}
+
+private template ArgBinderMapper(T, alias Binder)
+{
+    import std.traits : isInstanceOf;
+
+    enum Info = BinderInfo!(T, Binder)();
+
+    // When the debugPragma isn't used inside a function, we have to make aliases to each call in order for it to work.
+    // Ugly, but whatever.
+
+    static if(!Info.IsFunction)
+    {
+        alias a = debugPragma!("Skipping arg binder `"~Info.FQN~"` for type `"~T.stringof~"` because `isFunction` is returning false.");
+        static if(Info.IsTemplated)
+            alias b = debugPragma!("This binder is templated, so it is likely that the binder's contract failed, or its code doesn't compile for this given type.");
+
+        alias ArgBinderMapper = void;
+    }
+    else static if(!__traits(compiles, { Result!T r = Info.Binder(""); }))
+    {
+        alias c = debugPragma!("Skipping arg binder `"~Info.FQN~"` for type `"~T.stringof~"` because it does not compile for the given type.");
+
+        alias ArgBinderMapper = void;
+    }
+    else
+    {
+        alias d = debugPragma!("Considering arg binder `"~Info.FQN~"` for type `"~T.stringof~"`.");
+
+        static assert(Info.Params.length == 1,
+            "The arg binder `"~Info.FQN~"` must only have `1` parameter, not `"~Info.Params.length.to!string~"` parameters."
+        );
+        static assert(is(Info.Params[0] == string),
+            "The arg binder `"~Info.FQN~"` must have a `string` as their first parameter, not a(n) `"~Info.Params[0].stringof~"`."
+        );
+        static assert(isInstanceOf!(Result, Info.RetType),
+            "The arg binder `"~Info.FQN~"` must return a `Result`, not `"~Info.RetType.stringof~"`"
+        );
+        
+        enum ArgBinderMapper = Info;
+    }
+}
+
+private template ArgBinderFor(alias T, Modules...)
+{
+    import std.meta        : staticMap, Filter;
+    import jaster.cli.udas : getSymbolsByUDAInModules;
+
+    enum isNotVoid(alias T) = !is(T == void);
+    alias Mapper(alias BinderT) = ArgBinderMapper!(T, BinderT);
+
+    alias Binders         = getSymbolsByUDAInModules!(ArgBinderFunc, Modules);
+    alias BindersForT     = staticMap!(Mapper, Binders);
+    alias BindersFiltered = Filter!(isNotVoid, BindersForT);
+
+    // Have to use static if here because the compiler's order of operations makes it so a single `static assert` wouldn't be evaluated at the right time,
+    // and so it wouldn't produce our error message, but instead an index out of bounds one.
+    static if(BindersFiltered.length > 0)
+    {
+        enum ArgBinderFor = BindersFiltered[0];
+        alias a = debugPragma!("Using arg binder `"~ArgBinderFor.FQN~"` for type `"~T.stringof~"`");
+    }
+    else
+        static assert(false, "No arg binder found for type `"~T.stringof~"`");    
 }
 
 /+ BUILT-IN BINDERS +/
