@@ -35,6 +35,7 @@ Tested on Windows and Ubuntu 18.04.
         1. [Calling a command from another command](#calling-a-command-from-another-command)
         1. [Configuration](#configuration)
         1. [Inheritance](#inheritance)
+        1. [Argument groups](#argument-groups)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Versions](#versions)
 1. [Contributing](#contributing)
@@ -1062,6 +1063,75 @@ Program exited with status code 0
 
 To summarize, JCLI supports inheritance within commands, and it should for the most part function as you expect. The rest is down
 to your own design.
+
+## Argument groups
+
+Some applications will find it useful to group their arguments together inside of their help text, for example:
+
+```bash
+Running .\mytool.exe command -h
+Usage: mytool.exe command <arg1> <arg2> <output> --test-flag [--verbose|-v] [--log|-l] [--config|-c]
+
+Description:
+    This is a command that is totally super complicated.
+
+Positional Args:
+    arg1                         - This is a generic argument that isn't grouped anywhere
+    arg2                         - This is a generic argument that isn't grouped anywhere
+
+Named Args:
+    --test-flag                  - Test flag, please ignore.
+
+Debug:
+    Arguments related to debugging.
+
+    --verbose,-v                 - Enables verbose logging.
+    --log,-l                     - Specifies a log file to direct output to.
+
+I/O:
+    Arguments related to I/O.
+
+    output                       - Where to place the output.
+    --config,-c                  - Specifies the config file to use.
+```
+
+This can be achieved by using the `@CommandArgGroup` UDA, for example, to produce the above help text:
+
+```d
+@Command("command", "This is a command that is totally super complicated.")
+struct ComplexCommand
+{
+    @CommandPositionalArg(0, "arg1", "This is a generic argument that isn't grouped anywhere")
+    int a;
+    @CommandPositionalArg(1, "arg2", "This is a generic argument that isn't grouped anywhere")
+    int b;
+
+    @CommandNamedArg("test-flag", "Test flag, please ignore.")
+    bool flag;
+
+    @CommandArgGroup("Debug", "Arguments related to debugging.")
+    {
+        @CommandNamedArg("verbose|v", "Enables verbose logging.")
+        Nullable!bool verbose;
+
+        @CommandNamedArg("log|l", "Specifies a log file to direct output to.")
+        Nullable!string log;
+    }
+
+    @CommandArgGroup("I/O", "Arguments related to I/O.")
+    {
+        @CommandPositionalArg(2, "output", "Where to place the output.")
+        string output;
+
+        @CommandNamedArg("config|c", "Specifies the config file to use.")
+        Nullable!string config;
+    }
+
+    void onExecute(){}
+}
+```
+
+Currently, the order of groups is based on their order in the source code.
 
 # Using JCLI without Dub
 
