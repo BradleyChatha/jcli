@@ -35,6 +35,7 @@ Tested on Windows and Ubuntu 18.04.
         1. [Calling a command from another command](#calling-a-command-from-another-command)
         1. [Configuration](#configuration)
         1. [Inheritance](#inheritance)
+1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Versions](#versions)
 1. [Contributing](#contributing)
 
@@ -48,11 +49,11 @@ Tested on Windows and Ubuntu 18.04.
 
     * Optional arguments using the standard `Nullable` type.
 
-    * User-Defined argument binding (string -> any_type_you_want).
+    * User-Defined argument binding (string -> any_type_you_want) - blanket and per-argument.
 
     * User-Defined argument validation (via UDAs that follow a convention).
 
-    * Pass through unparsed arguments. (`./mytool parsed args -- these are unparsed args`)
+    * Pass through unparsed arguments. (`./mytool parsed args -- these are unparsed args`).
 
     * Automatic error messages for missing and malformed arguments.
 
@@ -83,6 +84,8 @@ Tested on Windows and Ubuntu 18.04.
     * Works for exact matches for named commands.
 
     * Works for partial matches for named commands.
+
+    * Arguments can be displayed in organised groups.
 
 * Utilities:
 
@@ -115,9 +118,9 @@ The default command is the command that is ran when you don't specify any named 
 ```d
 // inside of app.d
 module app;
-import jaster.cli;
+import jcli
 
-@Command(null, "The default command.")
+@CommandDefault("The default command.")
 struct DefaultCommand
 {
     int onExecute()
@@ -127,11 +130,11 @@ struct DefaultCommand
 }
 ```
 
-The `@Command` is a UDA (User Defined Attribute) where the first parameter is the command's name (`null` for the default command), and the second parameter is the command's description.
+The `@CommandDefault` is a UDA (User Defined Attribute) where the first parameter is the command's description.
 
 All commands must define an `onExecute` function, which either returns `void`, or an `int` that will be used as the program's exit/status code.
 
-As a side note, an initial dub project does not include the intial `module app;` shown in the example above. I've added it as we'll need the directly reference the module in a later section.
+As a side note, an initial dub project does not include the `module app;` statement shown in the example above. I've added it as we'll need to directly reference the module in a later section.
 
 ## Positional Arguments
 
@@ -142,7 +145,7 @@ Positional arguments are expected to exist in a specific position within the arg
 For example the command `mytool 60 yoyo true` would have `60` in the 0th position, `yoyo` in the 1st position, and `true` in the 2nd position:
 
 ```d
-@Command(null, "The default command.")
+@CommandDefault("The default command.")
 struct DefaultCommand
 {
     @CommandPositionalArg(0, "number", "The number to check.")
@@ -171,7 +174,7 @@ you should be provide a name to positional arguments.
 To use our new command, we just need to register it first:
 
 ```d
-import jaster.cli;
+import jcli
 
 // This is still in app.d
 int main(string[] args)
@@ -201,13 +204,13 @@ First, let's have a look at the help text for our default command:
 
 ```bash
 $> ./mytool --help
-Usage: DEFAULT {0/number}
+Usage: mytool.exe DEFAULT <number>
 
 Description:
     The default command.
 
 Positional Args:
-    0,number                     - The number to check.
+    number                       - The number to check.
 ```
 
 So we can see that the help text matches the structure of our `DefaultCommand` struct.
@@ -223,14 +226,14 @@ Program exited with status code 1
 $> ./mytool 59
 Program exited with status code 0
 
-# No number (Error message doesn't look great yet)
+# No number
 $> ./mytool
-ERROR: The following required positional arguments were not provided: ["[0] number"]
+mytool.exe: Missing required arguments <number>
 Program exited with status code -1
 
 # Too many numbers
 $> ./mytool 1 2
-ERROR: Stray positional arg found: '2'
+mytool.exe: too many arguments starting at '2'
 Program exited with status code -1
 ```
 
@@ -247,7 +250,7 @@ enum Mode
     reversed // Even returns 0. Odd returns 1.
 }
 
-@Command(null, "The default command.")
+@CommandDefault("The default command.")
 struct DefaultCommand
 {
     @CommandPositionalArg(0, "number", "The number to check.")
@@ -268,7 +271,7 @@ struct DefaultCommand
 
 Inside `DefaultCommand` we create a member field called `mode` that is decorated with the `@CommandNamedArg` UDA and has enum type. JCLI knows how to convert an argument value into an enum value.
 
-The first parameter is the name of the argument, which is actually important this time as this determines what name the user has to use.
+The first parameter is the name of the argument, which is actually important this time as this determines what name the user needs to use.
 
 The second parameter is just the description.
 
@@ -278,13 +281,13 @@ Let's have a quick look at the help text first, to see the changes being reflect
 
 ```bash
 $> ./mytool --help
-Usage: DEFAULT {0/number} [mode]
+Usage: mytool.exe DEFAULT <number> --mode
 
 Description:
     The default command.
 
 Positional Args:
-    0,number                     - The number to check.
+    number                       - The number to check.
 
 Named Args:
     --mode                       - Which mode to use.
@@ -305,13 +308,14 @@ Program exited with status code 0
 
 # Bad value for mode
 $> mytool 60 --mode non_existing_mode
-std.conv.ConvException@\src\phobos\std\conv.d(2817): Mode does not have a member named 'non_existing_mode'
+mytool.exe: For named argument mode: Mode does not have a member named 'non_existing_mode'
+Program exited with status code -1
 
 # Can safely assume Odd behaves properly.
 
 # Now, we haven't marked --mode as optional, so...
 $> mytool 60
-ERROR: The following required named arguments were not provided: ["mode"]
+mytool.exe: Missing required arguments --mode
 Program exited with status code -1
 ```
 
@@ -319,12 +323,12 @@ We can see that `--mode` is working as expected, however notice that in the last
 
 ## Optional Arguments
 
-JCLI supports optional arguments through the standard [Nullable](https://dlang.org/phobos/std_typecons.html#Nullable) type. Note that only Named arguments can be optional for now (technically, Positional arguments can be optional in certain use cases, but it's not supported ... yet).
+JCLI supports optional arguments through the standard [Nullable](https://dlang.org/phobos/std_typecons.html#Nullable) type. Note that only Named arguments can be optional for now (technically, Positional arguments can be optional in certain use cases, but it's not supported... yet).
 
 So to make our `mode` argument optional, we need to make it `Nullable`:
 
 ```d
-@Command(null, "The default command.")
+@CommandDefault("The default command.")
 struct DefaultCommand
 {
     @CommandPositionalArg(0, "number", "The number to check.")
@@ -349,21 +353,21 @@ First, let's look at the help text, as it very slightly changes for nullable arg
 
 ```bash
 $> ./mytool --help
-Usage: DEFAULT {0/number} <[mode]>
+Usage: mytool.exe DEFAULT <number> [--mode]
 
 Description:
     The default command.
 
 Positional Args:
-    0,number                     - The number to check.
+    number                       - The number to check.
 
 Named Args:
     --mode                       - Which mode to use.
 ```
 
-Notice the "Usage:" line. The `[mode]` has now become `<[mode]>` to indicate it is optional.
+Notice the "Usage:" line. `--mode` has now become `[--mode]` to indicate it is optional.
 
-So now let's test that the argument is now in fact optional:
+So now let's test that the argument is now optional:
 
 ```bash
 # Even (implicitly Normal)
@@ -382,7 +386,7 @@ While `--mode` is nice and descriptive, it'd be nice if we could also refer to i
 Here is where the very simple concept of "patterns" comes into play. At the moment, and honestly for the foreseeable future, patterns are just strings with a pipe ('|') between each different value:
 
 ```d
-@Command(null, "The default command.")
+@CommandDefault("The default command.")
 struct DefaultCommand
 {
     @CommandNamedArg("mode|m", "Which mode to use.")
@@ -408,10 +412,13 @@ Program exited with status code 0
 
 # And here's the help text
 $> ./mytool --help
-Usage: DEFAULT <[mode|m]>
+Usage: mytool.exe DEFAULT <number> [--mode|-m]
 
 Description:
     The default command.
+
+Positional Args:
+    number                       - The number to check.
 
 Named Args:
     --mode,-m                    - Which mode to use.
@@ -419,7 +426,7 @@ Named Args:
 
 ## Named Commands
 
-Named commands are commands that... have a name. For example `git commit`; `dub build`; `dub init`, etc. are all named commands.
+Named commands are commands that... have a name. For example `git commit`; `git remote add`; `dub init`, etc. are all named commands.
 
 It's really easy to make a named command. Let's change our default command into a named command:
 
@@ -432,17 +439,16 @@ struct AssertCommand
 }
 ```
 
-Basically, we just pass a pattern (yes, commands can have multiple names!) as the first parameter for the `@Command` UDA, instead of leaving it as null.
+Basically, we change `@CommandDefault` to `@Command`, then we just pass a pattern (yes, commands can have multiple names!) as the first parameter for the `@Command` UDA, and move the description into the second parameter.
 
-Command patterns can have spaces in them, to allow a multi-word, fluent interface for your tool.
+Command patterns can have spaces in them, to allow for a multi-word, fluent interface for your tool.
 
 As a bit of a difference, let's test the code first:
 
 ```bash
 # We have to specify a name now. JCLI will offer suggestions!
 $> ./mytool 60
-ERROR: Unknown command '60'.
-
+mytool.exe: Unknown command '60'.
 Did you mean:
     assert                       - Asserts that a number is even.
 
@@ -453,7 +459,40 @@ $> ./mytool is even 60
 Program exited with status code 1
 ```
 
-TODO: I need to fix the help text (why is it always broken) before showing smart help text suggestions here.
+JCLI has "smart" help text when it comes to displaying named commands. Observe here that JCLI is careful to only display one of the possible
+names for commands that may have multiple names:
+
+```bash
+# JCLI will always display the first name of each commands' pattern.
+$> ./mytool --help
+Available commands:
+    assert                       - Asserts that a number is even.
+```
+
+The other feature of this help text is that JCLI has support for partial command matches:
+
+**FUTURE ME I NEED TO FIX THIS BELOW EXAMPLE** - It should display "is even" instead of "assert" for the last set of help text.
+I find it funny that the bash completion code knows how to do this, but the help text generator doesn't.
+
+```bash
+# So let's first start with a tool that has two commands.
+$> ./mytool --help
+Available commands:
+    assert                       - Asserts that a number is even.
+    do a                         - Does A
+
+# If we have a partial match to a command, then JCLI will filter the results down.
+$> ./mytool do
+mytool.exe: Unknown command 'do'.
+Did you mean:
+    do a                         - Does A
+
+# If the command has multiple names, then JCLI is careful to use the correct name for the partial match.
+# Remember that "assert" is also "is even".
+$> ./mytool is --help
+Available commands:
+    assert                       - Asserts that a number is even.
+```
 
 ## User Defined argument binding
 
@@ -472,28 +511,35 @@ First, we need to create the arg binder:
 ```d
 // app.d still
 import std.stdio : File;
+import jcli      : Result;
 
 @ArgBinderFunc
-void fileBinder(string arg, ref File output)
+Result!File fileBinder(string arg)
 {
-    output = File(arg, "r");
+    import std.file : exists;
+
+    // Alternatively: Result!File.failureIf(!arg.exists, File(arg, "r"), "File does not exist: "~arg)
+    return (arg.exists)
+    ? Result!File.success(File(arg, "r"))
+    : Result!File.failure("File does not exist: "~arg);
 }
 ```
 
-First of all we import `File` from the `std.stdio` module.
+First of all we import `File` from the `std.stdio` module and `Result` from `jcli`.
 
 Second, we create a function, decorated with `@ArgBinderFunc`, that follow a specific convention for its signature:
 
 ```d
 @ArgBinderFunc
-void <anyNameItDoesntMatter>(string arg, ref <YourOutputTypeHere> output);
+Result!<OutputType> <anyNameItDoesntMatter>(string arg);
 ```
+
+The return type is a `Result`, whose `<OutputType>` is the type of the value that the binder sets the argument to, which is a `File` in our case.
 
 The `arg` parameter is the raw string provided by the user, for whichever argument we're binding from.
 
-The `output` parameter is passed by reference, and the arg binder is expected to set it to the final value that'll be passed into the command instance.
-
-Finally, all our binder does is set the `output` parameter to a `File` that opens a file using the exact `arg` given to use by the user, and opens it in read-only mode ('r').
+Finally, we check if the file exists, and if it does we return a `Result!File.success` with a `File` opened in read-only mode. If it doesn't exist then we
+return a `Result!File.failure` alongside a user-friendly error message.
 
 Arg binders need to be marked with the `@ArgBinderFunc` UDA so that the `CommandLineInterface` class can discover them. Talking about `CommandLineInterface`, it'll automatically discover any arg binder from the modules you tell it about, just like it does with commands.
 
@@ -516,7 +562,7 @@ struct CatCommand
 }
 ```
 
-The most important thing of note here is, notice how the `file` variable has the type `File`, and recall that our arg binder's `output` parameter also has the type `File`? This tells the arg binder that it has a function to convert the user's provided string into a `File` for us.
+The most important thing of note here is, notice how the `file` variable has the type `File`, and recall that our arg binder's return type also has the type `Result!File`? This allows the arg binder to know that it has a function to convert the user's provided string into a `File` for us.
 
 Our `onExecute` function is nothing overly special, it just displays the file line by line.
 
@@ -540,7 +586,7 @@ Program exited with status code 0
 
 # And just for good measure, let's see what happens if the file doesn't exist
 $> ./mytool cat non-existing-file
-std.exception.ErrnoException@std\stdio.d(428): Cannot open file `non-existing-file' in mode `r' (No such file or directory)
+mytool.exe: For positional arg 0(filePath): File does not exist: non-existing-file
 ```
 
 Very simple. Very useful.
@@ -558,18 +604,20 @@ JCLI handles all of this via argument validators.
 Let's start off with the first example, making sure the user only passes in files with a `.json` extention, and apply it to our `cat` command. Code first, explanation after:
 
 ```d
+@ArgValidator
 struct HasExtention
 {
     string wantedExtention;
 
-    bool onPreValidate(string arg, ref string errorIfFalse)
+    Result!void onPreValidate(string arg)
     {
         import std.algorithm : endsWith;
 
-        // Errors only display if we return false.
-        errorIfFalse = "Expected file to have extention of "~this.wantedExtention;
-
-        return arg.endsWith(this.wantedExtention);
+        // If the condition is true, return a failure result with a message, otherwise return a success result.
+        return Result!void.failureIf(
+            !arg.endsWith(this.wantedExtention), 
+            "Expected file to have extention of "~this.wantedExtention
+        );
     }
 }
 
@@ -584,25 +632,27 @@ struct CatCommand
 }
 ```
 
-To start, we create a struct called `HasExtention` and we give it a field member called `string wantedExtention;`.
+To start, we create a struct called `HasExtention`, we decorate it with `@ArgValidator`, and we give it a field member called `string wantedExtention;`.
 
 Before I continue, I want to explicitly state that this validator wants to perform validation on the raw string that the user provides (pre-arg-binded) and *not* on the final value (post-arg-binded). This is referred to as "Pre Validation". So on that note...
 
 Next, and most importantly, we define a function that specifically called `onPreValidate` that follows the following convention:
 
 ```d
-bool onPreValidate(string arg, ref string error);
+Result!void onPreValidate(string arg);
 ```
 
 This is the function that performs the actual validation (in this case, "Pre" validation).
 
-It returns `true` if there are no validation errors, otherwise it returns `false` and optionally sets the `error` string to a user-friendly error (one is automatically generated otherwise).
+It returns `Result!void.success()` if there are no validation errors, otherwise it returns `Result!void.failure()` and optionally provides an error string as a user-friendly error (one is automatically generated otherwise).
 
-The first parameter is the raw string that the user has provided us, and I just explained the second parameter.
+The return type is a `Result!void`, so a result that doesn't contain a value, but still states whether there was a failure or a success.
+
+The first parameter to our function is the raw string that the user has provided us.
 
 So for our `HasExtention` validator, all we do is check if the user's file path ends with `this.wantedExtention`, which we set the value of later.
 
-Now, inside `CatCommand` all we've done is attach our `HasExtention` struct as a UDA (and if you're not familiar with D, congrats, you just made your first UDA!). JCLI will automatically detect that `@HasExtention` is a validator because it follows that convention mentioned just above.
+Now, inside `CatCommand` all we've done is attach our `HasExtention` struct as a UDA (and if you're not familiar with D, congrats, you just made your first UDA!). JCLI will automatically detect that `@HasExtention` is a validator because it is decorated with `@ArgValidator`.
 
 Because D is wonderful, it will automatically generate a constructor for us where the first parameter sets the `wantedExtention` member. So `@HasExtention(".json")` will set the extention we want to `".json"`.
 
@@ -616,7 +666,7 @@ Program exited with status code 0
 
 # Failing
 $> ./mytool cat ./.gitignore
-ERROR: For positional arg 0(filePath): Expected file to have extention of .json
+mytool.exe: For positional arg 0(filePath): Expected file to have extention of .json
 Program exited with status code -1
 ```
 
@@ -625,14 +675,17 @@ The other type of validation is post-arg-binded validation, which performs valid
 Let's make a validator that ensures that the file is under a certain size:
 
 ```d
+@ArgValidator
 struct MaxSize
 {
     ulong maxSize;
 
-    bool onValidate(File file, ref string error)
+    Result!void onValidate(File file)
     {
-        error = "File is too large.";
-        return file.size() <= this.maxSize;
+        return Result!void.failureIf(
+            file.size() > this.maxSize,
+            "File is too large."
+        );
     }
 }
 
@@ -651,7 +704,7 @@ struct CatCommand
 The convention for post-arg-binded validation is almost exactly the same as pre-arg-binded validation, it also functions in exactly the same way:
 
 ```d
-bool onValidate(<TYPE_OF_VALUE_TO_VALIDATE> value, ref string error);
+Result!void onValidate(<TYPE_OF_VALUE_TO_VALIDATE> value);
 ```
 
 The only difference is that the first parameter isn't a `string`, but instead the type of value that this validator will work with.
@@ -662,19 +715,40 @@ We've set the max size to something really small, so we can easily test that it 
 
 ```bash
 $> ./mytool cat ./dub.json
-ERROR: For positional arg 0(filePath): File is too large.
+mytool.exe: For positional arg 0(filePath): File is too large.
 Program exited with status code -1
 ```
 
-Excellent.
+Excellent. We have an issue however where this is all a bit... cumbersome, right?
 
-**Word of warning**: Due to various reasons I won't get into, JCLI will silently skip over validators that have incorrect interfaces, so if something isn't working it's likely because JCLI has found an issue with it. Specify the version `JCLI_BinderCompilerErrors` inside of your dub.json/dub.sdl in order to try and attempt to debug why.
+Well, for small one-off validation tasks like this, we can use the two built-in validators `@PreValidate` and `@PostValidate`.
+
+This is what the above example would look like using these two validators:
+
+```d
+@Command("cat", "Displays the contents of a file.")
+struct CatCommand
+{
+    @CommandPositionalArg(0, "filePath", "The path to the file to display.")
+    @PreValidate!(str => Result!void.failureIf(!str.endsWith(".json"), "Expected file to end with .json."))
+    @PostValidate!(file => Result!void.failureIf(file.size() > 2, "File is larger than 2 bytes."))
+    File file;
+
+    // omitted...
+}
+```
+
+So now we've moved the logic of `HasExtention` into a lamba inside `@PreValidate`, and the logic of `MaxSize` into `PostValidate`.
+
+You can of course also pass already-made functions instead of lambdas, if that's more your thing.
+
+The results are exactly the same as before, so they will be omitted.
 
 ## Unparsed Raw Arg List
 
 In some cases you might want to stop parsing arguments and just get them as raw strings. JCLI supports this use case by allowing raw arguments to appear after a long double-dash (`--`) parameter in the command line: `./mytool args to parse -- args to pass as is`.
 
-This feature can be used with this syntax:
+Commands can access the raw arg list like so:
 
 ```d
 @Command("echo", "Echos the raw arg list.")
@@ -865,7 +939,6 @@ struct SeedConfigCommand
 @Command("print config", "Prints the config to the screen.")
 struct PrintConfigCommand
 {
-    {
     IConfig!Config _config;
 
     this(IConfig!Config config)
@@ -990,6 +1063,18 @@ Program exited with status code 0
 To summarize, JCLI supports inheritance within commands, and it should for the most part function as you expect. The rest is down
 to your own design.
 
+# Using JCLI without Dub
+
+It is entirely possible to use JCLI without needing to use dub, there are just two things to keep in mind.
+
+1. JCLI has a hard dependency on [JIOC](https://github.com/BradleyChatha/jioc) however, I am the maintainer of this library, and it is a single-file library, so it is both
+safe to assume it'll stay up-to-date, and it is easy to add into your project.
+
+2. For optional dependencies that JCLI supports, such as asdf, these are locked behind different [versions](#versions) so you only need to include them if you're using
+them in the first place.
+
+Other than that, if you're not using dub/dub-compatible build system, then I assume you already understand how you would go about adding third party code into your builds.
+
 # Versions
 
 JCLI makes use of the `version` statement in various areas. Here is a list of all versions that JCLI utilises.
@@ -1000,7 +1085,6 @@ defined by dub if you have `asdf` as a dependency of your project. If you do not
 | Version                   | Description                                                                                                                    |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | JCLI_Verbose              | When defined, enables certain verbose compile-time logging, such as how `ArgBinder` is deciding which `@ArgBinderFunc` to use. |
-| JCLI_BinderCompilerErrors | Tells `ArgBinder` to intentionally cause compiler errors, allowing an attempt to figure out instantiation issues.              |
 | Have_asdf                 | Enables the `AsdfConfigAdapter`, which uses the `asdf` library to serialise the configuration value.                           |
 
 # Contributing
