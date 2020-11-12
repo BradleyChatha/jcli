@@ -31,6 +31,7 @@ Tested on Windows and Ubuntu 18.04.
     * Advanced usage:
         1. [User Defined argument binding](#user-defined-argument-binding)
         1. [User Defined argument validation](#user-defined-argument-validation)
+        1. [Per-Argument binding][#per-argument-binding]
         1. [Dependency Injection](#dependency-injection)
         1. [Calling a command from another command](#calling-a-command-from-another-command)
         1. [Configuration](#configuration)
@@ -744,6 +745,83 @@ So now we've moved the logic of `HasExtention` into a lamba inside `@PreValidate
 You can of course also pass already-made functions instead of lambdas, if that's more your thing.
 
 The results are exactly the same as before, so they will be omitted.
+
+## Per-argument binding
+
+There is seemingly a fatal flaw with the arg binding system.
+
+Imagine we had a `copy` command that copies the contents of a file into another file:
+
+```d
+@Command("copy", "Copies a file")
+struct CopyCommand
+{
+    @CommandPositionalArg(0, "source", "The source file.")
+    File source;
+
+    @CommandPositionalArg(1, "destination", "The destination file.")
+    File destination;
+
+    void onExecute()
+    {
+        foreach(line; source.byLine)
+            destination.writeln(line);
+    }
+}
+```
+
+The issue here is that `source` needs to be opened in read-only mode(`r`), however `destination` needs be written in truncate/write mode(`w`).
+
+If we were to create a normal `@ArgBinderFunc`, we wouldn't be able to tell it the difference between the two files since we're limited in the amount
+of information that is passed to an arg binder.
+
+What we need is a way to specify the binding behavior on a per-argument basis.
+
+While you *could* do a hackish thing such as creating two separate file types (`ReadOnlyFile` and `WriteFile`) then making arg binders for them, there's actually
+a much easier solution - `@ArgBindWith`:
+
+```d
+import std.stdio : File;
+
+Result!File openReadOnly(string arg)
+{
+    import std.file : exists;
+
+    return (arg.exists)
+    ? Result!File.success(File(arg, "r"))
+    : Result!File.failure("The file doesn't exist: "~arg);
+}
+
+@Command("copy", "Copies a file")
+struct CopyCommand
+{
+    @CommandPositionalArg(0, "source", "The source file.")
+    @ArgBindWith!openReadOnly
+    File source;
+
+    @CommandPositionalArg(1, "destination", "The destination file.")
+    @ArgBindWith!(arg => Result!File.success(File(arg, "w")))
+    File destination;
+
+    void onExecute()
+    {
+        foreach(line; source.byLine)
+            destination.writeln(line);
+    }
+}
+```
+
+To start off, we create the fairly self-explanatory `openReadOnly` function which looks exactly like an `@ArgBinderFunc`, except it doesn't have the UDA attached to it.
+
+Next, we attach `@ArgBindWith!openReadOnly` onto our `source` argument. This tells JCLI to use our `openReadOnly` function as this argument's binder.
+
+Finally, we attach `@ArgBindWith!(/*lambda*/)` onto our `destination` argument, for the same reasons as above. A lambda is used here for demonstration purposes.
+
+And just like that we have now solved overcome our initial issue of "how to I customise binding for arguments of the same type?" in a simple, sane manner.
+
+I'd like to mention that this feature works alongside the usual arg binding behavior. In other words, you can define an `@ArgBinderFunc` for a type which will
+serve as the default method for binding, but then for those awkward, one-off cases you can use `@ArgBindWith` to specify a different binding behavior on a per-argument
+basis.
 
 ## Unparsed Raw Arg List
 
