@@ -1647,7 +1647,7 @@ version(unittest)
             return this.c;
         }
     }
-    @("Test that @CommandArgAction works.")
+    @("Test that CommandArgAction.count works.")
     unittest
     {
         auto cli = new CommandLineInterface!(jaster.cli.core);
