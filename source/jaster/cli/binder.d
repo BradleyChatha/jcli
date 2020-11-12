@@ -29,6 +29,13 @@ struct ArgValidator {}
  + Attach this onto an argument/provide it directly to `ArgBinder.bind`, to specify a specific function to use
  + when binding the argument, instead of relying on ArgBinder's default behaviour.
  +
+ + Notes:
+ +  The `Func` should match the following signature:
+ +
+ +  ```
+ +  Result!T Func(string arg);
+ +  ```
+ +
  + Params:
  +  Func = The function to use to perform the binding.
  +
@@ -84,6 +91,10 @@ struct ArgBindWith(alias Func)
  +
  +  While not perfect, this does go over the entire process the arg binder is doing to select which `@ArgBinderFunc` it will use.
  +
+ + Specific_Binders:
+ +  Instead of using the lookup rules above, you can make use of the `ArgBindWith` UDA to provide a specific function to perform the binding
+ +  of an argument.
+ +
  + Validation_:
  +  Validation structs can be passed via the `UDAs` template parameter present for the `ArgBinder.bind` function.
  +
@@ -130,12 +141,22 @@ static struct ArgBinder(Modules...)
          + Binds the given `arg` to the `value`, using the `@ArgBinderFunc` found by using the 'Lookup Rules' documented in the
          + document comment for `ArgBinder`.
          +
-         + Validators:
+         + Validators_:
          +  The `UDAs` template parameter is used to pass in different UDA structs, including validator structs (see ArgBinder's documentation comment).
          +
          +  Anything inside of this template parameter that isn't a struct, and doesn't have the `ArgValidator` UDA
          +  will be completely ignored, so it is safe to simply pass the results of
          +  `__traits(getAttributes, someField)` without having to worry about filtering.
+         +
+         + Specific_Binders:
+         +  The `UDAs` template paramter is used to pass in different UDA structs, including the `ArgBindWith` UDA.
+         +
+         +  If the `ArgBindWith` UDA exists within the given parameter, arg binding will be performed using the function
+         +  provided by `ArgBindWith`, instead of using the default lookup rules defined by `ArgBinder`.
+         +
+         +  For example, say you have a several `File` arguments that need different binding behaviour (some are read-only, some truncate, etc.)
+         +  In a case like this, you could have some of those arguments marked with `@ArgBindWith!openFileReadOnly` and others with
+         +  a function for truncating, etc.
          +
          + Throws:
          +  `Exception` if any validator fails.
@@ -148,6 +169,8 @@ static struct ArgBinder(Modules...)
          +  It must return an instance of the `Result` struct. It is recommended to use `Result!void` as the result's `Success.value` is ignored.
          +
          +  If no appropriate binder func was found, then an assert(false) is used.
+         +
+         +  If `@ArgBindWith` exists, then exactly 1 must exist, any more than 1 is an error.
          +
          + Params:
          +  arg   = The argument to bind.
