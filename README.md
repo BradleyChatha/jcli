@@ -8,7 +8,7 @@
 ![Examples](https://github.com/BradleyChatha/jcli/workflows/Test%20Examples/badge.svg)
 
 JCLI is a library to aid in the creation of command line tooling, with an aim of being easy to use, while also allowing
-the individual parts of the library to be used on their own, aiding more dedicated users in creation their own CLI core.
+the individual parts of the library to be used on their own, aiding more dedicated users in creation of their own CLI core.
 
 As a firm believer of good documentation, JCLI is completely documented with in-depth explanations where needed. In-browser documentation can be found [here](https://jcli.dpldocs.info/jaster.cli.html).
 
@@ -46,7 +46,7 @@ Tested on Windows and Ubuntu 18.04.
 * Argument parsing:
 
     * Named and positional arguments.
-    
+
     * Boolean arguments (flags).
 
     * Optional arguments using the standard `Nullable` type.
@@ -55,7 +55,7 @@ Tested on Windows and Ubuntu 18.04.
 
     * User-Defined argument validation (via UDAs that follow a convention).
 
-    * Pass through unparsed arguments. (`./mytool parsed args -- these are unparsed args`).
+    * Pass through unparsed arguments (`./mytool parsed args -- these are unparsed args`).
 
     * Automatic error messages for missing and malformed arguments.
 
@@ -91,7 +91,7 @@ Tested on Windows and Ubuntu 18.04.
 
 * Utilities:
 
-    * Bash completion support.
+    * Opt-in bash completion support.
 
     * Coloured, configurable logging.
 
