@@ -36,6 +36,8 @@ struct ArgValidator {}
  +  Result!T Func(string arg);
  +  ```
  +
+ + Where `T` will be the type of the argument being bound to.
+ +
  + Params:
  +  Func = The function to use to perform the binding.
  +
