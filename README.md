@@ -1095,7 +1095,7 @@ I/O:
     --config,-c                  - Specifies the config file to use.
 ```
 
-This can be achieved by using the `@CommandArgGroup` UDA, for example, to produce the above help text:
+This can be achieved by using the `@CommandArgGroup` UDA - this is how to produce the above help text:
 
 ```d
 @Command("command", "This is a command that is totally super complicated.")
