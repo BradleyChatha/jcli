@@ -1069,7 +1069,7 @@ to your own design.
 Some applications will find it useful to group their arguments together inside of their help text, for example:
 
 ```bash
-Running .\mytool.exe command -h
+$> ./mytool command -h
 Usage: mytool.exe command <arg1> <arg2> <output> --test-flag [--verbose|-v] [--log|-l] [--config|-c]
 
 Description:
