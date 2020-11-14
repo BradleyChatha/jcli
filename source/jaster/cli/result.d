@@ -68,4 +68,9 @@ struct Result(T)
 
     /// Constructs a failure result, returning the given error.
     static Result!T failure()(string error){ return typeof(this)(Failure(error)); }
+
+    /// Constructs a failure result if the `condition` is true, otherwise constructs a success result with the given `value`.
+    static Result!T failureIf()(bool condition, T value, string error) { return condition ? failure(error) : success(value); }
+    static if(is(T == void))
+        static Result!T failureIf()(bool condition, string error) { return condition ? failure(error) : success(); }
 }
