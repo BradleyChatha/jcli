@@ -31,7 +31,7 @@ Tested on Windows and Ubuntu 18.04.
     * Advanced usage:
         1. [User Defined argument binding](#user-defined-argument-binding)
         1. [User Defined argument validation](#user-defined-argument-validation)
-        1. [Per-Argument binding][#per-argument-binding]
+        1. [Per-Argument binding](#per-argument-binding)
         1. [Dependency Injection](#dependency-injection)
         1. [Calling a command from another command](#calling-a-command-from-another-command)
         1. [Configuration](#configuration)
