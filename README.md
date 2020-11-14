@@ -1276,7 +1276,7 @@ $> myTool __jcli:bash_complete_script > /etc/.bash_completion.d/myTool
 
 It is entirely possible to use JCLI without needing to use dub, there are just two things to keep in mind.
 
-1. JCLI has a hard dependency on [JIOC](https://github.com/BradleyChatha/jioc) however, I am the maintainer of this library, and it is a single-file library, so it is both
+1. JCLI has a hard dependency on [JIOC](https://github.com/BradleyChatha/jioc), however I am the maintainer of this library, and it is a single-file library, so it is both
 safe to assume it'll stay up-to-date, and it is easy to add into your project.
 
 2. For optional dependencies that JCLI supports, such as asdf, these are locked behind different [versions](#versions) so you only need to include them if you're using
