@@ -23,6 +23,35 @@ struct ArgBinderFunc {}
  + ++/
 struct ArgValidator {}
 
+// Kind of wanted to reuse `ArgBinderFunc`, but making it templated makes it a bit jank to use with functions,
+// which don't need to provide any template values for it. So we have this UDA instead.
+/++
+ + Attach this onto an argument/provide it directly to `ArgBinder.bind`, to specify a specific function to use
+ + when binding the argument, instead of relying on ArgBinder's default behaviour.
+ +
+ + Notes:
+ +  The `Func` should match the following signature:
+ +
+ +  ```
+ +  Result!T Func(string arg);
+ +  ```
+ +
+ + Where `T` will be the type of the argument being bound to.
+ +
+ + Params:
+ +  Func = The function to use to perform the binding.
+ +
+ + See_Also:
+ +  `jaster.cli.binder.ArgBinder` and `jaster.cli.binder.ArgBinder.bind` for more details.
+ + ++/
+struct ArgBindWith(alias Func)
+{
+    Result!T bind(T)(string arg)
+    {
+        return Func(arg);
+    }
+}
+
 /++
  + A static struct providing functionality for binding a string (the argument) to a value, as well as optionally validating it.
  +
@@ -63,6 +92,10 @@ struct ArgValidator {}
  +  Note that you must also add "JCLI_Verbose" as a version (either in your dub file, or cli, or whatever) for these messages to show up.
  +
  +  While not perfect, this does go over the entire process the arg binder is doing to select which `@ArgBinderFunc` it will use.
+ +
+ + Specific_Binders:
+ +  Instead of using the lookup rules above, you can make use of the `ArgBindWith` UDA to provide a specific function to perform the binding
+ +  of an argument.
  +
  + Validation_:
  +  Validation structs can be passed via the `UDAs` template parameter present for the `ArgBinder.bind` function.
@@ -110,12 +143,22 @@ static struct ArgBinder(Modules...)
          + Binds the given `arg` to the `value`, using the `@ArgBinderFunc` found by using the 'Lookup Rules' documented in the
          + document comment for `ArgBinder`.
          +
-         + Validators:
+         + Validators_:
          +  The `UDAs` template parameter is used to pass in different UDA structs, including validator structs (see ArgBinder's documentation comment).
          +
          +  Anything inside of this template parameter that isn't a struct, and doesn't have the `ArgValidator` UDA
          +  will be completely ignored, so it is safe to simply pass the results of
          +  `__traits(getAttributes, someField)` without having to worry about filtering.
+         +
+         + Specific_Binders:
+         +  The `UDAs` template paramter is used to pass in different UDA structs, including the `ArgBindWith` UDA.
+         +
+         +  If the `ArgBindWith` UDA exists within the given parameter, arg binding will be performed using the function
+         +  provided by `ArgBindWith`, instead of using the default lookup rules defined by `ArgBinder`.
+         +
+         +  For example, say you have a several `File` arguments that need different binding behaviour (some are read-only, some truncate, etc.)
+         +  In a case like this, you could have some of those arguments marked with `@ArgBindWith!openFileReadOnly` and others with
+         +  a function for truncating, etc.
          +
          + Throws:
          +  `Exception` if any validator fails.
@@ -128,6 +171,8 @@ static struct ArgBinder(Modules...)
          +  It must return an instance of the `Result` struct. It is recommended to use `Result!void` as the result's `Success.value` is ignored.
          +
          +  If no appropriate binder func was found, then an assert(false) is used.
+         +
+         +  If `@ArgBindWith` exists, then exactly 1 must exist, any more than 1 is an error.
          +
          + Params:
          +  arg   = The argument to bind.
@@ -143,8 +188,15 @@ static struct ArgBinder(Modules...)
             if(preValidateResult.isFailure)
                 return Result!T.failure(preValidateResult.asFailure.error);
 
-            enum Binder = ArgBinderFor!(T, AllModules);
-            auto result = Binder.Binder(arg);
+            alias ArgBindWithInstance = TryGetArgBindWith!UDAs;
+            
+            static if(is(ArgBindWithInstance == void))
+            {
+                enum Binder = ArgBinderFor!(T, AllModules);
+                auto result = Binder.Binder(arg);
+            }
+            else
+                auto result = ArgBindWithInstance.init.bind!T(arg); // Looks weird, but trust me. Keep in mind it's an `alias` not an `enum`.
 
             if(result.isSuccess)
             {
@@ -213,8 +265,6 @@ static struct ArgBinder(Modules...)
 @safe @("ArgBinder unittest")
 unittest
 {
-    import std.exception : assertThrown;
-
     alias Binder = ArgBinder!(jaster.cli.binder);
 
     // Non-validated bindings.
@@ -260,8 +310,6 @@ unittest
 @("Test that __traits(getAttributes) works with ArgBinder")
 unittest
 {
-    import std.exception : assertThrown;
-
     @ArgValidator
     static struct Dummy
     {
@@ -279,8 +327,23 @@ unittest
         int value;
     }
 
-    S value;
     assert(Binder.bind!(int, __traits(getAttributes, S.value))("200").isFailure);
+}
+
+@("Test that ArgBindWith works")
+unittest
+{
+    static struct S
+    {
+        @ArgBindWith!(str => Result!string.success(str ~ " lalafells"))
+        string arg;
+    }
+
+    alias Binder = ArgBinder!(jaster.cli.binder);
+
+    auto result = Binder.bind!(string, __traits(getAttributes, S.arg))("Destroy all");
+    assert(result.isSuccess);
+    assert(result.asSuccess.value == "Destroy all lalafells");
 }
 
 /+ HELPERS +/
@@ -403,6 +466,22 @@ private template ArgBinderFor(alias T, Modules...)
     }
     else
         static assert(false, "No arg binder found for type `"~T.stringof~"`");    
+}
+
+private template TryGetArgBindWith(UDAs...)
+{
+    import std.traits : isInstanceOf;
+    import std.meta   : Filter;
+
+    enum FilterFunc(alias T) = isInstanceOf!(ArgBindWith, T);
+    alias Filtered = Filter!(FilterFunc, UDAs);
+
+    static if(Filtered.length == 0)
+        alias TryGetArgBindWith = void;
+    else static if(Filtered.length > 1)
+        static assert(false, "Multiple `ArgBindWith` instances were found, only one can be used.");
+    else
+        alias TryGetArgBindWith = Filtered[0];
 }
 
 /+ BUILT-IN BINDERS +/
