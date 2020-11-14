@@ -1268,6 +1268,7 @@ $> ./myTool benchmark --runs 20 -[TAB]
 If your system uses bash-completion, then the following command will add completion for your tool into every shell session:
 
 ```bash
+# NOTE: The actual path may be different on your system/distro.
 $> myTool __jcli:bash_complete_script > /etc/.bash_completion.d/myTool
 ```
 
