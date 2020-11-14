@@ -1313,7 +1313,7 @@ struct SumCommand
 
 With an example usage:
 
-```d
+```bash
 $> ./myTool -a -a
 2
 
