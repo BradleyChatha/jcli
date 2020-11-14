@@ -37,6 +37,9 @@ Tested on Windows and Ubuntu 18.04.
         1. [Configuration](#configuration)
         1. [Inheritance](#inheritance)
         1. [Argument groups](#argument-groups)
+        1. [Bash Completion](#bash-completion)
+            1. [Using eval](#using-eval)
+            1. [Using bash-completion](#using-bash-completion)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Versions](#versions)
 1. [Contributing](#contributing)
@@ -1210,6 +1213,63 @@ struct ComplexCommand
 ```
 
 Currently, the order of groups is based on their order in the source code.
+
+## Bash Completion
+
+JCLI's bash completion is opt-in, so first you'll need to enable it inside of `CommandLineSettings`:
+
+```d
+import jcli
+
+int main(string[] args)
+{
+    CommandLineSettings settings;
+    settings.bashCompletion = true;
+
+    auto cli = new CommandLineInterface!()(settings /*, services - if you were using Dependency Injection*/);
+    return cli.parseAndExecute(args);
+}
+```
+
+This will enable two special commands - `__jcli:complete`, and `__jcli:bash_complete_script`.
+
+The first command is used to perform the actual logic behind bash completion, and generally you don't need to call it directly.
+
+The second command however will output a bash script that can enable bash completion for your executable.
+
+From this point on, it is mostly down to how your system is setup, will be listed below.
+
+### Using eval
+
+By using the `eval` command, you can enable bash completion for the **current** shell session.
+
+```bash
+$> eval "$(./myTool __jcli:bash_complete_script)"
+
+# Provide command names.
+$> ./myTool [TAB]
+ansi    benchmark   build
+
+# Filter commands by current input.
+$> ./myTool b[TAB]
+benchmark build
+
+# Provide argument names.
+$> ./myTool benchmark -[TAB]
+--runs --verbose
+
+# Smartly removes suggestions for arguments already in use.
+$> ./myTool benchmark --runs 20 -[TAB]
+--verbose
+```
+
+### Using bash-completion
+
+If your system uses bash-completion, then the following command will add completion for your tool into every shell session:
+
+```bash
+$> myTool __jcli:bash_complete_script > /etc/.bash_completion.d/myTool
+```
 
 # Using JCLI without Dub
 
