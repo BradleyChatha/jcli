@@ -40,6 +40,8 @@ Tested on Windows and Ubuntu 18.04.
         1. [Bash Completion](#bash-completion)
             1. [Using eval](#using-eval)
             1. [Using bash-completion](#using-bash-completion)
+        1. [Argument parsing actions](#argument-parsing-actions)
+            1. [CommandArgAction.count](#commandargactioncount)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Versions](#versions)
 1. [Contributing](#contributing)
@@ -1270,6 +1272,56 @@ If your system uses bash-completion, then the following command will add complet
 ```bash
 # NOTE: The actual path may be different on your system/distro.
 $> myTool __jcli:bash_complete_script > /etc/.bash_completion.d/myTool
+```
+
+## Argument parsing actions
+
+There are specific cases where arguments may need to be parsed in a different manner. You can customise parsing behavior on a per-argument basis by attaching any enum value from the `CommandArgAction` enum.
+
+### CommandArgAction.count
+
+By attaching `@(CommandArgAction.count)` onto a named argument, the argument's behavior will change in the following ways:
+
+* Every time the argument is defined within the command's parameters, the value of the argument is incremented.
+
+* The argument becomes optional by default.
+
+* No explicit value can be given to the argument.
+
+* Arg binding and arg validation are not performed.
+
+* Special syntax `-aaaa` (where 'a' is the name of the arg) is supported.
+
+You can use any type that supports `opUnary!"++"`, even custom types.
+
+Here's an example command:
+
+```d
+@CommandDefault("Outputs the value of '-a'.")
+struct SumCommand
+{
+    @CommandNamedArg("a")
+    @(CommandArgAction.count)
+    int arg;
+
+    void onExecute()
+    {
+        writeln(this.arg);
+    }
+}
+```
+
+With an example usage:
+
+```d
+$> ./myTool -a -a
+2
+
+$> ./myTool -aaaaa
+5
+
+$> ./myTool
+0
 ```
 
 # Using JCLI without Dub
