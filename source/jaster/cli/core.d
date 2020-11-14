@@ -590,6 +590,7 @@ private void insertRawList(T)(ref T command, string[] rawList)
     }
 }
 
+/+ OTHER HELPERS +/
 private template GetArgAction(alias T)
 {
     import std.meta : Filter;
@@ -603,6 +604,26 @@ private template GetArgAction(alias T)
         static assert(false, "Argument `"~T.stringof~"` has multiple instance of `CommandArgAction`, only 1 is allowed.");
     else
         enum GetArgAction = Filtered[0];
+}
+
+/++
+ + Settings that can be provided to `CommandLineInterface` to change certain behaviour.
+ + ++/
+struct CommandLineSettings
+{
+    /++
+     + The name of your application, this is only used when displaying error messages and help text.
+     +
+     + If left as `null`, then the executable's name is used instead.
+     + ++/
+    string appName;
+
+    /++
+     + Whether or not `CommandLineInterface` should provide bash completion. Defaults to `false`.
+     +
+     + See_Also: The README for this project.
+     + ++/
+    bool bashCompletion = false;
 }
 
 /++
@@ -788,8 +809,7 @@ final class CommandLineInterface(Modules...)
         );
     }
 
-    alias ArgBinderInstance     = ArgBinder!Modules;
-    immutable BASH_COMPLETION   = import("bash_completion.sh");
+    alias ArgBinderInstance = ArgBinder!Modules;
 
     private enum Mode
     {
@@ -819,9 +839,9 @@ final class CommandLineInterface(Modules...)
     private
     {
         CommandResolver!CommandInfo _resolver;
+        CommandLineSettings         _settings;
         ServiceProvider             _services;
         Nullable!CommandInfo        _defaultCommand;
-        string                      _appName;
     }
 
     /+ PUBLIC INTERFACE +/
@@ -829,10 +849,7 @@ final class CommandLineInterface(Modules...)
     {
         this(ServiceProvider services = null)
         {
-            import std.file : thisExePath;
-            import std.path : baseName;
-
-            this(thisExePath().baseName, services);
+            this(CommandLineSettings.init, services);
         }
 
         /++
@@ -840,16 +857,21 @@ final class CommandLineInterface(Modules...)
          +  services = The `ServiceProvider` to use for dependency injection.
          +             If this value is `null`, then a new `ServiceProvider` will be created containing an `ICommandLineInterface` service.
          + ++/
-        this(string appName, ServiceProvider services = null)
+        this(CommandLineSettings settings, ServiceProvider services = null)
         {
             import std.algorithm : sort;
+            import std.file      : thisExePath;
+            import std.path      : baseName;
+
+            if(settings.appName is null)
+                settings.appName = thisExePath.baseName;
 
             if(services is null)
                 services = new ServiceProvider([addCommandLineInterfaceService()]);
 
             this._services = services;
+            this._settings = settings;
             this._resolver = new CommandResolver!CommandInfo();
-            this._appName  = appName;
 
             addDefaultCommand();
 
@@ -906,10 +928,13 @@ final class CommandLineInterface(Modules...)
 
             Mode mode = Mode.execute;
 
-            if(args.front.type == ArgTokenType.Text && args.front.value == "__jcli:complete")
-                mode = Mode.complete;
-            else if(args.front.type == ArgTokenType.Text && args.front.value == "__jcli:bash_complete_script")
-                mode = Mode.bashCompletion;
+            if(this._settings.bashCompletion && args.front.type == ArgTokenType.Text)
+            {
+                if(args.front.value == "__jcli:complete")
+                    mode = Mode.complete;
+                else if(args.front.value == "__jcli:bash_complete_script")
+                    mode = Mode.bashCompletion;
+            }
 
             ParseResult parseResult;
 
@@ -997,7 +1022,7 @@ final class CommandLineInterface(Modules...)
             CommandArguments!T commandArgs = getArgs!T;
 
             CommandInfo info;
-            info.helpText   = createHelpText!(T, UDA)(this._appName, commandArgs);
+            info.helpText   = createHelpText!(T, UDA)(this._settings.appName, commandArgs);
             info.doExecute  = createCommandExecuteFunc!T(commandArgs);
             info.doComplete = createCommandCompleteFunc!T(commandArgs);
 
@@ -1110,11 +1135,12 @@ final class CommandLineInterface(Modules...)
             import std.stdio : writefln;
             import std.file  : thisExePath;
             import std.path  : baseName;
+            import jaster.cli.views.bash_complete : BASH_COMPLETION_TEMPLATE;
 
             const fullPath = thisExePath;
             const exeName  = fullPath.baseName;
 
-            writefln(BASH_COMPLETION,
+            writefln(BASH_COMPLETION_TEMPLATE,
                 exeName,
                 fullPath,
                 exeName,
@@ -1278,7 +1304,7 @@ final class CommandLineInterface(Modules...)
         string makeErrorf(Args...)(string formatString, Args args)
         {
             import std.format : format;
-            return "%s: %s".format(this._appName, formatString.format(args));
+            return "%s: %s".format(this._settings.appName, formatString.format(args));
         }
     }
 }
