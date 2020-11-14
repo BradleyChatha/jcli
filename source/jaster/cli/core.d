@@ -18,6 +18,24 @@ public
 alias IgnoreFirstArg = Flag!"ignoreFirst";
 
 /++
+ + Attach any value from this enum onto an argument to specify what parsing action should be performed on it.
+ + ++/
+enum CommandArgAction
+{
+    /// Perform the default parsing action.
+    default_,
+
+    /++
+     + Increments an argument for every time it is defined inside the parameters.
+     +
+     + Arg Type: Named
+     + Value Type: Any type that supports `++`.
+     + Arg becomes optional: true
+     + ++/
+    count,
+}
+
+/++
  + Attach this to any struct/class that represents a command.
  +
  + See_Also:
@@ -157,7 +175,6 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
     return services;
 }
 
-
 private alias CommandExecuteFunc    = int delegate(ArgPullParser, ref string errorMessageIfThereWasOne, scope ref ServiceScope, HelpTextBuilderSimple);
 private alias CommandCompleteFunc   = void delegate(string[] before, string current, string[] after, ref char[] buffer);
 private alias ArgValueSetterFunc(T) = void function(ArgToken, ref T);
@@ -167,6 +184,7 @@ private struct ArgInfo(UDA, T)
     UDA uda;
     ArgValueSetterFunc!T setter;
     Nullable!CommandArgGroup group;
+    CommandArgAction action;
     bool wasFound; // For nullables, this is ignore. Otherwise, anytime this is false we need to throw.
     bool isNullable;
     bool isBool;
@@ -346,7 +364,8 @@ private bool onExecuteParseArgs(alias T)(
     ref string[]            rawList
 )
 {
-    import std.format : format;
+    import std.algorithm : all;
+    import std.format    : format;
 
     // Parse args.
     size_t positionalArgIndex = 0;
@@ -395,38 +414,63 @@ private bool onExecuteParseArgs(alias T)(
                     return false;
                 }
 
-                if(result.isBool)
+                // TODO: Bother breaking this up into functions.
+                final switch(result.action) with(CommandArgAction)
                 {
-                    import std.algorithm : canFind;
-                    // Bools have special support:
-                    //  If they are defined, they are assumed to be true, however:
-                    //      If the next token is Text, and its value is one of a predefined list, then it is then sent to the ArgBinder instead of defaulting to true.
+                    case default_:
+                        if(result.isBool)
+                        {
+                            import std.algorithm : canFind;
+                            // Bools have special support:
+                            //  If they are defined, they are assumed to be true, however:
+                            //      If the next token is Text, and its value is one of a predefined list, then it is then sent to the ArgBinder instead of defaulting to true.
 
-                    auto parserCopy = parser;
-                    parserCopy.popFront();
+                            auto parserCopy = parser;
+                            parserCopy.popFront();
 
-                    if(parserCopy.empty
-                    || parserCopy.front.type != ArgTokenType.Text
-                    || !["true", "false"].canFind(parserCopy.front.value))
-                    {
-                        result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
+                            if(parserCopy.empty
+                            || parserCopy.front.type != ArgTokenType.Text
+                            || !["true", "false"].canFind(parserCopy.front.value))
+                            {
+                                result.setter(ArgToken("true", ArgTokenType.Text), /*ref*/ commandInstance);
+                                break;
+                            }
+
+                            result.setter(parserCopy.front, /*ref*/ commandInstance);
+                            parser.popFront(); // Keep the main parser up to date.
+                        }
+                        else
+                        {
+                            parser.popFront();
+
+                            if(parser.front.type == ArgTokenType.EOF)
+                            {
+                                executionError = "Named arg '"~result.uda.pattern~"' was specified, but wasn't given a value.";
+                                return false;
+                            }
+
+                            result.setter(parser.front, /*ref*/ commandInstance);
+                        }
                         break;
-                    }
 
-                    result.setter(parserCopy.front, /*ref*/ commandInstance);
-                    parser.popFront(); // Keep the main parser up to date.
-                }
-                else
-                {
-                    parser.popFront();
+                    case count:
+                        auto parserCopy  = parser;
+                        auto incrementBy = 1;
+                        
+                        // Support "-vvvvv" syntax.
+                        parserCopy.popFront();
+                        if(token.type == ShortHandArgument 
+                        && parserCopy.front.type == Text
+                        && parserCopy.front.value.all!(c => c == token.value[0]))
+                        {
+                            incrementBy += parserCopy.front.value.length;
+                            parser.popFront(); // keep main parser up to date.
+                        }
 
-                    if(parser.front.type == ArgTokenType.EOF)
-                    {
-                        executionError = "Named arg '"~result.uda.pattern~"' was specified, but wasn't given a value.";
-                        return false;
-                    }
-
-                    result.setter(parser.front, /*ref*/ commandInstance);
+                        // .setter will perform an increment each call.
+                        foreach(i; 0..incrementBy)
+                            result.setter(ArgToken.init, /*ref*/ commandInstance);
+                        break;
                 }
                 break;
 
@@ -546,8 +590,20 @@ private void insertRawList(T)(ref T command, string[] rawList)
     }
 }
 
+private template GetArgAction(alias T)
+{
+    import std.meta : Filter;
 
+    enum FilterFunc(alias T) = __traits(compiles, typeof(T)) && is(typeof(T) == CommandArgAction);
+    alias Filtered           = Filter!(FilterFunc, __traits(getAttributes, T));
 
+    static if(Filtered.length == 0)
+        enum GetArgAction = CommandArgAction.default_;
+    else static if(Filtered.length > 1)
+        static assert(false, "Argument `"~T.stringof~"` has multiple instance of `CommandArgAction`, only 1 is allowed.");
+    else
+        enum GetArgAction = Filtered[0];
+}
 
 /++
  + Provides the functionality of parsing command line arguments, and then calling a command.
@@ -1130,32 +1186,49 @@ final class CommandLineInterface(Modules...)
                             }
                             else static assert(false, "Bug with parent if statement.");
 
-                            // See if the arg is part of a group.
+                            // See if the arg is part of a group + transfer some Compile-time info into runtime..
                             static if(hasUDA!(Symbol, CommandArgGroup))
                                 arg.group = getSingleUDA!(Symbol, CommandArgGroup);
 
-                            // Generate the setter func + transfer some Compile-time info into runtime.
-                            arg.setter = (ArgToken tok, ref T commandInstance)
-                            {
-                                import std.exception : enforce;
-                                import std.conv : to;
-                                assert(tok.type == ArgTokenType.Text, tok.to!string);
-
-                                static if(isInstanceOf!(Nullable, SymbolType))
-                                {
-                                    // The Unqual removes the `inout` that `get` uses.
-                                    alias ResultT = Unqual!(ReturnType!(SymbolType.get));
-                                }
-                                else
-                                    alias ResultT = SymbolType;
-
-                                auto result = ArgBinderInstance.bind!(ResultT, SymbolUDAs)(tok.value);
-                                enforce(result.isSuccess, result.asFailure.error);
-
-                                mixin("commandInstance.%s = result.asSuccess.value;".format(SymbolName));
-                            };
                             arg.isNullable = isInstanceOf!(Nullable, SymbolType);
                             arg.isBool     = is(SymbolType == bool) || is(SymbolType == Nullable!bool);
+
+                            // Generate the setter func.
+                            enum ArgAction = GetArgAction!Symbol;
+                            arg.action = ArgAction;
+
+                            static if(ArgAction == CommandArgAction.default_)
+                            {
+                                arg.setter = (ArgToken tok, ref T commandInstance)
+                                {
+                                    import std.exception : enforce;
+                                    import std.conv : to;
+                                    assert(tok.type == ArgTokenType.Text, tok.to!string);
+
+                                    static if(isInstanceOf!(Nullable, SymbolType))
+                                    {
+                                        // The Unqual removes the `inout` that `get` uses.
+                                        alias ResultT = Unqual!(ReturnType!(SymbolType.get));
+                                    }
+                                    else
+                                        alias ResultT = SymbolType;
+
+                                    auto result = ArgBinderInstance.bind!(ResultT, SymbolUDAs)(tok.value);
+                                    enforce(result.isSuccess, result.asFailure.error);
+
+                                    mixin("commandInstance.%s = result.asSuccess.value;".format(SymbolName));
+                                };
+                            }
+                            else static if(ArgAction == CommandArgAction.count)
+                            {
+                                static assert(hasUDA!(Symbol, CommandNamedArg), "The 'count' action is only supported on named arguments.");
+                                arg.setter = (ArgToken _, ref T commandInstance)
+                                {
+                                    mixin("commandInstance.%s++;".format(SymbolName));
+                                };
+                                arg.isNullable = true;
+                            }
+                            else static assert(false, "Unsupported arg action. Please report this issue.");
 
                             static if(hasUDA!(Symbol, CommandNamedArg)) commandArgs.namedArgs ~= arg;
                             else                                        commandArgs.positionalArgs ~= arg;
@@ -1560,5 +1633,32 @@ version(unittest)
            ~"\n"
            ~"    VALUE"
         ));
+    }
+
+    @Command("arg action count", "Test that the count arg action works")
+    private struct ArgActionCount
+    {
+        @CommandNamedArg("c")
+        @(CommandArgAction.count)
+        int c;
+
+        int onExecute()
+        {
+            return this.c;
+        }
+    }
+    @("Test that CommandArgAction.count works.")
+    unittest
+    {
+        auto cli = new CommandLineInterface!(jaster.cli.core);
+
+        assert(cli.parseAndExecute(["arg", "action", "count"], IgnoreFirstArg.no) == 0);
+        assert(cli.parseAndExecute(["arg", "action", "count", "-c"], IgnoreFirstArg.no) == 1);
+        assert(cli.parseAndExecute(["arg", "action", "count", "-c", "-c"], IgnoreFirstArg.no) == 2);
+        assert(cli.parseAndExecute(["arg", "action", "count", "-ccccc"], IgnoreFirstArg.no) == 5);
+        assert(cli.parseAndExecute(["arg", "action", "count", "-ccv"], IgnoreFirstArg.no) == -1); // -ccv -> [name '-c', positional 'cv']. -1 because too many positional args.
+
+        // Unfortunately this case also works because of limitations in ArgPullParser
+        assert(cli.parseAndExecute(["arg", "action", "count", "-c", "cccc"], IgnoreFirstArg.no) == 5);
     }
 }
