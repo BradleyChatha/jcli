@@ -1271,7 +1271,7 @@ struct TextBufferOptions
  +  I thought having something like this, where you can easily manipulate a 2D grid of characters (including colour and the like)
  +  would be quite valuable.
  +
- +  For example, the existance of this class can be the stepping stone into various other things such as: a basic (and I mean basic) console-based UI functionality;
+ +  For example, the existence of this class can be the stepping stone into various other things such as: a basic (and I mean basic) console-based UI functionality;
  +  other ANSI-enabled components such as tables which can otherwise be a pain due to the non-uniform length of ANSI text (e.g. ANSI codes being invisible characters),
  +  and so on.
  +

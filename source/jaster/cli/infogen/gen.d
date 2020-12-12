@@ -66,14 +66,14 @@ unittest
     static assert(info.namedArgs[0].uda.pattern.matchSpaceless("abc"));
     static assert(info.namedArgs[0].action == CommandArgAction.default_);
     static assert(info.namedArgs[0].group == CommandArgGroup.init);
-    static assert(info.namedArgs[0].existance == CommandArgExistance.default_);
+    static assert(info.namedArgs[0].existence == CommandArgExistence.default_);
     static assert(info.namedArgs[0].parseScheme == CommandArgParseScheme.default_);
 
     static assert(info.positionalArgs[0].identifier == "pos");
     static assert(info.positionalArgs[0].uda.position == 20);
     static assert(info.positionalArgs[0].action == CommandArgAction.default_);
     static assert(info.positionalArgs[0].group.name == "nam");
-    static assert(info.positionalArgs[0].existance == CommandArgExistance.optional);
+    static assert(info.positionalArgs[0].existence == CommandArgExistence.optional);
     static assert(info.positionalArgs[0].parseScheme == CommandArgParseScheme.bool_);
 
     static assert(info.namedArgs[1].action == CommandArgAction.count);
@@ -135,8 +135,8 @@ private template getArgInfoFor(alias CommandT, alias ArgT, alias ArgBinderInstan
     else
         enum Group = CommandArgGroup.init;
 
-    // Determine existance and parse scheme traits.
-    enum Existance = determineExistance!(CommandT, typeof(ArgT), Action);
+    // Determine existence and parse scheme traits.
+    enum Existence = determineExistence!(CommandT, typeof(ArgT), Action);
     enum Scheme = determineParseScheme!(CommandT, ArgT, Action);
 
     enum getArgInfoFor = ArgInfoT(
@@ -144,7 +144,7 @@ private template getArgInfoFor(alias CommandT, alias ArgT, alias ArgBinderInstan
         getSingleUDA!(ArgT, typeof(ArgInfoT.uda)),
         Action,
         Group,
-        Existance,
+        Existence,
         Scheme,
         &ActionFunc
     );
@@ -170,18 +170,18 @@ private template actionFuncFromAction(CommandArgAction Action, alias CommandT, a
     }
 }
 
-private CommandArgExistance determineExistance(alias CommandT, alias ArgTType, CommandArgAction Action)()
+private CommandArgExistence determineExistence(alias CommandT, alias ArgTType, CommandArgAction Action)()
 {
     import std.typecons : Nullable;
 
-    CommandArgExistance value;
+    CommandArgExistence value;
 
     static if(isInstanceOf!(Nullable, ArgTType))
-        value |= CommandArgExistance.optional;
+        value |= CommandArgExistence.optional;
     static if(Action == CommandArgAction.count)
     {
-        value |= CommandArgExistance.multiple;
-        value |= CommandArgExistance.optional;
+        value |= CommandArgExistence.multiple;
+        value |= CommandArgExistence.optional;
     }
 
     return value;

@@ -26,9 +26,9 @@ enum CommandArgAction
 }
 
 /++
- + Describes the existance of a command argument. i.e., how many times can it appear; is it optional, etc.
+ + Describes the existence of a command argument. i.e., how many times can it appear; is it optional, etc.
  + ++/
-enum CommandArgExistance
+enum CommandArgExistence
 {
     /// Can only appear once, and is mandatory.
     default_ = 0,
@@ -113,7 +113,7 @@ struct ArgumentInfo(UDA, CommandT)
     CommandArgGroup group;
 
     /// Describes the existence properties for this argument.
-    CommandArgExistance existance;
+    CommandArgExistence existence;
 
     /// Describes how this argument is to be parsed.
     CommandArgParseScheme parseScheme;

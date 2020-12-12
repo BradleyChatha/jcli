@@ -14,7 +14,7 @@ struct CommandParser(alias CommandT, alias ArgBinderInstance = ArgBinder!())
 
         bool isNullable()
         {
-            return (this.argInfo.existance & CommandArgExistance.optional) > 0;
+            return (this.argInfo.existence & CommandArgExistence.optional) > 0;
         }
     }
     private auto argInfoOf(ArgInfoT)(ArgInfoT info) { return ArgRuntimeInfo!ArgInfoT(info); }
@@ -78,7 +78,7 @@ struct CommandParser(alias CommandT, alias ArgBinderInstance = ArgBinder!())
                     if(argIndex < 0)
                         return typeof(return).failure("unknown argument '%s'".format(token.value));
 
-                    if(namedArgs[argIndex].wasFound && (namedArgs[argIndex].argInfo.existance & CommandArgExistance.multiple) == 0)
+                    if(namedArgs[argIndex].wasFound && (namedArgs[argIndex].argInfo.existence & CommandArgExistence.multiple) == 0)
                         return typeof(return).failure("multiple definitions of argument '%s'".format(token.value));
 
                     namedArgs[argIndex].wasFound = true;

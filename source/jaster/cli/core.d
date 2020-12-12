@@ -92,7 +92,7 @@ private HelpTextBuilderSimple createHelpText(alias CommandT, alias ArgBinderInst
             (arg.group.isNull) ? null : arg.group.name,
             arg.uda.pattern.byEach.array,
             arg.uda.description,
-            cast(ArgIsOptional)((arg.existance & CommandArgExistance.optional) > 0)
+            cast(ArgIsOptional)((arg.existence & CommandArgExistence.optional) > 0)
         );
         handleGroup(arg.group);
     }
@@ -103,7 +103,7 @@ private HelpTextBuilderSimple createHelpText(alias CommandT, alias ArgBinderInst
             (arg.group.isNull) ? null : arg.group.name,
             arg.uda.position,
             arg.uda.description,
-            cast(ArgIsOptional)((arg.existance & CommandArgExistance.optional) > 0),
+            cast(ArgIsOptional)((arg.existence & CommandArgExistence.optional) > 0),
             arg.uda.name
         );
         handleGroup(arg.group);
