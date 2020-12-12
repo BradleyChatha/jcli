@@ -416,6 +416,11 @@ struct CommandLineSettings
  +
  + Params:
  +  Modules = The modules that contain the commands and/or binder funcs to use.
+ +
+ + See_Also:
+ +  `jaster.cli.infogen` if you'd like to introspect information about commands yourself.
+ +
+ +  `jaster.cli.commandparser` if you only require the ability to parse commands.
  + +/
 final class CommandLineInterface(Modules...)
 {
