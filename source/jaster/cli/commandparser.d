@@ -1,10 +1,40 @@
+/// Contains a type that can parse data into a command.
 module jaster.cli.commandparser;
 
 import std.traits, std.algorithm, std.conv, std.format, std.typecons;
 import jaster.cli.infogen, jaster.cli.binder, jaster.cli.result, jaster.cli.parser;
 
+/++
+ + A type that can parse an argument list into a command.
+ +
+ + Description:
+ +  One may wonder, "what's the difference between `CommandParser` and `CommandLineInterface`?".
+ +
+ +  The answer is simple: `CommandParser` $(B only) performs argument parsing and value binding for a single command,
+ +  whereas `CommandLineInterface` builds on top of `CommandParser` and several other components in order to support
+ +  multiple commands via a complete CLI interface.
+ +
+ +  So in short, if all you want from JCLI is its command modeling and parsing abilties without all the extra faff
+ +  provided by `CommandLineInterface`, and you're fine with performing execution by yourself, then you'll want to use
+ +  this type.
+ +
+ + Commands_:
+ +  Commands and arguments are defined in the same way as `CommandLineInterface` documents.
+ +
+ +  However, you don't need to define an `onExecute` function as this type has no concept of executing commands, only parsing them.
+ +
+ + Dependency_Injection:
+ +  This is a feature provided by `CommandLineInterface`, not `CommandParser`.
+ +
+ +  Command instances must be constructed outside of `CommandParser`, as it has no knowledge on how to do this, it only knows how to parse data into it.
+ +
+ + Params:
+ +  CommandT = The type of your command.
+ +  ArgBinderInstance = The `ArgBinder` to use when binding arguments to the user provided values.
+ + ++/
 struct CommandParser(alias CommandT, alias ArgBinderInstance = ArgBinder!())
 {
+    /// The `CommandInfo` for the command being parsed. Special note is that this is compile-time viewable.
     enum Info = getCommandInfoFor!(CommandT, ArgBinderInstance);
 
     private static struct ArgRuntimeInfo(ArgInfoT)
@@ -19,14 +49,35 @@ struct CommandParser(alias CommandT, alias ArgBinderInstance = ArgBinder!())
     }
     private auto argInfoOf(ArgInfoT)(ArgInfoT info) { return ArgRuntimeInfo!ArgInfoT(info); }
 
-    bool _some_state; // Just so you can keep an instance around.
-
+    /// Same as `parse` except it will automatically construct an `ArgPullParser` for you.
     Result!void parse(string[] args, ref CommandT commandInstance)
     {
         auto parser = ArgPullParser(args);
         return this.parse(parser, commandInstance);
     }
 
+    /++
+     + Parses the given arguments into your command instance.
+     +
+     + Description:
+     +  This performs the full value parsing as described in `CommandLineInterface`.
+     +
+     + Notes:
+     +  If the argument parsing fails, your command instance and parser $(B can be in a half-parsed state).
+     +
+     + Params:
+     +  parser = The parser containing the argument tokens.
+     +  commandInstance = The instance of your `CommandT` to populate.
+     +
+     + Returns:
+     +  A successful result (`Result.isSuccess`) if argument parsing and binding succeeded, otherwise a failure result
+     +  with an error (`Result.asFailure.error`) describing what happened. This error is user-friendly.
+     +
+     + See_Also:
+     +  `jaster.cli.core.CommandLineInterface` as it goes over everything in detail.
+     +
+     +  This project's README also goes into detail about how commands are parsed.
+     + ++/
     Result!void parse(ref ArgPullParser parser, ref CommandT commandInstance)
     {
         auto namedArgs = this.getNamedArgs();
