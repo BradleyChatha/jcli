@@ -1,3 +1,4 @@
+/// Contains the action functions for arguments.
 module jaster.cli.infogen.actions;
 
 import std.format, std.traits, std.typecons : Nullable;
@@ -11,6 +12,8 @@ private alias getBinderUDAs(alias ArgT) = __traits(getAttributes, ArgT);
 // Well now little Timmy, what you don't seem to notice is that D, for some reason, is embedding a "this" pointer (as a consequence of `ArgT` referencing a member field),
 // however because this is still technically a `function` I can call it *without* providing a context pointer, which has led to some very
 // interesting errors.
+
+/// Sets the argument's value via `ArgBinder`.
 static Result!void actionValueBind(alias CommandT, alias ArgT, alias ArgBinderInstance)(string value, ref CommandT commandInstance)
 {
     alias SymbolType = typeof(ArgT);
@@ -31,6 +34,7 @@ static Result!void actionValueBind(alias CommandT, alias ArgT, alias ArgBinderIn
     return Result!void.success();
 }
 
+/// Increments the argument's value either by 1, or by the length of `value` if it is not null.
 static Result!void actionCount(alias CommandT, alias ArgT, alias ArgBinderInstance)(string value, ref CommandT commandInstance)
 {
     static assert(__traits(compiles, {typeof(ArgT) a; a++;}), "Type "~typeof(ArgT).stringof~" does not implement the '++' operator.");
@@ -46,6 +50,7 @@ static Result!void actionCount(alias CommandT, alias ArgT, alias ArgBinderInstan
     return Result!void.success();
 }
 
+/// Fails an assert if used.
 static Result!void dummyAction(alias CommandT)(string value, ref CommandT commandInstance)
 {
     assert(false, "This action doesn't do anything.");

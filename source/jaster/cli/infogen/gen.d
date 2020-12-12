@@ -1,8 +1,21 @@
+/// Templates for generating information about commands.
 module jaster.cli.infogen.gen;
 
 import std.traits, std.meta, std.typecons;
 import jaster.cli.infogen, jaster.cli.udas, jaster.cli.binder;
 
+/++
+ + Generates a `CommandInfo!CommandT` populated with all the information about the command and its arguments.
+ +
+ + Description:
+ +  This template can be useful to gather information about a command and its argument, without having any extra baggage attached.
+ +
+ +  This allows you to introspect information about the command in the same way as JCLI does.
+ +
+ + Params:
+ +  CommandT = The Command to generate the information for.
+ +  ArgBinderInstance = The `ArgBinder` to use when generating argument setter functions.
+ + ++/
 template getCommandInfoFor(alias CommandT, alias ArgBinderInstance)
 {
     static assert(isSomeCommand!CommandT, "Type "~CommandT.stringof~" is not marked with @Command or @CommandDefault.");
@@ -93,7 +106,7 @@ private auto toArgInfoArray(alias CommandT, alias ArgBinderInstance)()
     return tuple(namedArgs, positionalArgs, rawListArg);
 }
 
-template getArgInfoFor(alias CommandT, alias ArgT, alias ArgBinderInstance)
+private template getArgInfoFor(alias CommandT, alias ArgT, alias ArgBinderInstance)
 {
     // Determine argument info type.
     static if(isNamedArgument!ArgT)
@@ -137,7 +150,7 @@ template getArgInfoFor(alias CommandT, alias ArgT, alias ArgBinderInstance)
     );
 }
 
-template actionFuncFromAction(CommandArgAction Action, alias CommandT, alias ArgT, alias ArgBinderInstance)
+private template actionFuncFromAction(CommandArgAction Action, alias CommandT, alias ArgT, alias ArgBinderInstance)
 {
     import std.conv;
 
@@ -157,7 +170,7 @@ template actionFuncFromAction(CommandArgAction Action, alias CommandT, alias Arg
     }
 }
 
-CommandArgExistance determineExistance(alias CommandT, alias ArgTType, CommandArgAction Action)()
+private CommandArgExistance determineExistance(alias CommandT, alias ArgTType, CommandArgAction Action)()
 {
     import std.typecons : Nullable;
 
@@ -174,7 +187,7 @@ CommandArgExistance determineExistance(alias CommandT, alias ArgTType, CommandAr
     return value;
 }
 
-template determineParseScheme(alias CommandT, alias ArgT, CommandArgAction Action)
+private template determineParseScheme(alias CommandT, alias ArgT, CommandArgAction Action)
 {
     import std.typecons : Nullable;
 

@@ -1,8 +1,10 @@
+/// The various datatypes provided by infogen.
 module jaster.cli.infogen.datatypes;
 
 import std.typecons : Flag, Nullable;
 import jaster.cli.parser, jaster.cli.infogen, jaster.cli.result;
 
+/// Used with `Pattern.matchSpacefull`.
 alias AllowPartialMatch = Flag!"partialMatch";
 
 /++
@@ -23,40 +25,97 @@ enum CommandArgAction
     count,
 }
 
+/++
+ + Describes the existance of a command argument. i.e., how many times can it appear; is it optional, etc.
+ + ++/
 enum CommandArgExistance
 {
-    default_ = 0, // Can only appear once, and is mandatory.
+    /// Can only appear once, and is mandatory.
+    default_ = 0,
+
+    /// Argument can be omitted.
     optional = 1 << 0,
+
+    /// Argument can be redefined.
     multiple = 1 << 1,
 }
 
+/++
+ + Describes the parsing scheme used when parsing the argument's value.
+ + ++/
 enum CommandArgParseScheme
 {
+    /// Default parsing scheme.
     default_,
+
+    /// Parsing scheme that special cases bools.
     bool_,
-    allowRepeatedName // Allows: -v, -vvvv(n+1). Special case: -vsome_value ignores the "some_value" and leaves it for the next parse cycle.
+
+    /// Allows: -v, -vvvv(n+1). Special case: -vsome_value ignores the "some_value" and leaves it for the next parse cycle.
+    allowRepeatedName
 }
 
+/++
+ + Describes a command and its parameters.
+ +
+ + Params:
+ +  CommandT = The command that this information belongs to.
+ +
+ + See_Also:
+ +  `jaster.cli.infogen.gen.getCommandInfoFor` for generating instances of this struct.
+ + ++/
 struct CommandInfo(CommandT)
 {
+    /// The command's `Pattern`, if it has one.
     Pattern pattern;
+
+    /// The command's description.
     string description;
+
+    /// Information about all of this command's named arguments.
     NamedArgumentInfo!CommandT[] namedArgs;
+
+    /// Information about all of this command's positional arguments.
     PositionalArgumentInfo!CommandT[] positionalArgs;
+
+    /// Information about this command's raw list argument, if it has one.
     Nullable!(RawListArgumentInfo!CommandT) rawListArg;
 }
 
+/// The function used to perform an argument's setter action.
 alias ArgumentActionFunc(CommandT) = Result!void function(string value, ref CommandT commandInstance);
+
+/++
+ + Contains information about command's argument.
+ +
+ + Params:
+ +  UDA = The UDA that defines the argument (e.g. `@CommandNamedArg`, `@CommandPositionalArg`)
+ +  CommandT = The command type that this argument belongs to.
+ +
+ + See_Also:
+ +  `jaster.cli.infogen.gen.getCommandInfoFor` for generating instances of this struct.
+ + ++/
 struct ArgumentInfo(UDA, CommandT)
 {
     // NOTE: Do not use Nullable in this struct as it causes compile-time errors.
     //       It hits a code path that uses memcpy, which of course doesn't work in CTFE.
 
+    /// The result of `__traits(identifier)` on the argument's symbol.
     string identifier;
+
+    /// The UDA attached to the argument's symbol.
     UDA uda;
+
+    /// The binding action performed to create the argument's value.
     CommandArgAction action;
+
+    /// The user-defined `CommandArgGroup`, this is `.init` for the default group.
     CommandArgGroup group;
+
+    /// Describes the existence properties for this argument.
     CommandArgExistance existance;
+
+    /// Describes how this argument is to be parsed.
     CommandArgParseScheme parseScheme;
 
     // I wish I could defer this to another part of the library instead of here.
@@ -66,6 +125,8 @@ struct ArgumentInfo(UDA, CommandT)
     // My best guesses are: 
     //  1. More weird behaviour with the hidden context pointer D inserts.
     //  2. I might've hit some kind of internal template limit that the compiler is just giving a bad message for.
+
+    /// The function used to perform the binding action for this argument.
     ArgumentActionFunc!CommandT actionFunc;
 }
 
@@ -73,31 +134,59 @@ alias NamedArgumentInfo(CommandT) = ArgumentInfo!(CommandNamedArg, CommandT);
 alias PositionalArgumentInfo(CommandT) = ArgumentInfo!(CommandPositionalArg, CommandT);
 alias RawListArgumentInfo(CommandT) = ArgumentInfo!(CommandRawListArg, CommandT);
 
+/++
+ + A pattern is a simple string format for describing multiple "patterns" that can be matched to user provided input.
+ +
+ + Description:
+ +  A simple pattern of "hello" would match, and only match "hello".
+ +
+ +  A pattern of "hello|world" would match either "hello" or "world".
+ +
+ +  Some patterns may contain spaces, other may not, it should be documented if possible.
+ + ++/
 struct Pattern
 {
     import std.algorithm : all;
     import std.ascii : isWhite;
 
+    /// The raw pattern string.
     string pattern;
 
     //invariant(pattern.length > 0, "Attempting to use null pattern.");
 
+    /// Asserts that there is no whitespace within the pattern.
     void assertNoWhitespace() const
     {
         assert(this.pattern.all!(c => !c.isWhite), "The pattern '"~this.pattern~"' is not allowed to contain whitespace.");
     }
 
+    /// Returns: An input range consisting of every subpattern within this pattern.
     auto byEach()
     {
         import std.algorithm : splitter;
         return this.pattern.splitter('|');
     }
 
+    /++
+     + The default subpattern can be used as the default 'user-facing' name to display to the user.
+     +
+     + Returns:
+     +  Either the first subpattern, or "DEFAULT" if this pattern is null.
+     + ++/
     string defaultPattern()
     {
         return (this.pattern is null) ? "DEFAULT" : this.byEach.front;
     }
 
+    /++
+     + Matches the given input string without splitting up by spaces.
+     +
+     + Params:
+     +  toTestAgainst = The string to test for.
+     +
+     + Returns:
+     +  `true` if there was a match for the given string, `false` otherwise.
+     + ++/
     bool matchSpaceless(string toTestAgainst)
     {
         import std.algorithm : any;
@@ -111,6 +200,29 @@ struct Pattern
         assert(!Pattern("v|verbose").matchSpaceless("lalafell"));
     }
 
+    /++
+     + Advances the given token parser in an attempt to match with any of this pattern's subpatterns.
+     +
+     + Description:
+     +  On successful or partial match (if `allowPartial` is `yes`) the given `parser` will be advanced to the first
+     +  token that is not part of the match.
+     +
+     +  e.g. For the pattern ("hey there"), if you matched it with the tokens ["hey", "there", "me"], the resulting parser
+     +  would only have ["me"] left.
+     +
+     +  On a failed match, the given parser is left unmodified.
+     +
+     + Bugs:
+     +  If a partial match is allowed, and a partial match is found before a valid full match is found, then only the
+     +  partial match is returned.
+     +
+     + Params:
+     +  parser = The parser to match against.
+     +  allowPartial = If `yes` then allow partial matches, otherwise only allow full matches.
+     +
+     + Returns:
+     +  `true` if there was a full or partial (if allowed) match, otherwise `false`.
+     + ++/
     bool matchSpacefull(ref ArgPullParser parser, AllowPartialMatch allowPartial = AllowPartialMatch.no)
     {
         import std.algorithm : splitter;
