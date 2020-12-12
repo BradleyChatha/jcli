@@ -22,7 +22,7 @@ struct RunCommand
     @CommandPositionalArg(0, "command", "The command to run.")
     string command;
 
-    @CommandRawArg
+    @CommandRawListArg
     string[] args;
 
     void onExecute()
