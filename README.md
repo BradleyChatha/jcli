@@ -42,6 +42,8 @@ Tested on Windows and Ubuntu 18.04.
             1. [Using bash-completion](#using-bash-completion)
         1. [Argument parsing actions](#argument-parsing-actions)
             1. [CommandArgAction.count](#commandargactioncount)
+        1. [Command Introspection](#command-introspection)
+        1. [Light-weight command parsing](#light-weight-command-parsing)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Versions](#versions)
 1. [Contributing](#contributing)
@@ -78,7 +80,7 @@ Tested on Windows and Ubuntu 18.04.
 
     * Opt-in dependency injection via constructor injection.
 
-    * Support for command inheritance.
+    * ~~Support for command inheritance~~ (currently broken).
 
     * Both `struct` and `class` are allowed.
 
@@ -838,7 +840,7 @@ Commands can access the raw arg list like so:
 @Command("echo", "Echos the raw arg list.")
 struct EchoCommand
 {
-    @CommandRawArg
+    @CommandRawListArg
     string[] rawArgs;
 
     void onExecute()
@@ -850,7 +852,7 @@ struct EchoCommand
 }
 ```
 
-Simply make a field of type `string[]`, then mark it with `@CommandRawArg`, and then voila:
+Simply make a field of type `string[]`, then mark it with `@CommandRawListArg`, and then voila:
 
 ```bash
 $> ./mytool echo -- Hello world, please be kind.
@@ -1084,6 +1086,9 @@ As I said, JCLI's built-in configuration isn't terribly fancy, and offloads the 
 done when you just want something up quick and easy.
 
 ## Inheritance
+
+**As of v0.12.0 inheritance is currently in a broken state, please see issue [#44](https://github.com/BradleyChatha/jcli/issues/44) for a description**
+**of the issue, as well as a mitigation suggestion.**
 
 JCLI supports command inheritance.
 
@@ -1323,6 +1328,179 @@ $> ./myTool -aaaaa
 $> ./myTool
 0
 ```
+
+## Command Introspection
+
+In certain cases there may be a need for being able to gather and inspect the data of a command and its arguments, ideally in the same way
+JCLI is able to.
+
+JCLI exposes this via the `jaster.cli.infogen` package, which gathers all the JCLI-relevant details about a command and all of its recognised arguments.
+
+This information is available at compile-time, allowing for the usual meta-programming shenanigans that D allows. This is useful for those that want to build
+their own functionality on top of the several parts JCLI provides.
+
+Our example will simply be an empty command with a few arguments we'd like to get information of:
+
+```d
+import std, jaster.cli;
+
+@Command("name", "description")
+struct MyCommand
+{
+    @CommandNamedArg("v|verbose", "Toggle verbose output.")
+    Nullable!bool verbose;
+
+    @CommandNamedArg("l", "Verbose level counter.")
+    @(CommandArgAction.count)
+    uint lCount;
+
+    @CommandPositionalArg(0, "arg1", "The first argument to do stuff with.")
+    string arg1;
+
+    // No definition of 'onExecute' is required for this use-case.
+}
+
+// Via the `getCommandInfoFor` template, we can gather all the JCLI-relevant information we want.
+// We do also have to pass in an instantiation of `ArgBinder`, but it's an unfortunate yet minor design limitation.
+enum Info = getCommandInfoFor!(MyCommand, ArgBinder!());
+
+void main()
+{
+    writeln("[Command Info]");
+    writeln("Pattern     = ", Info.pattern);
+    writeln("Description = ", Info.description);
+    writeln();
+
+    void displayArg(ArgInfoT)(ArgInfoT argInfo)
+    {
+        writefln("[Argument Info - %s]", ArgInfoT.stringof);
+        writeln("Identifier  = ", argInfo.identifier);
+        writeln("UDA         = ", argInfo.uda);
+        writeln("Action      = ", argInfo.action);
+        writeln("Group       = ", argInfo.group);
+        writeln("Existence   = ", argInfo.existence);
+        writeln("ParseScheme = ", argInfo.parseScheme);
+        writeln();
+    }
+
+    foreach(arg; Info.namedArgs) displayArg(arg);
+    foreach(arg; Info.positionalArgs) displayArg(arg);
+
+    if(Info.rawListArg.isNull)
+        writeln("[No Raw Arg List]\n");
+    else
+        displayArg(Info.rawListArg.get);
+
+    // If needed, you can still get access to the argument's symbol.
+    alias Symbol = __traits(getMember, MyCommand, Info.namedArgs[0].identifier);
+    writeln("Arg0Nullable = ", isInstanceOf!(Nullable, typeof(Symbol)));
+}
+```
+
+With the output of:
+
+```bash
+[Command Info]
+Pattern     = Pattern("name")
+Description = description
+
+[Argument Info - ArgumentInfo!(CommandNamedArg, MyCommand)]
+Identifier  = verbose
+UDA         = CommandNamedArg(Pattern("v|verbose"), "Toggle verbose output.")
+Action      = default_
+Group       = CommandArgGroup("", "")
+Existence   = optional
+ParseScheme = bool_
+
+[Argument Info - ArgumentInfo!(CommandNamedArg, MyCommand)]
+Identifier  = lCount
+UDA         = CommandNamedArg(Pattern("l"), "Verbose level counter.")
+Action      = count
+Group       = CommandArgGroup("", "")
+Existence   = cast(CommandArgExistence)3 # NOTE: 3 = multiple | optional, result of the `count` action
+ParseScheme = allowRepeatedName          # Result of the `count` action
+
+[Argument Info - ArgumentInfo!(CommandPositionalArg, MyCommand)]
+Identifier  = arg1
+UDA         = CommandPositionalArg(0, "arg1", "The first argument to do stuff with.")
+Action      = default_
+Group       = CommandArgGroup("", "")
+Existence   = default_
+ParseScheme = default_
+
+[No Raw Arg List]
+
+Arg0Nullable = true
+```
+
+I'll also note that every `ArgumentInfo` also contains an `actionFunc` variable which will be one of the functions inside of
+`jaster.cli.infogen.actions`. This function will perform the binding action (e.g. default_ goes through the `ArgBinder`, count increments, etc.).
+
+## Light-weight command parsing
+
+Some users may find `CommandLineInterface` too *forceful* and heavy in how it works. Some users may prefer that JCLI only handle
+argument parsing and value binding, and then these users will handle the execution/logic themselves.
+
+To do this, you can use the `CommandParser` struct, which is responsible for only parsing data into a command instance. It doesn't even know
+how to construct a command, so you'll have to do that yourself beforehand.
+
+Here's an example:
+
+```d
+import std, jaster.cli;
+enum CalculateOperation
+{
+    add,
+    sub
+}
+
+@CommandDefault // CommandParser doesn't really care about this UDA, it just wants it to exist (or @Command)
+struct CalculateCommand
+{
+    @CommandPositionalArg(0, "a", "The first value.")
+    int a;
+
+    @CommandPositionalArg(1, "b", "The second value.")
+    int b;
+
+    @CommandNamedArg("o|op", "The operation to perform.")
+    CalculateOperation op;
+}
+
+int main(string[] args)
+{
+    // If you don't specify an `ArgBinder`, then `CommandParser` will use the default one.
+    CommandParser!(CalculateCommand, ArgBinder!()) parser; // Same as: CommandParser!CalculateCommand
+
+    CalculateCommand instance;
+    Result!void result = parser.parse(args[1..$], /*ref*/ instance); // args[0] is the program name, so we need to skip it.
+
+    // Normally CommandLineInterface handles everything for us, but now we have to do this ourselves.
+    if(!result.isSuccess)
+    {
+        writeln("calculate: ", result.asFailure.error);
+        return -1;
+    }
+
+    // We also have to call/handle command logic ourself.
+    final switch(instance.op) with(CalculateOperation)
+    {
+        case add: writeln(instance.a + instance.b); break;
+        case sub: writeln(instance.a - instance.b); break;
+    }
+
+    return 0;
+}
+```
+
+If you're this far down you won't need any example output of the above, so I've not bothered with it.
+
+This usage of JCLI supports all forms of argument parsing and value binding (validators, custom binders, etc.) but does not support:
+    * Help text generation (heavily tied to CommandLineInterface, but I want to change that)
+    * Dependency Injection
+    * Automatic support for multiple commands (you'll have to build that yourself on top of `CommandParser`)
+    * Bash Completion (see: help text generation)
+    * Basically anything other than parsing arguments.
 
 # Using JCLI without Dub
 
