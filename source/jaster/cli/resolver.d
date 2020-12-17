@@ -327,7 +327,6 @@ final class CommandResolver(UserDataT)
 
         typeof(return) lastSuccessfulResult;
         
-        // Pretty sure this is like O(n^n), but if you ever have an "n" higher than 5, you have different issues.
         auto   parserCopy   = parser;
         size_t amountToTake = 0;
         while(true)
