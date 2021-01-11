@@ -115,6 +115,9 @@ struct CommandArgGroup
  + ++/
 struct CommandRawListArg {}
 
+// Legacy, keep undocumented.
+alias CommandRawArg = CommandRawListArg;
+
 enum isSomeCommand(alias CommandT) = hasUDA!(CommandT, Command) || hasUDA!(CommandT, CommandDefault);
 
 enum isSymbol(alias ArgT) = __traits(compiles, __traits(getAttributes, ArgT));
