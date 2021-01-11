@@ -63,56 +63,11 @@ ServiceInfo[] addCommandLineInterfaceService(ref ServiceInfo[] services)
     return services;
 }
 
-// To get around a limiation of not being able to use Nullable in ArgumentInfo
-private bool isNull(CommandArgGroup group)
-{
-    return group == CommandArgGroup.init;
-}
-
 /+ COMMAND INFO CREATOR FUNCTIONS +/
 private HelpTextBuilderSimple createHelpText(alias CommandT, alias ArgBinderInstance)(string appName)
 {
-    import std.array : array;
-
-    enum Info = getCommandInfoFor!(CommandT, ArgBinderInstance);
-
-    auto builder = new HelpTextBuilderSimple();
-
-    void handleGroup(CommandArgGroup uda)
-    {
-        if(uda.isNull)
-            return;
-
-        builder.setGroupDescription(uda.name, uda.description);
-    }
-
-    foreach(arg; Info.namedArgs)
-    {
-        builder.addNamedArg(
-            (arg.group.isNull) ? null : arg.group.name,
-            arg.uda.pattern.byEach.array,
-            arg.uda.description,
-            cast(ArgIsOptional)((arg.existence & CommandArgExistence.optional) > 0)
-        );
-        handleGroup(arg.group);
-    }
-
-    foreach(arg; Info.positionalArgs)
-    {
-        builder.addPositionalArg(
-            (arg.group.isNull) ? null : arg.group.name,
-            arg.uda.position,
-            arg.uda.description,
-            cast(ArgIsOptional)((arg.existence & CommandArgExistence.optional) > 0),
-            arg.uda.name
-        );
-        handleGroup(arg.group);
-    }
-
-    builder.commandName = appName ~ " " ~ Info.pattern.defaultPattern;
-    builder.description = Info.description;
-
-    return builder;
+    import jaster.cli.commandhelptext;
+    return CommandHelpText!(CommandT, ArgBinderInstance).init.toBuilder(appName);
 }
 
 private CommandCompleteFunc createCommandCompleteFunc(alias CommandT, alias ArgBinderInstance)()
