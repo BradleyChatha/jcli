@@ -44,6 +44,7 @@ Tested on Windows and Ubuntu 18.04.
             1. [CommandArgAction.count](#commandargactioncount)
         1. [Command Introspection](#command-introspection)
         1. [Light-weight command parsing](#light-weight-command-parsing)
+        1. [Light-weight command help text](#light-weight-command-help-text)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Versions](#versions)
 1. [Contributing](#contributing)
@@ -1501,6 +1502,62 @@ This usage of JCLI supports all forms of argument parsing and value binding (val
     * Automatic support for multiple commands (you'll have to build that yourself on top of `CommandParser`)
     * Bash Completion (see: help text generation)
     * Basically anything other than parsing arguments.
+
+## Light-weight command help text
+
+In situations where you'd rather use light-weight command parsing instead of `CommandLineInterface`, chances are that you'd also like easy access
+to JCLI's per-command help text generation.
+
+This can be achieved using the `CommandHelpText` struct which can be used to either generate a `HelpTextBuilderSimple`, or just a plain `string`
+in the exact same format that you'd normally get by using `CommandLineInterface`:
+
+```d
+module app;
+import std, jaster.cli;
+
+@Command("command", "This is a command that is totally super complicated.")
+struct ComplexCommand
+{
+    @CommandPositionalArg(0, "arg1", "This is a generic argument that isn't grouped anywhere")
+    int a;
+    @CommandPositionalArg(1, "arg2", "This is a generic argument that isn't grouped anywhere")
+    int b;
+
+    @CommandNamedArg("test-flag", "Test flag, please ignore.")
+    bool flag;
+
+    @CommandArgGroup("Debug", "Arguments related to debugging.")
+    {
+        @CommandNamedArg("verbose|v", "Enables verbose logging.")
+        Nullable!bool verbose;
+
+        @CommandNamedArg("log|l", "Specifies a log file to direct output to.")
+        Nullable!string log;
+    }
+
+    @CommandArgGroup("I/O", "Arguments related to I/O.")
+    {
+        @CommandPositionalArg(2, "output", "Where to place the output.")
+        string output;
+
+        @CommandNamedArg("config|c", "Specifies the config file to use.")
+        Nullable!string config;
+    }
+
+    void onExecute(){}
+}
+
+void main(string[] args)
+{
+    CommandHelpText!ComplexCommand helpText;
+    writeln(helpText.toString("mytool.exe"));
+}
+```
+
+This is almost exactly the same as the [argument groups](#argument-groups) example, except that instead of going through `CommandLineInterface` we use `CommandHelpText`
+to directly access the help text for our `ComplexCommand`.
+
+The output is exactly the same as shown in the [argument groups](#argument-groups) example, so I won't be duplicating it here.
 
 # Using JCLI without Dub
 
