@@ -471,13 +471,12 @@ final class HelpTextBuilderSimple
             this._groupOrders.sort!"a.order < b.order"();
             auto groupsInOrder = this._groupOrders.map!(go => this._groups[go.name]);
 
-            // Pre-make certain sections
-            builder.addSection("Positional Args");
-            builder.addSection("Named Args");
-
             // Pass #1: Write positional args first, since that puts the usage string in the right order.
             foreach(group; groupsInOrder)
             {
+                if(group.positional.length == 0)
+                    continue;
+
                 scope section = (group.isDefaultGroup) ? &builder.getOrAddSection("Positional Args") : &getGroupSection(group);
                 writePositionalArgs(*section, group.positional);
             }
@@ -485,6 +484,9 @@ final class HelpTextBuilderSimple
             // Pass #2: Write required named args.
             foreach(group; groupsInOrder)
             {
+                if(group.named.length == 0)
+                    continue;
+
                 scope section = (group.isDefaultGroup) ? &builder.getOrAddSection("Named Args") : &getGroupSection(group);
                 writeNamedArgs(*section, group.named.filter!(arg => !arg.isOptional));
             }
@@ -492,6 +494,9 @@ final class HelpTextBuilderSimple
             // Pass #3: Write optional named args.
             foreach(group; groupsInOrder)
             {
+                if(group.named.length == 0)
+                    continue;
+                    
                 scope section = (group.isDefaultGroup) ? &builder.getOrAddSection("Named Args") : &getGroupSection(group);
                 writeNamedArgs(*section, group.named.filter!(arg => arg.isOptional));
             }
