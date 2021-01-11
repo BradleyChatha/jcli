@@ -42,6 +42,8 @@ template getCommandInfoFor(alias CommandT, alias ArgBinderInstance)
         ArgInfoTuple[1],
         ArgInfoTuple[2]
     );
+
+    enum _dummy = assertGroupDescriptionConsistency!CommandT(getCommandInfoFor);
 }
 ///
 unittest
@@ -197,4 +199,37 @@ private template determineParseScheme(alias CommandT, alias ArgT, CommandArgActi
         enum determineParseScheme = CommandArgParseScheme.allowRepeatedName;
     else
         enum determineParseScheme = CommandArgParseScheme.default_;
+}
+
+private bool assertGroupDescriptionConsistency(alias CommandT)(CommandInfo!CommandT info)
+{
+    import std.algorithm : map, filter, all, uniq, joiner;
+    import std.range     : chain;
+    import std.conv      : to;
+
+    auto groups = info.namedArgs
+                      .map!(a => a.group).chain(
+                          info.positionalArgs
+                              .map!(a => a.group)
+                      );
+    auto uniqueGroupNames = groups.map!(g => g.name).uniq;
+
+    foreach(name; uniqueGroupNames)
+    {
+        auto descriptionsForGroupName = groups.filter!(g => g.name == name).map!(g => g.description);
+        auto firstNonNullDescription = descriptionsForGroupName.filter!(d => d !is null);
+        if(firstNonNullDescription.empty)
+            continue;
+
+        const canonDescription = firstNonNullDescription.front;
+        assert(
+            descriptionsForGroupName.all!(d => d is null || d == canonDescription),
+            "Group '"~name~"' has multiple conflicting descriptions. Canon description is '"~canonDescription~"' but the following conflicts were found: "
+           ~"["
+           ~descriptionsForGroupName.filter!(d => d !is null && d != canonDescription).map!(d => `"`~d~`"`).joiner(" <-> ").to!string
+           ~"]"
+        );
+    }
+
+    return true; // Dummy value, just so I can do enum assignment
 }
