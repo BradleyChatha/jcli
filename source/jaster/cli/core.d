@@ -879,4 +879,21 @@ version(unittest)
            ~"    VALUE"
         ));
     }
+
+    @("Test that CommandLineInterface's sink works")
+    unittest
+    {
+        import std.algorithm : canFind;
+
+        string log;
+
+        CommandLineSettings settings;
+        settings.sink = (string str) { log ~= str; };
+
+        auto cli = new CommandLineInterface!(jaster.cli.core)(settings);
+        cli.parseAndExecute(["--help"], IgnoreFirstArg.no);
+
+        assert(log.length > 0);
+        assert(log.canFind("arg group test"), log); // The name of that unittest command has no real reason to change or to be removed, so I feel safe relying on it.
+    }
 }
