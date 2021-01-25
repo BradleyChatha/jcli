@@ -45,6 +45,7 @@ Tested on Windows and Ubuntu 18.04.
         1. [Command Introspection](#command-introspection)
         1. [Light-weight command parsing](#light-weight-command-parsing)
         1. [Light-weight command help text](#light-weight-command-help-text)
+        1. [Using a custom sink in CommandLineInterface](#using-a-custom-sink-in-commandlineinterface)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Versions](#versions)
 1. [Contributing](#contributing)
@@ -1497,10 +1498,10 @@ int main(string[] args)
 If you're this far down you won't need any example output of the above, so I've not bothered with it.
 
 This usage of JCLI supports all forms of argument parsing and value binding (validators, custom binders, etc.) but does not support:
-    * Help text generation (heavily tied to CommandLineInterface, but I want to change that)
+    * Help text generation (see: [Light-weight command help text](#light-weight-command-help-text))
     * Dependency Injection
     * Automatic support for multiple commands (you'll have to build that yourself on top of `CommandParser`)
-    * Bash Completion (see: help text generation)
+    * Bash Completion (planned to become an independent component though)
     * Basically anything other than parsing arguments.
 
 ## Light-weight command help text
@@ -1558,6 +1559,45 @@ This is almost exactly the same as the [argument groups](#argument-groups) examp
 to directly access the help text for our `ComplexCommand`.
 
 The output is exactly the same as shown in the [argument groups](#argument-groups) example, so I won't be duplicating it here.
+
+# Using a custom sink in CommandLineInterface
+
+By default `CommandLineInterface` will always output onto stdout. This can be undesirable in certain cases, so `CommandLineInterface` allows you
+to specify your own sink to output to.
+
+Please note however that this sink will only affect `CommandLineInterface` itself. Commands may use whatever I/O they desire, so it's unreasonable
+to expect this sink to carry over to commands.
+
+To set this sink you must set the `CommandLineSettings.sink` value when passing in an instance of `CommandLineSettings` into your `CommandLineInterface`:
+
+```d
+module app;
+import std, jaster.cli;
+
+@Command("dummy", "This is a dummy command")
+struct DummyCommand
+{
+    void onExecute(){}
+}
+
+void main()
+{
+    string log;
+
+    CommandLineSettings settings;
+    settings.sink = (string str) { log ~= str; };
+
+    auto cli = new CommandLineInterface!app(settings);
+    cli.parseAndExecute(["--help"], IgnoreFirstArg.no);
+
+    assert(log.length > 0);
+    assert(log.canFind("dummy"));
+}
+```
+
+The above example shows a minimal program that captures the output of `CommandLineInterface` into a string.
+
+If `CommandLineSettings.sink` is left as null (that is, `Nullable.isNull`, not `is null`) then `CommandLineInterface` will default to using `std.stdio.write`.
 
 # Using JCLI without Dub
 
