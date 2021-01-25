@@ -20,6 +20,9 @@ alias IgnoreFirstArg = Flag!"ignoreFirst";
 private alias CommandExecuteFunc = Result!int delegate(ArgPullParser parser, scope ref ServiceScope services, HelpTextBuilderSimple helpText);
 private alias CommandCompleteFunc = void delegate(string[] before, string current, string[] after, ref char[] output);
 
+/// See `CommandLineSettings.sink`
+alias CommandLineSinkFunc = void delegate(string text);
+
 /++
  + A service that allows commands to access the `CommandLineInterface.parseAndExecute` function of the command's `CommandLineInterface`.
  +
@@ -120,7 +123,7 @@ private CommandCompleteFunc createCommandCompleteFunc(alias CommandT, alias ArgB
     };
 }
 
-private CommandExecuteFunc createCommandExecuteFunc(alias CommandT, alias ArgBinderInstance)()
+private CommandExecuteFunc createCommandExecuteFunc(alias CommandT, alias ArgBinderInstance)(CommandLineSettings settings)
 {
     import std.format    : format;
     import std.algorithm : filter, map;
@@ -133,8 +136,7 @@ private CommandExecuteFunc createCommandExecuteFunc(alias CommandT, alias ArgBin
     {
         if(containsHelpArgument(parser))
         {
-            import std.stdio : writeln;
-            writeln(helpText.toString());
+            settings.sink.get()(helpText.toString() ~ '\n');
             return Result!int.success(0);
         }
 
@@ -184,6 +186,7 @@ private Result!int onExecuteRunCommand(alias T)(ref T commandInstance)
     }
 }
 
+
 /++
  + Settings that can be provided to `CommandLineInterface` to change certain behaviour.
  + ++/
@@ -194,7 +197,7 @@ struct CommandLineSettings
      +
      + If left as `null`, then the executable's name is used instead.
      + ++/
-    string appName;
+    Nullable!string appName;
 
     /++
      + Whether or not `CommandLineInterface` should provide bash completion. Defaults to `false`.
@@ -202,6 +205,17 @@ struct CommandLineSettings
      + See_Also: The README for this project.
      + ++/
     bool bashCompletion = false;
+
+    /++
+     + A user-defined sink to call whenever `CommandLineInterface` itself (not it's subcomponents or commands) wants to
+     + output text.
+     +
+     + If left as `null`, then a default sink is made where `std.stdio.write` is used.
+     +
+     + Notes:
+     +  Strings passed to this function will already include a leading new line character where needed.
+     + ++/
+    Nullable!CommandLineSinkFunc sink;
 }
 
 /++
@@ -454,9 +468,13 @@ final class CommandLineInterface(Modules...)
             import std.algorithm : sort;
             import std.file      : thisExePath;
             import std.path      : baseName;
+            import std.stdio     : write;
 
-            if(settings.appName is null)
+            if(settings.appName.isNull)
                 settings.appName = thisExePath.baseName;
+
+            if(settings.sink.isNull)
+                settings.sink = (string str) { write(str); };
 
             if(services is null)
                 services = new ServiceProvider([addCommandLineInterfaceService()]);
@@ -508,13 +526,12 @@ final class CommandLineInterface(Modules...)
         {
             import std.algorithm : filter, any;
             import std.exception : enforce;
-            import std.stdio     : writefln;
             import std.format    : format;
 
             if(args.empty && this._defaultCommand.isNull)
             {
-                writefln(this.makeErrorf("No command was given."));
-                writefln(this.createAvailableCommandsHelpText(args, "Available commands").toString());
+                this.writeln(this.makeErrorf("No command was given."));
+                this.writeln(this.createAvailableCommandsHelpText(args, "Available commands").toString());
                 return -1;
             }
 
@@ -580,11 +597,7 @@ final class CommandLineInterface(Modules...)
         void addDefaultCommand()
         {
             static if(DefaultCommands.length > 0)
-            {
-                enum UDA = Command("DEFAULT", getSingleUDA!(DefaultCommands[0], CommandDefault).description);
-
                 _defaultCommand = getCommand!(DefaultCommands[0]);
-            }
         }
 
         void addCommandsFromModule(alias Module)()
@@ -611,8 +624,8 @@ final class CommandLineInterface(Modules...)
         CommandInfo getCommand(T)()
         {
             CommandInfo info;
-            info.helpText   = createHelpText!(T, ArgBinderInstance)(this._settings.appName);
-            info.doExecute  = createCommandExecuteFunc!(T, ArgBinderInstance)();
+            info.helpText   = createHelpText!(T, ArgBinderInstance)(this._settings.appName.get);
+            info.doExecute  = createCommandExecuteFunc!(T, ArgBinderInstance)(this._settings);
             info.doComplete = createCommandCompleteFunc!(T, ArgBinderInstance)();
 
             return info;
@@ -624,16 +637,14 @@ final class CommandLineInterface(Modules...)
     {
         int onExecute(ref ParseResult result)
         {
-            import std.stdio : writeln, writefln;
-
             final switch(result.type) with(ParseResultType)
             {
                 case showHelpText:
-                    writeln(result.helpText);
+                    this.writeln(result.helpText);
                     return 0;
 
                 case commandNotFound:
-                    writeln(result.helpText);
+                    this.writeln(result.helpText);
                     return -1;
 
                 case commandFound: break;
@@ -642,7 +653,7 @@ final class CommandLineInterface(Modules...)
             auto statusCode = result.command.doExecute(result.argParserAfterAttempt, result.services, result.command.helpText);
             if(!statusCode.isSuccess)
             {
-                writeln(this.makeErrorf(statusCode.asFailure.error));
+                this.writeln(this.makeErrorf(statusCode.asFailure.error));
                 return -1;
             }
 
@@ -658,7 +669,7 @@ final class CommandLineInterface(Modules...)
             import std.array     : array;
             import std.algorithm : map, filter, splitter, equal, startsWith;
             import std.conv      : to;
-            import std.stdio     : writeln;
+            import std.stdio     : writeln; // Planning on moving this into its own component soon, so we'll just leave this writeln here.
 
             // Expected args:
             //  [0]    = COMP_CWORD
@@ -777,7 +788,18 @@ final class CommandLineInterface(Modules...)
         string makeErrorf(Args...)(string formatString, Args args)
         {
             import std.format : format;
-            return "%s: %s".format(this._settings.appName, formatString.format(args));
+            return "%s: %s".format(this._settings.appName.get, formatString.format(args));
+        }
+
+        void writeln(string str)
+        {
+            assert(!this._settings.sink.isNull, "The ctor should've set this.");
+
+            auto sink = this._settings.sink.get();
+            assert(sink !is null, "The sink was set, but it's still null.");
+
+            sink(str);
+            sink("\n");
         }
     }
 }
@@ -786,7 +808,7 @@ final class CommandLineInterface(Modules...)
 
 private alias AllowPartialMatch = Flag!"partialMatch";
 
-bool containsHelpArgument(ArgPullParser args)
+private bool containsHelpArgument(ArgPullParser args)
 {
     import std.algorithm : any;
 
