@@ -280,7 +280,11 @@ TestResult runTest(TestCase testCase)
         failIf(!results[1].output.match(testCase.outputRegex), "Output doesn't contain a match for the given regex.");
 
     if(testCase.allowedToFail)
+    {
+        if(!passed)
+            UserIO.logWarningf("Test FAILED (ALLOWED).");
         passed = true;
+    }
 
     if(!passed)
         UserIO.logErrorf("Test FAILED");
