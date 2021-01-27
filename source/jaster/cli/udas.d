@@ -29,7 +29,7 @@ template getSingleUDA(alias Symbol, alias UDA)
 ///
 version(unittest)
 {
-    import jaster.cli.core : Command;
+    import jaster.cli.infogen : Command;
 
     private struct A {}
 
@@ -43,11 +43,11 @@ version(unittest)
 
 unittest
 {
-    import jaster.cli.core : Command;
+    import jaster.cli.infogen : Command;
 
     static assert(!__traits(compiles, getSingleUDA!(A, Command)));
     static assert(!__traits(compiles, getSingleUDA!(C, Command)));
-    static assert(getSingleUDA!(B, Command).pattern == "One");
+    static assert(getSingleUDA!(B, Command).pattern.pattern == "One");
 }
 
 /++
@@ -86,7 +86,7 @@ template getSymbolsByUDAInModules(alias attribute, Modules...)
 unittest
 {
     import std.meta: AliasSeq;
-    import jaster.cli.core : Command;
+    import jaster.cli.infogen : Command;
 
     static assert(is(getSymbolsByUDAInModules!(Command, jaster.cli.udas) == AliasSeq!(B, C)));
     static assert(is(getSymbolsByUDAInModules!(Command, jaster.cli.udas, jaster.cli.udas) == AliasSeq!(B, C, B, C)));

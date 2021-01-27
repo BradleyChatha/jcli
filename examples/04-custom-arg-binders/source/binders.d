@@ -18,5 +18,6 @@ import jaster.cli : ArgBinderFunc, Result;
  @ArgBinderFunc
  Result!File fileBinder(string arg)
  {
-    return Result!File.success(File(arg, "r"));
+    try return Result!File.success(File(arg, "r"));
+    catch(Exception) return Result!File.failure("File does not exist.");
  }

@@ -74,3 +74,14 @@ struct Result(T)
     static if(is(T == void))
         static Result!T failureIf()(bool condition, string error) { return condition ? failure(error) : success(); }
 }
+
+void resultAssert(ResultT, ValueT)(ResultT result, ValueT expected)
+{
+    assert(result.isSuccess, result.asFailure.error);
+    assert(result.asSuccess.value == expected);
+}
+
+void resultAssert(ResultT)(ResultT result)
+{
+    assert(result.isSuccess, result.asFailure.error);
+}
