@@ -16,6 +16,9 @@ private alias getBinderUDAs(alias ArgT) = __traits(getAttributes, ArgT);
 /// Sets the argument's value via `ArgBinder`.
 static Result!void actionValueBind(alias CommandT, alias ArgT, alias ArgBinderInstance)(string value, ref CommandT commandInstance)
 {
+    import std.typecons : Nullable; // Don't ask me why, but I need to repeat the import here for the amalgamation to compile properly.
+                                    // For some incredibly strange reason, if we don't do this, then `Nullable` evaluated to `void`.
+
     alias SymbolType = typeof(ArgT);
 
     static if(isInstanceOf!(Nullable, SymbolType))

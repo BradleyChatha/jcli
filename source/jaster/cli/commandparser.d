@@ -290,162 +290,163 @@ struct CommandParser(alias CommandT, alias ArgBinderInstance = ArgBinder!())
     }
 }
 
-version(unittest):
-
-// For the most part, these are just some choice selections of tests from core.d that were moved over.
-
-// NOTE: The only reason it can see and use private @Commands is because they're in the same module.
-@Command("", "This is a test command")
-private struct CommandTest
+version(unittest)
 {
-    // These are added to test that they are safely ignored.
-    alias al = int;
-    enum e = 2;
-    struct S
+    // For the most part, these are just some choice selections of tests from core.d that were moved over.
+
+    // NOTE: The only reason it can see and use private @Commands is because they're in the same module.
+    @Command("", "This is a test command")
+    private struct CommandTest
     {
+        // These are added to test that they are safely ignored.
+        alias al = int;
+        enum e = 2;
+        struct S
+        {
+        }
+        void f () {}
+
+        @CommandNamedArg("a|avar", "A variable")
+        int a;
+
+        @CommandPositionalArg(0, "b")
+        Nullable!string b;
+
+        @CommandNamedArg("c")
+        Nullable!bool c;
     }
-    void f () {}
-
-    @CommandNamedArg("a|avar", "A variable")
-    int a;
-
-    @CommandPositionalArg(0, "b")
-    Nullable!string b;
-
-    @CommandNamedArg("c")
-    Nullable!bool c;
-}
-@("General test")
-unittest
-{
-    auto command = CommandParser!CommandTest();
-    auto instance = CommandTest();
-
-    resultAssert(command.parse(["-a 20"], instance));
-    assert(instance.a == 20);
-    assert(instance.b.isNull);
-    assert(instance.c.isNull);
-
-    instance = CommandTest.init;
-    resultAssert(command.parse(["20", "--avar 20"], instance));
-    assert(instance.a == 20);
-    assert(instance.b.get == "20");
-
-    instance = CommandTest.init;
-    resultAssert(command.parse(["-a 20", "-c"], instance));
-    assert(instance.c.get);
-}
-
-@Command("booltest", "Bool test")
-private struct BoolTestCommand
-{
-    @CommandNamedArg("a")
-    bool definedNoValue;
-
-    @CommandNamedArg("b")
-    bool definedFalseValue;
-
-    @CommandNamedArg("c")
-    bool definedTrueValue;
-
-    @CommandNamedArg("d")
-    bool definedNoValueWithArg;
-
-    @CommandPositionalArg(0)
-    string comesAfterD;
-}
-@("Test that booleans are handled properly")
-unittest
-{
-    auto command = CommandParser!BoolTestCommand();
-    auto instance = BoolTestCommand();
-
-    resultAssert(command.parse(["-a", "-b=false", "-c", "true", "-d", "Lalafell"], instance));
-    assert(instance.definedNoValue);
-    assert(!instance.definedFalseValue);
-    assert(instance.definedTrueValue);
-    assert(instance.definedNoValueWithArg);
-    assert(instance.comesAfterD == "Lalafell");
-}
-
-@Command("rawListTest", "Test raw lists")
-private struct RawListTestCommand
-{
-    @CommandNamedArg("a")
-    bool dummyThicc;
-
-    @CommandRawListArg
-    string[] rawList;
-}
-@("Test that raw lists work")
-unittest
-{
-    CommandParser!RawListTestCommand command;
-    RawListTestCommand instance;
-
-    resultAssert(command.parse(["-a", "--", "raw1", "raw2"], instance));
-    assert(instance.rawList == ["raw1", "raw2"], "%s".format(instance.rawList));
-}
-
-@ArgValidator
-private struct Expect(T)
-{
-    T value;
-
-    Result!void onValidate(T boundValue)
+    @("General test")
+    unittest
     {
-        import std.format : format;
+        auto command = CommandParser!CommandTest();
+        auto instance = CommandTest();
 
-        return this.value == boundValue
-        ? Result!void.success()
-        : Result!void.failure("Expected value to equal '%s', not '%s'.".format(this.value, boundValue));
+        resultAssert(command.parse(["-a 20"], instance));
+        assert(instance.a == 20);
+        assert(instance.b.isNull);
+        assert(instance.c.isNull);
+
+        instance = CommandTest.init;
+        resultAssert(command.parse(["20", "--avar 20"], instance));
+        assert(instance.a == 20);
+        assert(instance.b.get == "20");
+
+        instance = CommandTest.init;
+        resultAssert(command.parse(["-a 20", "-c"], instance));
+        assert(instance.c.get);
     }
-}
 
-@Command("validationTest", "Test validation")
-private struct ValidationTestCommand
-{
-    @CommandPositionalArg(0)
-    @Expect!string("lol")
-    string value;
-}
-@("Test ArgBinder validation integration")
-unittest
-{
-    CommandParser!ValidationTestCommand command;
-    ValidationTestCommand instance;
-
-    resultAssert(command.parse(["lol"], instance));
-    assert(instance.value == "lol");
-    
-    assert(!command.parse(["nan"], instance).isSuccess);
-}
-
-@Command("arg action count", "Test that the count arg action works")
-private struct ArgActionCount
-{
-    @CommandNamedArg("c")
-    @(CommandArgAction.count)
-    int c;
-}
-@("Test that CommandArgAction.count works.")
-unittest
-{
-    CommandParser!ArgActionCount command;
-
-    void test(string[] args, int expectedCount)
+    @Command("booltest", "Bool test")
+    private struct BoolTestCommand
     {
+        @CommandNamedArg("a")
+        bool definedNoValue;
+
+        @CommandNamedArg("b")
+        bool definedFalseValue;
+
+        @CommandNamedArg("c")
+        bool definedTrueValue;
+
+        @CommandNamedArg("d")
+        bool definedNoValueWithArg;
+
+        @CommandPositionalArg(0)
+        string comesAfterD;
+    }
+    @("Test that booleans are handled properly")
+    unittest
+    {
+        auto command = CommandParser!BoolTestCommand();
+        auto instance = BoolTestCommand();
+
+        resultAssert(command.parse(["-a", "-b=false", "-c", "true", "-d", "Lalafell"], instance));
+        assert(instance.definedNoValue);
+        assert(!instance.definedFalseValue);
+        assert(instance.definedTrueValue);
+        assert(instance.definedNoValueWithArg);
+        assert(instance.comesAfterD == "Lalafell");
+    }
+
+    @Command("rawListTest", "Test raw lists")
+    private struct RawListTestCommand
+    {
+        @CommandNamedArg("a")
+        bool dummyThicc;
+
+        @CommandRawListArg
+        string[] rawList;
+    }
+    @("Test that raw lists work")
+    unittest
+    {
+        CommandParser!RawListTestCommand command;
+        RawListTestCommand instance;
+
+        resultAssert(command.parse(["-a", "--", "raw1", "raw2"], instance));
+        assert(instance.rawList == ["raw1", "raw2"], "%s".format(instance.rawList));
+    }
+
+    @ArgValidator
+    private struct Expect(T)
+    {
+        T value;
+
+        Result!void onValidate(T boundValue)
+        {
+            import std.format : format;
+
+            return this.value == boundValue
+            ? Result!void.success()
+            : Result!void.failure("Expected value to equal '%s', not '%s'.".format(this.value, boundValue));
+        }
+    }
+
+    @Command("validationTest", "Test validation")
+    private struct ValidationTestCommand
+    {
+        @CommandPositionalArg(0)
+        @Expect!string("lol")
+        string value;
+    }
+    @("Test ArgBinder validation integration")
+    unittest
+    {
+        CommandParser!ValidationTestCommand command;
+        ValidationTestCommand instance;
+
+        resultAssert(command.parse(["lol"], instance));
+        assert(instance.value == "lol");
+        
+        assert(!command.parse(["nan"], instance).isSuccess);
+    }
+
+    @Command("arg action count", "Test that the count arg action works")
+    private struct ArgActionCount
+    {
+        @CommandNamedArg("c")
+        @(CommandArgAction.count)
+        int c;
+    }
+    @("Test that CommandArgAction.count works.")
+    unittest
+    {
+        CommandParser!ArgActionCount command;
+
+        void test(string[] args, int expectedCount)
+        {
+            ArgActionCount instance;
+            resultAssert(command.parse(args, instance));
+            assert(instance.c == expectedCount);
+        }
+
         ArgActionCount instance;
-        resultAssert(command.parse(args, instance));
-        assert(instance.c == expectedCount);
+
+        test([], 0);
+        test(["-c"], 1);
+        test(["-c", "-c"], 2);
+        test(["-ccccc"], 5);
+        assert(!command.parse(["-ccv"], instance).isSuccess); // -ccv -> [name '-c', positional 'cv']. -1 because too many positional args.
+        test(["-c", "cccc"], 5); // Unfortunately this case also works because of limitations in ArgPullParser
     }
-
-    ArgActionCount instance;
-
-    test([], 0);
-    test(["-c"], 1);
-    test(["-c", "-c"], 2);
-    test(["-ccccc"], 5);
-    assert(!command.parse(["-ccv"], instance).isSuccess); // -ccv -> [name '-c', positional 'cv']. -1 because too many positional args.
-    test(["-c", "cccc"], 5); // Unfortunately this case also works because of limitations in ArgPullParser
 }

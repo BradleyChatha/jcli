@@ -1,0 +1,5 @@
+name "amalgamator"
+description "A minimal D application."
+authors "Bradley Chatha"
+copyright "Copyright © 2021, Bradley Chatha"
+license "MIT"

@@ -806,8 +806,6 @@ final class CommandLineInterface(Modules...)
 
 // HELPER FUNCS
 
-private alias AllowPartialMatch = Flag!"partialMatch";
-
 private bool containsHelpArgument(ArgPullParser args)
 {
     import std.algorithm : any;

@@ -1,0 +1,15 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/amalgamator
+amalgamator.so
+amalgamator.dylib
+amalgamator.dll
+amalgamator.a
+amalgamator.lib
+amalgamator-test-*
+*.exe
+*.o
+*.obj
+*.lst

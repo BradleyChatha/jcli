@@ -134,7 +134,10 @@ static struct ArgBinder(Modules...)
     import std.format : format;
     import jaster.cli.udas, jaster.cli.internal;
     
-    alias AllModules = AliasSeq!(Modules, jaster.cli.binder);
+    version(Amalgamation)
+        alias AllModules = AliasSeq!(Modules, jcli);
+    else
+        alias AllModules = AliasSeq!(Modules, jaster.cli.binder);
 
     /+ PUBLIC INTERFACE +/
     public static
