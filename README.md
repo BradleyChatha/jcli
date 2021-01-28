@@ -47,6 +47,7 @@ Tested on Windows and Ubuntu 18.04.
         1. [Light-weight command help text](#light-weight-command-help-text)
         1. [Using a custom sink in CommandLineInterface](#using-a-custom-sink-in-commandlineinterface)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
+1. [Using the amalgamation](#using-the-amalgamation)
 1. [Versions](#versions)
 1. [Contributing](#contributing)
 
@@ -1610,6 +1611,44 @@ safe to assume it'll stay up-to-date, and it is easy to add into your project.
 them in the first place.
 
 Other than that, if you're not using dub/dub-compatible build system, then I assume you already understand how you would go about adding third party code into your builds.
+
+Furthermore, you may also make use of the [amalgamation](#using-the-amalgamation) file if needed.
+
+# Using the amalgamation
+
+The amalgamation [file](https://github.com/BradleyChatha/jcli/blob/master/single-file/jcli.d) is a file with JCLI's source code bundled into a single file, with
+a few patches made to ensure that it can compile.
+
+The existence of this file was inspired by a certain property of the excellent [arsd](https://github.com/adamdruppe/arsd) collection: all you need is a file or two
+and suddenly you have access to some very useful code.
+
+Likewise the idea with the amalgamation file is that all you have to do is copy it into your project and then it's ready to use.
+
+However, it's not a clean replacement for using JCLI as a dub package/multi-file library, as there are certain side effects and considerations:
+
+1. JCLI has a hard dependency on JIOC, so JIOC's source code is *also* included inside of the amalgamation.
+
+    * This means if your project already includes JIOC as a dub package, you'll have to remove it and use the amalgamation version otherwise you'll get conflicts.
+
+    * Whether or not you want or need it, you now have JIOC included within your project as well.
+
+    * I may provide another amalgamation file that doesn't include JIOC's source code, but assumes your project will have `import jioc` available.
+
+1. Because all of the code is now inside of a single file, this also means that there is only a single module.
+
+    * So instead of `import jaster.cli, jaster.cli.binder, jcli` and so on, the only thing you can import now is `import jcli`.
+
+    * This means that the module also suffers from pollution, which can be pretty annoying especially in regards to the fact JIOC will be implicitly included as well.
+
+    * D's module system however provides selective imports, so that can aid you in avoiding symbol pollution within your code.
+
+1. Support for this is still in the early stages.
+
+    * Throwing a bunch of files together with a few hacks to make them compile can lead to compiler errors, or worse, behavioural differences.
+
+    * Please file an issue if you encounter any problems that are unique to the amalgamation.
+
+Finally, if the idea of the amalgamation is appealing to you, but you feel there are certain problems or difficulties that can be addressed, feel free to file an issue.
 
 # Versions
 
