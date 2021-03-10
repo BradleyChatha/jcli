@@ -1,4 +1,7 @@
-on: [push, pull_request]
+on:
+  create:
+    tags:
+      - v*
 
 name: Ensure amalgamation is up to date
 
