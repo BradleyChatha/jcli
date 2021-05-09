@@ -204,7 +204,7 @@ static final abstract class Shell
          + Notes:
          +  In Powershell, `Get-Command` is used.
          +
-         +  On Linux, `which` is used.
+         +  On Posix, `command -v` is used.
          +
          +  On Windows, `where` is used.
          +
@@ -219,8 +219,8 @@ static final abstract class Shell
             if(Shell.isInPowershell)
                 return Shell.executeHasNonEmptyOutput("Get-Command "~command);
 
-            version(linux)
-                return Shell.executeHasNonEmptyOutput("which "~command);
+            version(Posix) // https://stackoverflow.com/questions/762631/find-out-if-a-command-exists-on-posix-system
+                return Shell.executeHasNonEmptyOutput("command -v "~command);
             else version(Windows)
             {
                 import std.algorithm : startsWith;
