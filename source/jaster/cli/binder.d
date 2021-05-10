@@ -560,12 +560,54 @@ if(isNumeric!T || is(T == bool))
 
 /+ BUILT-IN VALIDATORS +/
 
+// I didn't *want* this to be templated, but when it's not templated and asks directly for a
+// `Result!void function(string)`, I get a very very odd error message: "expression __lambda2 is not a valid template value argument"
+/++
+ + An `@ArgValidator` that runs the given `Func` during pre-binding validation.
+ +
+ + Notes:
+ +  This validator has mostly identical functionality as `PostValidate`, so please refer to `PostValidate` for more details.
+ +
+ +  The only difference is that the provided `Func` is only ever passed a `string` as its parameter.
+ +
+ + Params:
+ +  Func = The function that provides validation on an argument.
+ + ++/
+@ArgValidator
+struct PreValidate(alias Func)
+{
+    // Duplication but meeeeeh.
+    Result!void onPreValidate(string arg)
+    {
+        auto result = Func(arg);
+        static if(is(typeof(result) == Result!void))
+            return result;
+        else static if(is(typeof(result) == bool))
+            return Result!void.failureIf(!result, "PreValidate constraint failed.");
+        else static if(is(typeof(result) == string))
+            return Result!void.failureIf(result !is null, result);
+        else static assert(false, "Can't handle return type of: "~typeof(result).stringof);
+    }
+}
+
 /++
  + An `@ArgValidator` that runs the given `Func` during post-binding validation.
  +
  + Notes:
  +  This validator is loosely typed, so if your validator function doesn't compile or doesn't work with whatever
  +  type you attach this validator to, you might get some long-winded errors.
+ +
+ + Usage:
+ +  The `Func` will be passed the type of the argument it's attached to. So if it's attached to an `int`, then
+ +  it must take a single `int` parameter.
+ +
+ +  The `Func` can return a `Result!void` which will be passed as-is to the ArgBinder.
+ +
+ +  The `Func` can return a `string`. If this string is `null`, then a success result is generated. Otherwise, an error result is generated using
+ +  the value of the string as the error message.
+ +
+ +  The `Func` can return a `bool`. If this bool is `true`, then a success result is generated. Otherwise, an error result is generated
+ +  with a generic error message.
  +
  + Params:
  +  Func = The function that provides validation on a value.
@@ -579,41 +621,52 @@ struct PostValidate(alias Func)
     // However that does mean we can't provide our own error message, but the scope is so small that a compiler generated one should suffice.
     Result!void onValidate(ParamT)(ParamT arg)
     {
-        return Func(arg);
-    }
-}
-
-// I didn't *want* this to be templated, but when it's not templated and asks directly for a
-// `Result!void function(string)`, I get a very very odd error message: "expression __lambda2 is not a valid template value argument"
-/++
- + An `@ArgValidator` that runs the given `Func` during pre-binding validation.
- +
- + Params:
- +  Func = The function that provides validation on an argument.
- + ++/
-@ArgValidator
-struct PreValidate(alias Func)
-{
-    Result!void onPreValidate(string arg)
-    {
-        return Func(arg);
+        auto result = Func(arg);
+        static if(is(typeof(result) == Result!void))
+            return result;
+        else static if(is(typeof(result) == bool))
+            return Result!void.failureIf(!result, "PostValidate constraint failed.");
+        else static if(is(typeof(result) == string))
+            return Result!void.failureIf(result !is null, result);
+        else static assert(false, "Can't handle return type of: "~typeof(result).stringof);
     }
 }
 ///
 @("PostValidate and PreValidate")
 unittest
 {
-    static struct S
+    static struct ReturnsResult
     {
         @PreValidate!(str => Result!void.failureIf(str.length != 3, "Number must be 3 digits long."))
         @PostValidate!(i => Result!void.failureIf(i <= 200, "Number must be larger than 200."))   
         int arg;
     }
-    
-    alias Binder = ArgBinder!(jaster.cli.binder);
-    alias UDAs   = __traits(getAttributes, S.arg);
 
-    assert(Binder.bind!(int, UDAs)("20").isFailure);
-    assert(Binder.bind!(int, UDAs)("199").isFailure);
-    assert(Binder.bind!(int, UDAs)("300").asSuccess.value == 300);
+    static struct ReturnsString
+    {
+        @PreValidate!(str => (str.length != 3) ? "Number must be 3 digits long."   : null)
+        @PostValidate!(i =>  (i <= 200)        ? "Number must be larger than 200." : null)   
+        int arg;
+    }
+
+    static struct ReturnsBool
+    {
+        @PreValidate!(str => (str.length == 3))
+        @PostValidate!(i =>  (i > 200))   
+        int arg;
+    }
+
+    alias Binder = ArgBinder!(jaster.cli.binder);
+
+    void test(T)()
+    {
+        alias UDAs = __traits(getAttributes, T.arg);
+        assert(Binder.bind!(int, UDAs)("20").isFailure);
+        assert(Binder.bind!(int, UDAs)("199").isFailure);
+        assert(Binder.bind!(int, UDAs)("300").asSuccess.value == 300);
+    }
+
+    test!ReturnsResult();
+    test!ReturnsString();
+    test!ReturnsBool();
 }
