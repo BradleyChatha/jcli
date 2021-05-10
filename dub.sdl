@@ -4,13 +4,16 @@ authors "Bradley Chatha" "Andrey Zherikov" "Christian Köstlin"
 copyright "Copyright © 2021, Bradley Chatha"
 license "MIT"
 dependency "jioc" version=">=0.2.0"
-dependency "silly" version="~>1.0.2"
 dependency "asdf" version="~>0.5.7" optional=true
 targetType "library"
 targetPath "bin"
 
 configuration "default"{
     versions "d"
+}
+
+configuration "unittest" {
+    dependency "silly" version="~>1.0.2"
 }
 
 configuration "verbose_debug" {
