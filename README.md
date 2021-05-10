@@ -735,6 +735,9 @@ Excellent. We have an issue however where this is all a bit... cumbersome, right
 
 Well, for small one-off validation tasks like this, we can use the two built-in validators `@PreValidate` and `@PostValidate`.
 
+The functions you use in these two validators can return: `Result!void`, `bool`, or `string`. So let's use `string` which signals
+an error if we return non-null, and also `bool` which signals an error if we return `false`.
+
 This is what the above example would look like using these two validators:
 
 ```d
@@ -742,15 +745,16 @@ This is what the above example would look like using these two validators:
 struct CatCommand
 {
     @CommandPositionalArg(0, "filePath", "The path to the file to display.")
-    @PreValidate!(str => Result!void.failureIf(!str.endsWith(".json"), "Expected file to end with .json."))
-    @PostValidate!(file => Result!void.failureIf(file.size() > 2, "File is larger than 2 bytes."))
+    @PreValidate!(str => !str.endsWith(".json") ? "Expected file to end with .json." : null)
+    @PostValidate!(file => file.size() <= 2)
     File file;
 
     // omitted...
 }
 ```
 
-So now we've moved the logic of `HasExtention` into a lamba inside `@PreValidate`, and the logic of `MaxSize` into `PostValidate`.
+So now we've moved the logic of `HasExtention` into a lamba inside `@PreValidate` using the `string` return variant,
+and the logic of `MaxSize` into `PostValidate` using the `bool` return variant.
 
 You can of course also pass already-made functions instead of lambdas, if that's more your thing.
 
