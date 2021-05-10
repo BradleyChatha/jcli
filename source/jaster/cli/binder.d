@@ -487,6 +487,25 @@ private template TryGetArgBindWith(UDAs...)
         alias TryGetArgBindWith = Filtered[0];
 }
 
+private template SortedEnumValueNamesFor(E)
+if(is(E == enum))
+{
+    private string names()
+    {
+        import std.array : array, join;
+        import std.algorithm : sort;
+
+        string[] names;
+        static foreach(member; __traits(allMembers, E))
+            names ~= member;
+
+        names.sort();
+        return names.join(", ");
+    }
+
+    const SortedEnumValueNamesFor = names();
+}
+
 /+ BUILT-IN BINDERS +/
 
 /// arg -> string. The result is the contents of `arg` as-is.
@@ -496,10 +515,41 @@ Result!string stringBinder(string arg) nothrow pure
     return Result!string.success(arg);
 }
 
-/// arg -> numeric | enum | bool. The result is `arg` converted to `T`.
+/// arg -> enum.
+@ArgBinderFunc @trusted // assumeUnique is @system
+Result!T enumBinder(T)(string arg) pure
+if(is(T == enum))
+{
+    import std.algorithm : joiner;
+    import std.array     : Appender;
+    import std.conv      : to, ConvException;
+    import std.exception : assumeUnique;
+    import jaster.cli.text : asLineWrapped, LineWrapOptions;
+
+    try return Result!T.success(arg.to!T);
+    catch(ConvException ex)
+    {
+        Appender!(char[]) msg;
+        const options = LineWrapOptions(80, "\t", "");
+
+        msg.put("Unknown option '");
+        msg.put(arg);
+        msg.put("' for type ");
+        msg.put(__traits(identifier, T));
+        msg.put('\n');
+
+        msg.put("Allowed: [\n");
+        msg.put(asLineWrapped(SortedEnumValueNamesFor!T, options));
+        msg.put("\n]");
+
+        return Result!T.failure(msg.data.assumeUnique);
+    }
+}
+
+/// arg -> numeric | bool. The result is `arg` converted to `T`.
 @ArgBinderFunc @safe
 Result!T convBinder(T)(string arg) pure
-if(isNumeric!T || is(T == bool) || is(T == enum))
+if(isNumeric!T || is(T == bool))
 {
     import std.conv : to, ConvException;
     
