@@ -191,21 +191,37 @@ auto TEST_CASES =
               .expectOutputToMatch  (`Running command 'noarg' with arguments \[\]`)
               .finish               (),
 
-    testCase().inFolder             ("./10-case-sensitive-args")
+    testCase().inFolder             ("./10-argument-options")
               .withParams           ("sensitive --abc 2")
               .expectStatusToBe     (0)
               .finish               (),
-    testCase().inFolder             ("./10-case-sensitive-args")
+    testCase().inFolder             ("./10-argument-options")
               .withParams           ("sensitive --abC 2")
               .expectStatusToBe     (-1)
               .finish               (),
-    testCase().inFolder             ("./10-case-sensitive-args")
+    testCase().inFolder             ("./10-argument-options")
               .withParams           ("insensitive --abc 2")
               .expectStatusToBe     (0)
               .finish               (),
-    testCase().inFolder             ("./10-case-sensitive-args")
+    testCase().inFolder             ("./10-argument-options")
               .withParams           ("insensitive --ABC 2")
               .expectStatusToBe     (0)
+              .finish               (),
+    testCase().inFolder             ("./10-argument-options")
+              .withParams           ("redefine --abc 2")
+              .expectStatusToBe     (2)
+              .finish               (),
+    testCase().inFolder             ("./10-argument-options")
+              .withParams           ("redefine --abc 2 --abc 1")
+              .expectStatusToBe     (1)
+              .finish               (),
+    testCase().inFolder             ("./10-argument-options")
+              .withParams           ("no-redefine --abc 2")
+              .expectStatusToBe     (0)
+              .finish               (),
+    testCase().inFolder             ("./10-argument-options")
+              .withParams           ("no-redefine --abc 2 --abc 1")
+              .expectStatusToBe     (-1)
               .finish               (),
 ];
  

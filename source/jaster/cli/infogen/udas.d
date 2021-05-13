@@ -143,8 +143,11 @@ enum CommandArgConfig
     ///
     none,
 
-    /// Allows named arguments to be case-insensitive
-    caseInsensitive = 1 << 0
+    /// Allows named arguments to be case-insensitive.
+    caseInsensitive = 1 << 0,
+
+    /// Allows named arguments to be redefined.
+    canRedefine = 1 << 1
 }
 
 // Legacy, keep undocumented.

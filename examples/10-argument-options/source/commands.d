@@ -20,3 +20,22 @@ struct SensitiveCommand
 
     void onExecute(){}
 }
+
+@Command("redefine", "A command that can have its arguments redefined.")
+struct RedefineCommand
+{
+    @CommandNamedArg("abc")
+    @(CommandArgConfig.canRedefine)
+    int abc;
+
+    int onExecute() { return abc; }
+}
+
+@Command("no-redefine", "A Command that cannot have its arguments redefined (default).")
+struct NoRedefineCommand
+{
+    @CommandNamedArg("abc")
+    int abc;
+
+    void onExecute(){}
+}

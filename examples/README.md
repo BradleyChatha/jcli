@@ -16,4 +16,4 @@ These examples show off specific functionality of JCLI. They also double as test
 | 07-text-buffer-table              | Example showing how to use the `TextBuffer` class by making a table with it.                  |
 | 08-arg-binder-validation          | Example showing how to create custom arg validation UDAs                                      |
 | 09-raw-unparsed-arg-list          | Example showing how to gain access to the raw arg list                                        |
-| 10-case-sensitive-args            | Example showing how to use `@(CommandArgCase.sensitive)`                                      |
+| 10-argument-options               | Example showing how to use `CommandArgOption`                                                 |

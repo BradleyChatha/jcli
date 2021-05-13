@@ -138,9 +138,9 @@ private template getArgInfoFor(alias CommandT, alias ArgT, alias ArgBinderInstan
         enum Group = CommandArgGroup.init;
 
     // Determine existence and parse scheme traits.
-    enum Existence = determineExistence!(CommandT, typeof(ArgT), Action);
-    enum Scheme    = determineParseScheme!(CommandT, ArgT, Action);
     enum Config    = determineConfig!(CommandT, ArgT, Action);
+    enum Existence = determineExistence!(CommandT, typeof(ArgT), Action, Config);
+    enum Scheme    = determineParseScheme!(CommandT, ArgT, Action);
 
     enum getArgInfoFor = ArgInfoT(
         __traits(identifier, ArgT),
@@ -174,7 +174,7 @@ private template actionFuncFromAction(CommandArgAction Action, alias CommandT, a
     }
 }
 
-private CommandArgExistence determineExistence(alias CommandT, alias ArgTType, CommandArgAction Action)()
+private CommandArgExistence determineExistence(alias CommandT, alias ArgTType, CommandArgAction Action, CommandArgConfig Config)()
 {
     import std.typecons : Nullable;
 
@@ -187,6 +187,8 @@ private CommandArgExistence determineExistence(alias CommandT, alias ArgTType, C
         value |= CommandArgExistence.multiple;
         value |= CommandArgExistence.optional;
     }
+    static if(Config & CommandArgConfig.canRedefine)
+        value |= CommandArgExistence.multiple;
 
     return value;
 }
