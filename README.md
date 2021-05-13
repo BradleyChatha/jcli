@@ -46,7 +46,8 @@ Tested on Windows and Ubuntu 18.04.
         1. [Light-weight command parsing](#light-weight-command-parsing)
         1. [Light-weight command help text](#light-weight-command-help-text)
         1. [Using a custom sink in CommandLineInterface](#using-a-custom-sink-in-commandlineinterface)
-        1. [Changing case sensitivity](#changing-case-sensitivity)
+        1. [Argument configuration](#argument-configuration)
+            1. [CommandArgConfig.caseInsensitive](#commandargconfig.caseinsensitive)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Using the amalgamation](#using-the-amalgamation)
 1. [Versions](#versions)
@@ -1605,11 +1606,17 @@ The above example shows a minimal program that captures the output of `CommandLi
 
 If `CommandLineSettings.sink` is left as null (that is, `Nullable.isNull`, not `is null`) then `CommandLineInterface` will default to using `std.stdio.write`.
 
-## Changing case sensitivity
+## Argument configuration
 
-By default, patterns are case sensitive, meaning `abc` and `Abc` are not equal.
+You can attach any values from the `CommandArgConfig` enum directly onto an argument, to configure certain behaviour about it.
 
-You can change this behaviour (currently only for named arguments) by attaching `@(CommandArgCase.sensitive)`, which means that `abc` and `Abc` are now equal.
+As a reminder, to attach enum values onto something as a UDA, you must use the form `@(CommandArgConfig.xxx)`.
+
+### CommandArgConfig.caseInsensitive
+
+By default, named arguments are case-sensitive, meaning `abc` is not the same as `abC`.
+
+By attaching `@(CommandArgConfig.caseInsensitive)` onto a named argument, it will allow things like `abc` to match `abc`, `aBc`, `ABC`, etc.
 
 # Using JCLI without Dub
 

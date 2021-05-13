@@ -252,8 +252,8 @@ struct CommandLineSettings
  +  Internally, `CommandResolver` is used to perform command resolution, and a solution custom to `CommandLineInterface` is used for everything else
  +  regarding patterns.
  +
- +  Patterns are normally case sensitive ("abc" != "abC"), but that can be changed for named arguments by attaching `@(CommandArgCase.insensitive)` to 
- +  a named argument. e.g. `@CommandNamedArg("ABC") @(CommandArgCase.insensitive) int abc;` would match any variation of "ABC".
+ +  Patterns are normally case sensitive ("abc" != "abC"), but that can be changed for named arguments by attaching `@(CommandArgConfig.caseInsensitive)` to 
+ +  a named argument. e.g. `@CommandNamedArg("ABC") @(CommandArgConfig.caseInsensitive) int abc;` would match any variation of "ABC".
  +
  + Commands:
  +  A command is a struct or class that is marked with `@Command`.

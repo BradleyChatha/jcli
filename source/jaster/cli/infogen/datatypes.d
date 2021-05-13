@@ -100,8 +100,8 @@ struct ArgumentInfo(UDA, CommandT)
     /// Describes how this argument is to be parsed.
     CommandArgParseScheme parseScheme;
 
-    /// Describes whether this argument is case-sensitive or not.
-    CommandArgCase caseSensitivity;
+    /// Describes the configuration of this specific argument.
+    CommandArgConfig config;
 
     // I wish I could defer this to another part of the library instead of here.
     // However, any attempt I've made to keep around aliases to parameters has resulted

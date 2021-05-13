@@ -125,7 +125,7 @@ struct CommandParser(alias CommandT, alias ArgBinderInstance = ArgBinder!())
                     }
                     goto case;
                 case ShortHandArgument:
-                    const argIndex = namedArgs.countUntil!((a,b) => a.argInfo.uda.pattern.matchSpaceless(b, a.argInfo.caseSensitivity == CommandArgCase.sensitive))(token.value);
+                    const argIndex = namedArgs.countUntil!((a,b) => a.argInfo.uda.pattern.matchSpaceless(b, !(a.argInfo.config & CommandArgConfig.caseInsensitive)))(token.value);
                     if(argIndex < 0)
                         return typeof(return).failure("unknown argument '%s'".format(token.value));
 

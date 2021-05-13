@@ -6,7 +6,7 @@ import jaster.cli;
 struct InsensitiveCommand
 {
     @CommandNamedArg("abc")
-    @(CommandArgCase.insensitive)
+    @(CommandArgConfig.caseInsensitive)
     int abc;
 
     void onExecute(){}

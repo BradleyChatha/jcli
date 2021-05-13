@@ -140,7 +140,7 @@ private template getArgInfoFor(alias CommandT, alias ArgT, alias ArgBinderInstan
     // Determine existence and parse scheme traits.
     enum Existence = determineExistence!(CommandT, typeof(ArgT), Action);
     enum Scheme    = determineParseScheme!(CommandT, ArgT, Action);
-    enum Case      = determineCaseSensitivity!(CommandT, ArgT, Action);
+    enum Config    = determineConfig!(CommandT, ArgT, Action);
 
     enum getArgInfoFor = ArgInfoT(
         __traits(identifier, ArgT),
@@ -149,7 +149,7 @@ private template getArgInfoFor(alias CommandT, alias ArgT, alias ArgBinderInstan
         Group,
         Existence,
         Scheme,
-        Case,
+        Config,
         &ActionFunc
     );
 }
@@ -203,15 +203,22 @@ private template determineParseScheme(alias CommandT, alias ArgT, CommandArgActi
         enum determineParseScheme = CommandArgParseScheme.default_;
 }
 
-private template determineCaseSensitivity(alias CommandT, alias ArgT, CommandArgAction Action)
+private template determineConfig(alias CommandT, alias ArgT, CommandArgAction Action)
 {
-    static if(hasUDA!(ArgT, CommandArgCase))
+    enum UDAs = getUDAs!(ArgT, CommandArgConfig);
+    static if(UDAs.length > 0)
     {
-        static assert(hasUDA!(ArgT, CommandNamedArg), "@CommandArgCase can only be used on fields with @CommandNamedArg attached.");
-        enum determineCaseSensitivity = getSingleUDA!(ArgT, CommandArgCase);
+        static CommandArgConfig createMask()
+        {
+            CommandArgConfig value;
+            foreach(uda; UDAs)
+                value |= uda;
+            return value;
+        }
+        enum determineConfig = createMask();
     }
     else
-        enum determineCaseSensitivity = CommandArgCase.sensitive;
+        enum determineConfig = CommandArgConfig.none;
 }
 
 private bool assertGroupDescriptionConsistency(alias CommandT)(CommandInfo!CommandT info)

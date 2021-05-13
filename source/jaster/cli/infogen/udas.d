@@ -134,14 +134,17 @@ enum CommandArgAction
 }
 
 /++
- + Attach any value from this enum onto an argument to specify whether it is case sensitive or not.
+ + Attach any value from this enum onto an argument to configure its behaviour.
+ +
+ + This enum can be ORed together.
  + ++/
-enum CommandArgCase
+enum CommandArgConfig
 {
     ///
-    sensitive,
-    ///
-    insensitive,
+    none,
+
+    /// Allows named arguments to be case-insensitive
+    caseInsensitive = 1 << 0
 }
 
 // Legacy, keep undocumented.
