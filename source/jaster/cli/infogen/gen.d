@@ -216,6 +216,8 @@ private template determineConfig(alias CommandT, alias ArgT, CommandArgAction Ac
             return value;
         }
         enum determineConfig = createMask();
+        static if(determineConfig & CommandArgConfig.caseInsensitive)
+            static assert(hasUDA!(ArgT, CommandNamedArg), "CommandArgConfig.caseInsensitive can only be used on named arguments.");
     }
     else
         enum determineConfig = CommandArgConfig.none;
