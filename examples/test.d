@@ -190,6 +190,23 @@ auto TEST_CASES =
               .expectStatusToBe     (0)
               .expectOutputToMatch  (`Running command 'noarg' with arguments \[\]`)
               .finish               (),
+
+    testCase().inFolder             ("./10-case-sensitive-args")
+              .withParams           ("sensitive --abc 2")
+              .expectStatusToBe     (0)
+              .finish               (),
+    testCase().inFolder             ("./10-case-sensitive-args")
+              .withParams           ("sensitive --abC 2")
+              .expectStatusToBe     (-1)
+              .finish               (),
+    testCase().inFolder             ("./10-case-sensitive-args")
+              .withParams           ("insensitive --abc 2")
+              .expectStatusToBe     (0)
+              .finish               (),
+    testCase().inFolder             ("./10-case-sensitive-args")
+              .withParams           ("insensitive --ABC 2")
+              .expectStatusToBe     (0)
+              .finish               (),
 ];
  
 /++ MAIN ++/

@@ -206,7 +206,10 @@ private template determineParseScheme(alias CommandT, alias ArgT, CommandArgActi
 private template determineCaseSensitivity(alias CommandT, alias ArgT, CommandArgAction Action)
 {
     static if(hasUDA!(ArgT, CommandArgCase))
+    {
+        static assert(hasUDA!(ArgT, CommandNamedArg), "@CommandArgCase can only be used on fields with @CommandNamedArg attached.");
         enum determineCaseSensitivity = getSingleUDA!(ArgT, CommandArgCase);
+    }
     else
         enum determineCaseSensitivity = CommandArgCase.sensitive;
 }
