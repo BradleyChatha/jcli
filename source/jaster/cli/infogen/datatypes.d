@@ -8,24 +8,6 @@ import jaster.cli.parser, jaster.cli.infogen, jaster.cli.result;
 alias AllowPartialMatch = Flag!"partialMatch";
 
 /++
- + Attach any value from this enum onto an argument to specify what parsing action should be performed on it.
- + ++/
-enum CommandArgAction
-{
-    /// Perform the default parsing action.
-    default_,
-
-    /++
-     + Increments an argument for every time it is defined inside the parameters.
-     +
-     + Arg Type: Named
-     + Value Type: Any type that supports `++`.
-     + Arg becomes optional: true
-     + ++/
-    count,
-}
-
-/++
  + Describes the existence of a command argument. i.e., how many times can it appear; is it optional, etc.
  + ++/
 enum CommandArgExistence
@@ -118,6 +100,9 @@ struct ArgumentInfo(UDA, CommandT)
     /// Describes how this argument is to be parsed.
     CommandArgParseScheme parseScheme;
 
+    /// Describes whether this argument is case-sensitive or not.
+    CommandArgCase caseSensitivity;
+
     // I wish I could defer this to another part of the library instead of here.
     // However, any attempt I've made to keep around aliases to parameters has resulted
     // in a dreaded "Cannot infer type from template arguments CommandInfo!CommandType".
@@ -183,14 +168,16 @@ struct Pattern
      +
      + Params:
      +  toTestAgainst = The string to test for.
+     +  isCaseSensitive = `true` if casing matters, `false` otherwise.
      +
      + Returns:
      +  `true` if there was a match for the given string, `false` otherwise.
      + ++/
-    bool matchSpaceless(string toTestAgainst)
+    bool matchSpaceless(string toTestAgainst, bool isCaseSensitive = true)
     {
-        import std.algorithm : any;
-        return this.byEach.any!(str => str == toTestAgainst);
+        import std.algorithm : any, equal;
+        import std.string : toLower;
+        return this.byEach.any!(str => (isCaseSensitive) ? str == toTestAgainst : str.toLower.equal(toTestAgainst.toLower));
     }
     ///
     unittest
@@ -198,6 +185,11 @@ struct Pattern
         assert(Pattern("v|verbose").matchSpaceless("v"));
         assert(Pattern("v|verbose").matchSpaceless("verbose"));
         assert(!Pattern("v|verbose").matchSpaceless("lalafell"));
+
+        assert(Pattern("abc").matchSpaceless("abc", true));
+        assert(!Pattern("abc").matchSpaceless("abC", true));
+        assert(Pattern("abc").matchSpaceless("abc", false));
+        assert(Pattern("abc").matchSpaceless("abC", false));
     }
 
     /++

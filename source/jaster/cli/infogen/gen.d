@@ -139,7 +139,8 @@ private template getArgInfoFor(alias CommandT, alias ArgT, alias ArgBinderInstan
 
     // Determine existence and parse scheme traits.
     enum Existence = determineExistence!(CommandT, typeof(ArgT), Action);
-    enum Scheme = determineParseScheme!(CommandT, ArgT, Action);
+    enum Scheme    = determineParseScheme!(CommandT, ArgT, Action);
+    enum Case      = determineCaseSensitivity!(CommandT, ArgT, Action);
 
     enum getArgInfoFor = ArgInfoT(
         __traits(identifier, ArgT),
@@ -148,6 +149,7 @@ private template getArgInfoFor(alias CommandT, alias ArgT, alias ArgBinderInstan
         Group,
         Existence,
         Scheme,
+        Case,
         &ActionFunc
     );
 }
@@ -199,6 +201,14 @@ private template determineParseScheme(alias CommandT, alias ArgT, CommandArgActi
         enum determineParseScheme = CommandArgParseScheme.allowRepeatedName;
     else
         enum determineParseScheme = CommandArgParseScheme.default_;
+}
+
+private template determineCaseSensitivity(alias CommandT, alias ArgT, CommandArgAction Action)
+{
+    static if(hasUDA!(ArgT, CommandArgCase))
+        enum determineCaseSensitivity = getSingleUDA!(ArgT, CommandArgCase);
+    else
+        enum determineCaseSensitivity = CommandArgCase.sensitive;
 }
 
 private bool assertGroupDescriptionConsistency(alias CommandT)(CommandInfo!CommandT info)

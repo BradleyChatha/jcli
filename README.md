@@ -46,6 +46,7 @@ Tested on Windows and Ubuntu 18.04.
         1. [Light-weight command parsing](#light-weight-command-parsing)
         1. [Light-weight command help text](#light-weight-command-help-text)
         1. [Using a custom sink in CommandLineInterface](#using-a-custom-sink-in-commandlineinterface)
+        1. [Changing case sensitivity](#changing-case-sensitivity)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Using the amalgamation](#using-the-amalgamation)
 1. [Versions](#versions)
@@ -1565,7 +1566,7 @@ to directly access the help text for our `ComplexCommand`.
 
 The output is exactly the same as shown in the [argument groups](#argument-groups) example, so I won't be duplicating it here.
 
-# Using a custom sink in CommandLineInterface
+## Using a custom sink in CommandLineInterface
 
 By default `CommandLineInterface` will always output onto stdout. This can be undesirable in certain cases, so `CommandLineInterface` allows you
 to specify your own sink to output to.
@@ -1603,6 +1604,12 @@ void main()
 The above example shows a minimal program that captures the output of `CommandLineInterface` into a string.
 
 If `CommandLineSettings.sink` is left as null (that is, `Nullable.isNull`, not `is null`) then `CommandLineInterface` will default to using `std.stdio.write`.
+
+## Changing case sensitivity
+
+By default, patterns are case sensitive, meaning `abc` and `Abc` are not equal.
+
+You can change this behaviour (currently only for named arguments) by attaching `@(CommandArgCase.sensitive)`, which means that `abc` and `Abc` are now equal.
 
 # Using JCLI without Dub
 

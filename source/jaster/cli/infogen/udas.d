@@ -115,6 +115,35 @@ struct CommandArgGroup
  + ++/
 struct CommandRawListArg {}
 
+/++
+ + Attach any value from this enum onto an argument to specify what parsing action should be performed on it.
+ + ++/
+enum CommandArgAction
+{
+    /// Perform the default parsing action.
+    default_,
+
+    /++
+     + Increments an argument for every time it is defined inside the parameters.
+     +
+     + Arg Type: Named
+     + Value Type: Any type that supports `++`.
+     + Arg becomes optional: true
+     + ++/
+    count,
+}
+
+/++
+ + Attach any value from this enum onto an argument to specify whether it is case sensitive or not.
+ + ++/
+enum CommandArgCase
+{
+    ///
+    sensitive,
+    ///
+    insensitive,
+}
+
 // Legacy, keep undocumented.
 alias CommandRawArg = CommandRawListArg;
 
