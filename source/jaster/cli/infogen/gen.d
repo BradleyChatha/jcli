@@ -220,6 +220,11 @@ private template determineConfig(alias CommandT, alias ArgT, CommandArgAction Ac
         enum determineConfig = createMask();
         static if(determineConfig & CommandArgConfig.caseInsensitive)
             static assert(hasUDA!(ArgT, CommandNamedArg), "CommandArgConfig.caseInsensitive can only be used on named arguments.");
+        static if(determineConfig & CommandArgConfig.canRedefine)
+        {
+            static assert(hasUDA!(ArgT, CommandNamedArg), "CommandArgConfig.canRedefine can only be used on named arguments.");
+            static assert(Action != CommandArgAction.count, "CommandArgConfig.canRedefine is already activated by CommandArgAction.count. Remove the former UDA please.");
+        }
     }
     else
         enum determineConfig = CommandArgConfig.none;

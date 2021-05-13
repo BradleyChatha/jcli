@@ -47,7 +47,8 @@ Tested on Windows and Ubuntu 18.04.
         1. [Light-weight command help text](#light-weight-command-help-text)
         1. [Using a custom sink in CommandLineInterface](#using-a-custom-sink-in-commandlineinterface)
         1. [Argument configuration](#argument-configuration)
-            1. [CommandArgConfig.caseInsensitive](#commandargconfig.caseinsensitive)
+            1. [CommandArgConfig.caseInsensitive](#commandargconfigcaseinsensitive)
+            2. [CommandArgConfig.canRedefine](#commandargconfigcanredefine)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Using the amalgamation](#using-the-amalgamation)
 1. [Versions](#versions)
@@ -1298,13 +1299,13 @@ By attaching `@(CommandArgAction.count)` onto a named argument, the argument's b
 
 * Every time the argument is defined within the command's parameters, the value of the argument is incremented.
 
-* The argument becomes optional by default.
+* The argument becomes optional by default. (No need for `Nullable`).
 
 * No explicit value can be given to the argument.
 
 * Arg binding and arg validation are not performed.
 
-* Special syntax `-aaaa` (where 'a' is the name of the arg) is supported.
+* Special syntax `-aaaa` (where 'a' is the name of the arg) is supported. (Increments 4 times).
 
 You can use any type that supports `opUnary!"++"`, even custom types.
 
@@ -1617,6 +1618,12 @@ As a reminder, to attach enum values onto something as a UDA, you must use the f
 By default, named arguments are case-sensitive, meaning `abc` is not the same as `abC`.
 
 By attaching `@(CommandArgConfig.caseInsensitive)` onto a named argument, it will allow things like `abc` to match `abc`, `aBc`, `ABC`, etc.
+
+### CommandArgConfig.canRedefine
+
+By default, named arguments can only be defined once, meaning `--abc 2 --abc 1` produces an error.
+
+By attaching `@(CommandArgConfig.canRedefine)` onto a named argument, the right-most definition will be used (so, `--abc 1` in this case).
 
 # Using JCLI without Dub
 
