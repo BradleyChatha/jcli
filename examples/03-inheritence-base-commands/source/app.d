@@ -1,4 +1,4 @@
-import jaster.cli;
+import jcli;
 import commands;
 
 /++

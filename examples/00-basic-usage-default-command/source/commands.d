@@ -1,6 +1,6 @@
 module commands;
 
-import jaster.cli;
+import jcli;
 
 // Use either a struct or class. JCLI supports both (including inheritence).
 @CommandDefault("Asserts that the given number is even.")
@@ -9,7 +9,7 @@ struct AssertEvenCommand
     // Positional args are args that aren't defined by a command line flag.
     //
     // i.e. "mytool.exe abc 123" - 'abc' is the 0th positional arg, '123' is the 1st, etc.
-    @CommandPositionalArg(0, "number", "The number to assert.")
+    @ArgPositional("number", "The number to assert.")
     int number; // Conversions are performed via `ArgBinder`, which is a topic for a different example.
 
     // Named args are args that are defined by a command line flag.
@@ -20,7 +20,7 @@ struct AssertEvenCommand
     // the arg's name will set it to true.
     //
     // i.e. "mytool.exe -a 20 --value 400" - '-a 20' assigns '20' to the arg named 'a', ditto for '--value 400'
-    @CommandNamedArg("reverse", "If specified, then assert that the number is ODD instead.")
+    @ArgNamed("reverse", "If specified, then assert that the number is ODD instead.")
     Nullable!bool reverse;
 
     // Return either int or void. Use `int` if you want to control the exit code.

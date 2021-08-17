@@ -146,6 +146,7 @@ final class TextBuffer
 
             foreach(j, ref cell; row)
             {
+                NextChar:
                 if(cursor < ch.length)
                 {
                     const cursorStart = cursor;
@@ -161,6 +162,9 @@ final class TextBuffer
                         stopX = rowStart + j;
                         break;
                     }
+                    
+                    if(j == 0 && ch[cursorStart..cursor] == " ")
+                        goto NextChar; // ewwwwwwwwww
 
                     cell.ch[0..(cursor - cursorStart)] = ch[cursorStart..cursor];
                     cell.chLen = cast(ubyte)chSize;

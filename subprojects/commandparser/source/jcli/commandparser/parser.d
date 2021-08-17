@@ -46,25 +46,32 @@ struct CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
             OuterSwitch: final switch(arg.kind) with(ArgParser.Result.Kind)
             {
                 case rawText:
-                    Switch: switch(positionCount)
                     {
-                        static foreach(i, positional; CommandInfo.positionalArgs)
+                        Switch: switch(positionCount)
                         {
-                            case i:
-                                auto result = ArgBinderInstance.bind!positional(arg.fullSlice, command);
-                                if(!result.isOk)
-                                    return fail!CommandT(result.error);
-                                break Switch;
-                        }
-
-                        default:
-                            static if(CommandInfo.overflowArg == typeof(CommandInfo.overflowArg).init)
-                                return fail!CommandT("Too many positional arguments near '%s'. Expected %s".format(arg.fullSlice, MaxPositionals));
-                            else
+                            static foreach(i, positional; CommandInfo.positionalArgs)
                             {
-                                getArg!(CommandInfo.overflowArg)(command) ~= arg.fullSlice;
-                                break;
+                                case i:
+                                    auto result = ArgBinderInstance.bind!positional(arg.fullSlice, command);
+                                    if(!result.isOk)
+                                        return fail!CommandT(result.error);
+                                    break Switch;
                             }
+
+                            // I might be hitting a compiler bug, because without this, the "positionCount++" is sometimes,
+                            // not all the time, but sometimes unreachable
+                            case 200302104:
+                                break;
+
+                            default:
+                                static if(CommandInfo.overflowArg == typeof(CommandInfo.overflowArg).init)
+                                    return fail!CommandT("Too many positional arguments near '%s'. Expected %s".format(arg.fullSlice, MaxPositionals));
+                                else
+                                {
+                                    getArg!(CommandInfo.overflowArg)(command) ~= arg.fullSlice;
+                                    break;
+                                }
+                        }
                     }
                     positionCount++;
                     break;
@@ -72,7 +79,7 @@ struct CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                 case argument:
                     static foreach(named; CommandInfo.namedArgs)
                     {
-                        if(named.uda.pattern.match(arg.nameSlice).matched
+                        if(named.uda.pattern.match(arg.nameSlice, (named.config & ArgConfig.caseInsensitive) > 0).matched
                         || (named.scheme == ArgParseScheme.repeatableName && named.uda.pattern.patterns.any!(p => p.length == 1 && arg.nameSlice.all!(c => c == p[0]))))
                         {
                             static if(!(named.existence & ArgExistence.optional))

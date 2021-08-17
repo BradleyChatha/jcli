@@ -54,7 +54,7 @@ struct CommandHelpText(alias CommandT_)
         help.addLine(null);
         help.addLine("%s %s%s%s".format(
             appName,
-            CommandInfo.pattern.patterns.front,
+            CommandInfo.pattern.patterns.walkLength ? CommandInfo.pattern.patterns.front : "DEFAULT",
             positionals.map!(p => p.name).fold!((a,b) => a~" "~b)(""),
             named.map!(p => p.optional ? "["~p.name~"]" : p.name).fold!((a,b) => a~" "~b)("")
         ));

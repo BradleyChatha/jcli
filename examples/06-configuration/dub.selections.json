@@ -1,9 +1,0 @@
-{
-	"fileVersion": 1,
-	"versions": {
-		"asdf": "0.5.7",
-		"jcli": {"path":"../../"},
-		"jioc": "0.2.0",
-		"silly": "1.0.2"
-	}
-}

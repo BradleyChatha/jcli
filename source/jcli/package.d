@@ -8,4 +8,5 @@ public import
     jcli.argparser,
     jcli.commandparser,
     jcli.text,
-    jcli.helptext;
+    jcli.helptext,
+    jcli.cli;

@@ -1,16 +1,16 @@
 module commands;
 
-import jaster.cli;
+import jcli;
 
 // JCLI has full support for inheritence, allowing you to specify base commands.
 //
-// All public `@CommandNamedArg` and `@CommandPositionalArg` args will be available to
+// All public `@ArgNamed` and `@ArgPositional` args will be available to
 // the inheriting command.
 //
 // Don't attach `@Command` onto base classes though.
 abstract class BaseCommand
 {
-    @CommandNamedArg("offset", "An offset to apply to any calculations")
+    @ArgNamed("offset", "An offset to apply to any calculations")
     Nullable!int offset;
 
     protected int add(int a, int b)
@@ -23,10 +23,10 @@ abstract class BaseCommand
 @Command("add", "Adds two numbers together, and sets the status code to the sum.")
 class AddCommand : BaseCommand
 {
-    @CommandPositionalArg(0)
+    @ArgPositional
     int a;
 
-    @CommandPositionalArg(1)
+    @ArgPositional
     int b;
 
     int onExecute()

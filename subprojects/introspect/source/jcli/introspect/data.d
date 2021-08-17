@@ -25,7 +25,8 @@ enum ArgAction
 enum ArgConfig
 {
     none,
-    canRedefine = 1 << 0
+    canRedefine = 1 << 0,
+    caseInsensitive = 1 << 1
 }
 
 struct CommandInfo(alias CommandT_)
@@ -61,7 +62,7 @@ template getArgSymbol(alias ArgIntrospectT)
     mixin("alias getArgSymbol = ArgIntrospectT.CommandT."~ArgIntrospectT.identifier~";");
 }
 
-ref auto getArg(alias ArgIntrospectT)(ref ArgIntrospectT.CommandT command)
+ref auto getArg(alias ArgIntrospectT)(ref return ArgIntrospectT.CommandT command)
 {
     mixin("return command."~ArgIntrospectT.identifier~";");
 }

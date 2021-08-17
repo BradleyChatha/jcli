@@ -36,12 +36,16 @@ struct Pattern
     }
 
     @safe /*@nogc*/
-    inout(Result) match(string input) /*nothrow*/ pure inout
+    inout(Result) match(string input, bool insensitive = false) /*nothrow*/ pure inout
     {
         Result r;
         foreach(pattern; this.patterns)
         {
-            if(pattern == input)
+            import std.uni : toLower;
+            if(
+                (!insensitive && pattern == input)
+                || (insensitive && pattern.equal(input.map!toLower.map!(ch => cast(char)ch)))
+            )
             {
                 r = Result(true, pattern);
                 break;

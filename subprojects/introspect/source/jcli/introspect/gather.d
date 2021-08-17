@@ -79,7 +79,12 @@ private auto findArgs(alias CommandT, alias UDA)()
                 else static if(is(UdaT == ArgAction))
                     info.action = uda;
                 else static if(is(UdaT == ArgConfig))
+                {
+                    static if(uda & ArgConfig.canRedefine)
+                        info.existence |= ArgExistence.multiple;
+
                     info.config = uda;
+                }
                 else static if(is(UdaT == ArgGroup))
                     info.group = uda;
             }

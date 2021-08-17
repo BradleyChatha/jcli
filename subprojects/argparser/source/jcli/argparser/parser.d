@@ -143,7 +143,7 @@ struct ArgParser
         }
 
         this._front.fullSlice = this._range.front;
-        if(this._front.fullSlice[0] == '-')
+        if(this._front.fullSlice.length && this._front.fullSlice[0] == '-')
         {
             this._front.kind = Result.Kind.argument;
             const start = 0;
@@ -155,6 +155,12 @@ struct ArgParser
         }
         else
             this._front.kind = Result.Kind.rawText;
+    }
+
+    @property @safe @nogc nothrow inout
+    auto remainingArgs()
+    {
+        return this._range;
     }
 }
 ///

@@ -41,15 +41,24 @@ final class CommandLineInterface(Modules...)
     int parseAndExecute(ArgParser parser)
     {
         auto parserCopy = parser;
+        if(parser.empty)
+            parser = ArgParser(["-h"]);
+
         auto command = this.resolveCommand(parser);
-        if(command.kind == command.Kind.partial)
+        if(command.kind == command.Kind.partial || command == typeof(command).init)
         {
             if(this._default == CommandInfo.init)
             {
                 HelpText help = HelpText.make(180);
-                help.addLineWithPrefix(this._appName~": ", "Unknown command", AnsiStyleSet.init.fg(Ansi4BitColour.red).nullable);
-                help.addLine(null);
-                help.addHeader("Did you mean:");
+                
+                if(parserCopy.empty)
+                    help.addHeader("Available commands:");
+                else
+                {
+                    help.addLineWithPrefix(this._appName~": ", "Unknown command", AnsiStyleSet.init.fg(Ansi4BitColour.red).nullable);
+                    help.addLine(null);
+                    help.addHeader("Did you mean:");
+                }
                 foreach(comm; this._uniqueCommands)
                     help.addArgument(comm.pattern.patterns.front, [HelpTextDescription(0, comm.description)]);
                 writeln(help.finish());
@@ -57,6 +66,12 @@ final class CommandLineInterface(Modules...)
             }
             else
             {
+                if(this.hasHelpArgument(parser) && !parserCopy.empty)
+                {
+                    writeln(this._default.onHelp());
+                    return 0;
+                }
+
                 try return this._default.onExecute(parserCopy);
                 catch(Exception ex)
                 {

@@ -1,12 +1,12 @@
 module commands;
 
-import jaster.cli;
+import jcli;
 
 @Command("insensitive", "A command with insensitive argument names.")
 struct InsensitiveCommand
 {
-    @CommandNamedArg("abc")
-    @(CommandArgConfig.caseInsensitive)
+    @ArgNamed("abc")
+    @(ArgConfig.caseInsensitive)
     int abc;
 
     void onExecute(){}
@@ -15,7 +15,7 @@ struct InsensitiveCommand
 @Command("sensitive", "A command with sensitive (default) argument names.")
 struct SensitiveCommand
 {
-    @CommandNamedArg("abc")
+    @ArgNamed("abc")
     int abc;
 
     void onExecute(){}
@@ -24,8 +24,8 @@ struct SensitiveCommand
 @Command("redefine", "A command that can have its arguments redefined.")
 struct RedefineCommand
 {
-    @CommandNamedArg("abc")
-    @(CommandArgConfig.canRedefine)
+    @ArgNamed("abc")
+    @(ArgConfig.canRedefine)
     int abc;
 
     int onExecute() { return abc; }
@@ -34,7 +34,7 @@ struct RedefineCommand
 @Command("no-redefine", "A Command that cannot have its arguments redefined (default).")
 struct NoRedefineCommand
 {
-    @CommandNamedArg("abc")
+    @ArgNamed("abc")
     int abc;
 
     void onExecute(){}

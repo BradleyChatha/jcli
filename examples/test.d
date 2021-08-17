@@ -4,7 +4,7 @@
 +/
 module test;
 
-import std, jaster.cli;
+import std, jcli;
 
 /++ DATA TYPES ++/
 struct TestCase
@@ -122,49 +122,6 @@ auto TEST_CASES =
               .expectStatusToBe (-1)
               .finish           (),
 
-    testCase().inFolder         ("./05-dependency-injection/")
-              .withParams       ("dman")
-              .expectStatusToBe (0)
-              .finish           (),
-    testCase().inFolder         ("./05-dependency-injection/")
-              .withParams       ("cman")
-              .expectStatusToBe (128)
-              .finish           (),
-
-    testCase().inFolder             ("./06-configuration")
-              .withParams           ("force exception")
-              .expectOutputToMatch  ("$^")          // Match nothing
-              .cleanup              ("config.json") // Otherwise subsequent runs of this test set won't work.
-              .finish               (),
-    testCase().inFolder             ("./06-configuration")
-              .withParams           ("set verbose true")
-              .expectOutputToMatch  ("$^")
-              .finish               (),
-    testCase().inFolder             ("./06-configuration")
-              .withParams           ("set name Bradley")
-              .expectOutputToMatch  (".*") // Verbose logging should kick in
-              .finish               (), 
-    testCase().inFolder             ("./06-configuration")
-              .withParams           ("force exception")
-              .expectOutputToMatch  (".*") // Ditto
-              .finish               (),
-    testCase().inFolder             ("./06-configuration")
-              .withParams           ("greet")
-              .expectOutputToMatch  ("Brad")
-              .finish               (),
-
-    // Can't use expectOutputToMatch for non-coloured text as it doesn't handle ANSI properly.
-    testCase().inFolder             ("./07-text-buffer-table")
-              .withParams           ("fixed")
-              .expectStatusToBe     (0)
-              .expectOutputToMatch  ("Age")
-              .finish               (),
-    testCase().inFolder             ("./07-text-buffer-table")
-              .withParams           ("dynamic")
-              .expectStatusToBe     (0)
-              .expectOutputToMatch  ("Age")
-              .finish               (),
-
     testCase().inFolder             ("./08-arg-binder-validation")
               .withParams           ("20 69")
               .expectStatusToBe     (0)
@@ -237,10 +194,10 @@ struct DefaultCommand
 {
     int onExecute()
     {
-        UserIO.logInfof("Running %s tests.", "ALL".ansi.fg(Ansi4BitColour.green));
-        const anyFailures = runTestSet(TEST_CASES);
+        writefln("Running %s tests.", "ALL".ansi.fg(Ansi4BitColour.green));
+        const anyfails = runTestSet(TEST_CASES);
 
-        return anyFailures ? -1 : 0;
+        return anyfails ? -1 : 0;
     }
 }
 
@@ -262,20 +219,20 @@ bool runTestSet(TestCase[] testSet)
         results[i] = testCase.runTest();
 
     if(results.any!(r => !r.passed))
-        UserIO.logInfof("\n\nThe following tests %s:", "FAILED".ansi.fg(Ansi4BitColour.red));
+        writefln("\n\nThe following tests %s:", "FAILED".ansi.fg(Ansi4BitColour.red));
 
     size_t failedCount;
     foreach(failed; results.filter!(r => !r.passed))
     {
         failedCount++;
-        UserIO.logInfof("\t%s", failed.testCase.to!string.ansi.fg(Ansi4BitColour.cyan));
+        writefln("\t%s", failed.testCase.to!string.ansi.fg(Ansi4BitColour.cyan));
 
         foreach(reason; failed.failedReasons)
-            UserIO.logErrorf("\t\t- %s", reason);
+            writefln("\t\t- %s".ansi.fg(Ansi4BitColour.red).to!string, reason);
     }
 
     size_t passedCount = results.length - failedCount;
-    UserIO.logInfof(
+    writefln(
         "\n%s %s, %s %s, %s total tests",
         passedCount, "PASSED".ansi.fg(Ansi4BitColour.green),
         failedCount, "FAILED".ansi.fg(Ansi4BitColour.red),
@@ -300,70 +257,72 @@ TestResult runTest(TestCase testCase)
         reasons ~= reason;
     }
 
-    failIf(results[0].statusCode != 0, "Build failed.");
+    failIf(results[0].status != 0, "Build failed.");
 
     // When handling the status code, some terminals allow negative status codes, some don't, so we'll special case expecting
     // a -1 as expecting -1 or 255.
     if(testCase.expectedStatus.get(0) != -1)
-        failIf(results[1].statusCode != testCase.expectedStatus.get(0), "Status code is wrong.");
+        failIf(results[1].status != testCase.expectedStatus.get(0), "Status code is wrong.");
     else
-        failIf(results[1].statusCode != -1 && results[1].statusCode != 255, "Status code is wrong. (-1 special case)");
+        failIf(results[1].status != -1 && results[1].status != 255, "Status code is wrong. (-1 special case)");
 
     if(!testCase.outputRegex.isNull)
-        failIf(!results[1].output.match(testCase.outputRegex), "Output doesn't contain a match for the given regex.");
+        failIf(!results[1].output.matchFirst(testCase.outputRegex.get), "Output doesn't contain a match for the given regex.");
 
     if(testCase.allowedToFail)
     {
         if(!passed)
-            UserIO.logWarningf("Test FAILED (ALLOWED).");
+            writeln("Test FAILED (ALLOWED).".ansi.fg(Ansi4BitColour.yellow));
         passed = true;
     }
 
     if(!passed)
-        UserIO.logErrorf("Test FAILED");
+        writeln("Test FAILED".ansi.fg(Ansi4BitColour.red));
     else
-        UserIO.logInfof("%s", "Test PASSED".ansi.fg(Ansi4BitColour.green));
+        writefln("%s", "Test PASSED".ansi.fg(Ansi4BitColour.green));
 
     return TestResult(passed, reasons, testCase);
 }
 
 // [0] = build result, [1] = test result
-Shell.Result[2] getBuildAndTestResults(TestCase testCase)
+auto getBuildAndTestResults(TestCase testCase)
 {
     const CATEGORY_COLOUR = Ansi4BitColour.magenta;
     const VALUE_COLOUR    = Ansi4BitColour.brightBlue;
     const RESULT_COLOUR   = Ansi4BitColour.yellow;
 
-    UserIO.logInfof("");
-    UserIO.logInfof("%s", "[Test Case]".ansi.fg(CATEGORY_COLOUR));
-    UserIO.logInfof("%s: %s", "Folder".ansi.fg(CATEGORY_COLOUR),  testCase.folder.ansi.fg(VALUE_COLOUR));
-    UserIO.logInfof("%s: %s", "Params".ansi.fg(CATEGORY_COLOUR),  testCase.params.ansi.fg(VALUE_COLOUR));
-    UserIO.logInfof("%s: %s", "Status".ansi.fg(CATEGORY_COLOUR),  testCase.expectedStatus.get(0).to!string.ansi.fg(RESULT_COLOUR));
-    UserIO.logInfof("%s: %s", "Regex ".ansi.fg(CATEGORY_COLOUR),  testCase.outputRegex.get(regex("N/A")).to!string.ansi.fg(RESULT_COLOUR));
+    writefln("");
+    writefln("%s", "[Test Case]".ansi.fg(CATEGORY_COLOUR));
+    writefln("%s: %s", "Folder".ansi.fg(CATEGORY_COLOUR),  testCase.folder.ansi.fg(VALUE_COLOUR));
+    writefln("%s: %s", "Params".ansi.fg(CATEGORY_COLOUR),  testCase.params.ansi.fg(VALUE_COLOUR));
+    writefln("%s: %s", "Status".ansi.fg(CATEGORY_COLOUR),  testCase.expectedStatus.get(0).to!string.ansi.fg(RESULT_COLOUR));
+    writefln("%s: %s", "Regex ".ansi.fg(CATEGORY_COLOUR),  testCase.outputRegex.get(regex("N/A")).to!string.ansi.fg(RESULT_COLOUR));
 
-    Shell.pushLocation(testCase.folder);
-    scope(exit) Shell.popLocation();
+    auto cwd = getcwd();
+    chdir(testCase.folder);
+    scope(exit) chdir(cwd);
 
     foreach(file; testCase.cleanupFiles.filter!(f => f.exists))
     {
-        UserIO.logTracef("Cleanup: %s", file);
+        writefln("Cleanup: %s".ansi.fg(Ansi4BitColour.brightBlack).to!string, file);
         remove(file);
     }
 
     const buildString   = "dub build --compiler=ldc2";
     const commandString = "\"./test\" " ~ testCase.params;
-    const buildResult   = Shell.execute(buildString);
-    const result        = Shell.execute(commandString);
+    const buildResult   = executeShell(buildString);
+    const result        = executeShell(commandString);
 
-    UserIO.logInfof("\n%s(status: %s):\n%s", "Build output".ansi.fg(CATEGORY_COLOUR), buildResult.statusCode.to!string.ansi.fg(RESULT_COLOUR), buildResult.output);
-    UserIO.logInfof("%s(status: %s):\n%s",   "Test output".ansi.fg(CATEGORY_COLOUR),  result.statusCode.to!string.ansi.fg(RESULT_COLOUR),      result.output);
+    writefln("\n%s(status: %s):\n%s", "Build output".ansi.fg(CATEGORY_COLOUR), buildResult.status.to!string.ansi.fg(RESULT_COLOUR), buildResult.output);
+    writefln("%s(status: %s):\n%s",   "Test output".ansi.fg(CATEGORY_COLOUR),  result.status.to!string.ansi.fg(RESULT_COLOUR),      result.output);
 
     return [buildResult, result];
 }
 
 void runCleanup(TestCase testCase)
 {
-    Shell.pushLocation(testCase.folder);
-    scope(exit) Shell.popLocation();
-    Shell.execute("dub clean");
+    auto cwd = getcwd();
+    chdir(testCase.folder);
+    scope(exit) chdir(cwd);
+    executeShell("dub clean");
 }

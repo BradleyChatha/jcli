@@ -1,6 +1,6 @@
 module commands;
 
-import jaster.cli;
+import jcli;
 
 // For named/subcommands, provide a pattern as the first paramter.
 //
@@ -12,7 +12,7 @@ import jaster.cli;
 @Command("return|r", "Returns a specific exit code.")
 struct ReturnCommand
 {
-    @CommandPositionalArg(0, "code", "The code to return.")
+    @ArgPositional("code", "The code to return.")
     int code;
 
     int onExecute()

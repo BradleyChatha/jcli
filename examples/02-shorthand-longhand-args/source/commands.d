@@ -1,6 +1,6 @@
 module commands;
 
-import jaster.cli;
+import jcli;
 
 @Command("return|r", "Returns a specific exit code.")
 struct ReturnCommand
@@ -10,8 +10,8 @@ struct ReturnCommand
     // Names with more than one character use longhand: "--code"
     // Names with only one character use shorthand:     "-c"
     //
-    // Checkout jaster.cli.parser.ArgPullParser's documentation to see all valid argument forms (e.g. "-c VALUE" and "-c=VALUE" are both supported).
-    @CommandNamedArg("code|c", "The code to return.")
+    // Checkout jcli.parser.ArgPullParser's documentation to see all valid argument forms (e.g. "-c VALUE" and "-c=VALUE" are both supported).
+    @ArgNamed("code|c", "The code to return.")
     int code;
 
     int onExecute()

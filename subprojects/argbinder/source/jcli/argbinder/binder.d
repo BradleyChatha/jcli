@@ -33,9 +33,9 @@ abstract class ArgBinder(Modules...)
 
         static foreach(v; PostValidators)
         {{
-            const result = v.postValidate(getArg!ArgIntrospectT(command));
-            if(!result.isOk)
-                return fail!void(result.error);
+            const res = v.postValidate(getArg!ArgIntrospectT(command));
+            if(!res.isOk)
+                return fail!void(res.error);
         }}
 
         return ok();

@@ -1598,10 +1598,10 @@ alias AnsiTextStack(size_t Capacity) = AnsiText!(AnsiTextStackImplementation!Cap
  +  style     = A reference to an `AnsiStyleSet` to populate. As mentioned, this function will only untoggle styling, or reset the style if the command sequence specifies.
  +              This value is left unmodified if an error is encountered.
  +  charsRead = This value will be set to the amount of chars read from the given `input`, so the caller knows where to continue reading from (if applicable).
- +              This value is populated on both error and success.
+ +              This value is populated on both error and ok.
  +
  + Returns:
- +  Either `null` on success, or a string describing the error that was encountered.
+ +  Either `null` on ok, or a string describing the error that was encountered.
  + ++/
 @safe @nogc
 string ansiExecuteSgrSequence(const(char)[] input, ref AnsiStyleSet style, out size_t charsRead) nothrow

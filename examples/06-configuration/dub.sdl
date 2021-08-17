@@ -1,8 +1,0 @@
-name "test"
-description "A minimal D application."
-authors "Sealab"
-copyright "Copyright © 2020, Sealab"
-license "MIT"
-dependency "jioc" version="~>0.2.0"
-dependency "jcli" version="~>0.3.0"
-dependency "asdf" version="~>0.5.7"

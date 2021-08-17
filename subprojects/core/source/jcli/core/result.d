@@ -14,8 +14,7 @@ struct ResultOf(alias T)
 
     static if(IsVoid)
     {
-        @safe @nogc
-        static This ok() nothrow pure
+        static This ok()()
         {
             This t;
             t._error = null;
@@ -24,8 +23,7 @@ struct ResultOf(alias T)
     }
     else
     {
-        @safe @nogc
-        static This ok(T value) nothrow pure
+        static This ok()(T value)
         {
             This t;
             t._error = null;
@@ -34,29 +32,28 @@ struct ResultOf(alias T)
         }
     }
 
-    @safe @nogc
-    static This fail(string error) nothrow pure
+    static This fail()(string error)
     {
         This t;
         t._error = error;
         return t;
     }
 
-    @safe @nogc nothrow pure inout:
+    inout:
 
-    bool isOk()
+    bool isOk()()
     {
         return this._error is null;
     }
 
-    string error()
+    string error()()
     {
         assert(!this.isOk, "Cannot call .error on an ok result. Please use .isOk to check.");
         return this._error;
     }
 
     static if(!IsVoid)
-    inout(T) value() inout
+    inout(T) value()() inout
     {
         assert(this.isOk, "Cannot call .value on a failed result. Please use .isOk to check.");
         return this._value;

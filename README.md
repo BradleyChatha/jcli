@@ -10,7 +10,7 @@
 JCLI is a library to aid in the creation of command line tooling, with an aim of being easy to use, while also allowing
 the individual parts of the library to be used on their own, aiding more dedicated users in creation of their own CLI core.
 
-As a firm believer of good documentation, JCLI is completely documented with in-depth explanations where needed. In-browser documentation can be found [here](https://jcli.dpldocs.info/jaster.cli.html).
+As a firm believer of good documentation, JCLI is completely documented with in-depth explanations where needed. In-browser documentation can be found [here](https://jcli.dpldocs.info/jcli.html).
 
 Tested on Windows and Ubuntu 18.04.
 
@@ -47,8 +47,8 @@ Tested on Windows and Ubuntu 18.04.
         1. [Light-weight command help text](#light-weight-command-help-text)
         1. [Using a custom sink in CommandLineInterface](#using-a-custom-sink-in-commandlineinterface)
         1. [Argument configuration](#argument-configuration)
-            1. [CommandArgConfig.caseInsensitive](#commandargconfigcaseinsensitive)
-            2. [CommandArgConfig.canRedefine](#commandargconfigcanredefine)
+            1. [ArgConfig.caseInsensitive](#ArgConfigcaseinsensitive)
+            2. [ArgConfig.canRedefine](#ArgConfigcanredefine)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
 1. [Using the amalgamation](#using-the-amalgamation)
 1. [Versions](#versions)
@@ -163,7 +163,7 @@ For example the command `mytool 60 yoyo true` would have `60` in the 0th positio
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @CommandPositionalArg(0, "number", "The number to check.")
+    @ArgPositional("number", "The number to check.")
     int number;
 
     int onExecute()
@@ -173,7 +173,7 @@ struct DefaultCommand
 }
 ```
 
-We create the field member `int number;` and decorate it with the `@CommandPositionalArg` UDA to specify it as a positional argument.
+We create the field member `int number;` and decorate it with the `@ArgPositional` UDA to specify it as a positional argument.
 
 The first parameter is the position this argument should be at, which we define as the 0th position.
 
@@ -197,7 +197,7 @@ int main(string[] args)
     auto executor = new CommandLineInterface!(app);
     const statusCode = executor.parseAndExecute(args);
 
-    UserIO.logInfof("Program exited with status code %s", statusCode);
+    writefln("Program exited with status code %s", statusCode);
 
     return statusCode;
 }
@@ -268,10 +268,10 @@ enum Mode
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @CommandPositionalArg(0, "number", "The number to check.")
+    @ArgPositional("number", "The number to check.")
     int number;
 
-    @CommandNamedArg("mode", "Which mode to use.")
+    @ArgNamed("mode", "Which mode to use.")
     Mode mode;
 
     int onExecute()
@@ -284,7 +284,7 @@ struct DefaultCommand
 }
 ```
 
-Inside `DefaultCommand` we create a member field called `mode` that is decorated with the `@CommandNamedArg` UDA and has enum type. JCLI knows how to convert an argument value into an enum value.
+Inside `DefaultCommand` we create a member field called `mode` that is decorated with the `@ArgNamed` UDA and has enum type. JCLI knows how to convert an argument value into an enum value.
 
 The first parameter is the name of the argument, which is actually important this time as this determines what name the user needs to use.
 
@@ -346,10 +346,10 @@ So to make our `mode` argument optional, we need to make it `Nullable`:
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @CommandPositionalArg(0, "number", "The number to check.")
+    @ArgPositional("number", "The number to check.")
     int number;
 
-    @CommandNamedArg("mode", "Which mode to use.")
+    @ArgNamed("mode", "Which mode to use.")
     Nullable!Mode mode;
 
     int onExecute()
@@ -404,14 +404,14 @@ Here is where the very simple concept of "patterns" comes into play. At the mome
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @CommandNamedArg("mode|m", "Which mode to use.")
+    @ArgNamed("mode|m", "Which mode to use.")
     Nullable!Mode mode;
 
     // omitted as it's unchanged...
 }
 ```
 
-All we've done is changed `@CommandNamedArg`'s name from `"mode"` to `"mode|m"`, which basically means that we can use *either* `--mode` or `-m` to set the mode.
+All we've done is changed `@ArgNamed`'s name from `"mode"` to `"mode|m"`, which basically means that we can use *either* `--mode` or `-m` to set the mode.
 
 You can have as many values within a pattern as you want. Named Arguments cannot have whitespace within their patterns though.
 
@@ -528,35 +528,35 @@ First, we need to create the arg binder:
 import std.stdio : File;
 import jcli      : Result;
 
-@ArgBinderFunc
-Result!File fileBinder(string arg)
+@Binder
+ResultOf!File fileBinder(string arg)
 {
     import std.file : exists;
 
-    // Alternatively: Result!File.failureIf(!arg.exists, File(arg, "r"), "File does not exist: "~arg)
+    // Alternatively: ResultOf!File.failIf(!arg.exists, File(arg, "r"), "File does not exist: "~arg)
     return (arg.exists)
-    ? Result!File.success(File(arg, "r"))
-    : Result!File.failure("File does not exist: "~arg);
+    ? ResultOf!File.ok(File(arg, "r"))
+    : ResultOf!File.fail("File does not exist: "~arg);
 }
 ```
 
 First of all we import `File` from the `std.stdio` module and `Result` from `jcli`.
 
-Second, we create a function, decorated with `@ArgBinderFunc`, that follow a specific convention for its signature:
+Second, we create a function, decorated with `@Binder`, that follow a specific convention for its signature:
 
 ```d
-@ArgBinderFunc
-Result!<OutputType> <anyNameItDoesntMatter>(string arg);
+@Binder
+ResultOf!<OutputType> <anyNameItDoesntMatter>(string arg);
 ```
 
 The return type is a `Result`, whose `<OutputType>` is the type of the value that the binder sets the argument to, which is a `File` in our case.
 
 The `arg` parameter is the raw string provided by the user, for whichever argument we're binding from.
 
-Finally, we check if the file exists, and if it does we return a `Result!File.success` with a `File` opened in read-only mode. If it doesn't exist then we
-return a `Result!File.failure` alongside a user-friendly error message.
+Finally, we check if the file exists, and if it does we return a `ResultOf!File.ok` with a `File` opened in read-only mode. If it doesn't exist then we
+return a `ResultOf!File.fail` alongside a user-friendly error message.
 
-Arg binders need to be marked with the `@ArgBinderFunc` UDA so that the `CommandLineInterface` class can discover them. Talking about `CommandLineInterface`, it'll automatically discover any arg binder from the modules you tell it about, just like it does with commands.
+Arg binders need to be marked with the `@Binder` UDA so that the `CommandLineInterface` class can discover them. Talking about `CommandLineInterface`, it'll automatically discover any arg binder from the modules you tell it about, just like it does with commands.
 
 Let's now create our new command:
 
@@ -564,7 +564,7 @@ Let's now create our new command:
 @Command("cat", "Displays the contents of a file.")
 struct CatCommand
 {
-    @CommandPositionalArg(0, "filePath", "The path to the file to display.")
+    @ArgPositional("filePath", "The path to the file to display.")
     File file;
 
     void onExecute()
@@ -577,7 +577,7 @@ struct CatCommand
 }
 ```
 
-The most important thing of note here is, notice how the `file` variable has the type `File`, and recall that our arg binder's return type also has the type `Result!File`? This allows the arg binder to know that it has a function to convert the user's provided string into a `File` for us.
+The most important thing of note here is, notice how the `file` variable has the type `File`, and recall that our arg binder's return type also has the type `ResultOf!File`? This allows the arg binder to know that it has a function to convert the user's provided string into a `File` for us.
 
 Our `onExecute` function is nothing overly special, it just displays the file line by line.
 
@@ -624,12 +624,12 @@ struct HasExtention
 {
     string wantedExtention;
 
-    Result!void onPreValidate(string arg)
+    ResultOf!void onPreValidate(string arg)
     {
         import std.algorithm : endsWith;
 
-        // If the condition is true, return a failure result with a message, otherwise return a success result.
-        return Result!void.failureIf(
+        // If the condition is true, return a fail result with a message, otherwise return a ok result.
+        return ResultOf!void.failIf(
             !arg.endsWith(this.wantedExtention), 
             "Expected file to have extention of "~this.wantedExtention
         );
@@ -639,7 +639,7 @@ struct HasExtention
 @Command("cat", "Displays the contents of a file.")
 struct CatCommand
 {
-    @CommandPositionalArg(0, "filePath", "The path to the file to display.")
+    @ArgPositional("filePath", "The path to the file to display.")
     @HasExtention(".json")
     File file;
 
@@ -654,14 +654,14 @@ Before I continue, I want to explicitly state that this validator wants to perfo
 Next, and most importantly, we define a function that specifically called `onPreValidate` that follows the following convention:
 
 ```d
-Result!void onPreValidate(string arg);
+ResultOf!void onPreValidate(string arg);
 ```
 
 This is the function that performs the actual validation (in this case, "Pre" validation).
 
-It returns `Result!void.success()` if there are no validation errors, otherwise it returns `Result!void.failure()` and optionally provides an error string as a user-friendly error (one is automatically generated otherwise).
+It returns `ResultOf!void.ok()` if there are no validation errors, otherwise it returns `ResultOf!void.fail()` and optionally provides an error string as a user-friendly error (one is automatically generated otherwise).
 
-The return type is a `Result!void`, so a result that doesn't contain a value, but still states whether there was a failure or a success.
+The return type is a `ResultOf!void`, so a result that doesn't contain a value, but still states whether there was a fail or a ok.
 
 The first parameter to our function is the raw string that the user has provided us.
 
@@ -676,7 +676,7 @@ And that's literally all there is to it, let's test:
 ```bash
 # Passing
 $> ./mytool cat ./dub.json
-[contents of dub.json since validation was a success]
+[contents of dub.json since validation was a ok]
 Program exited with status code 0
 
 # Failing
@@ -695,9 +695,9 @@ struct MaxSize
 {
     ulong maxSize;
 
-    Result!void onValidate(File file)
+    ResultOf!void onValidate(File file)
     {
-        return Result!void.failureIf(
+        return ResultOf!void.failIf(
             file.size() > this.maxSize,
             "File is too large."
         );
@@ -707,7 +707,7 @@ struct MaxSize
 @Command("cat", "Displays the contents of a file.")
 struct CatCommand
 {
-    @CommandPositionalArg(0, "filePath", "The path to the file to display.")
+    @ArgPositional("filePath", "The path to the file to display.")
     @HasExtention(".json")
     @MaxSize(2)
     File file;
@@ -719,7 +719,7 @@ struct CatCommand
 The convention for post-arg-binded validation is almost exactly the same as pre-arg-binded validation, it also functions in exactly the same way:
 
 ```d
-Result!void onValidate(<TYPE_OF_VALUE_TO_VALIDATE> value);
+ResultOf!void onValidate(<TYPE_OF_VALUE_TO_VALIDATE> value);
 ```
 
 The only difference is that the first parameter isn't a `string`, but instead the type of value that this validator will work with.
@@ -738,7 +738,7 @@ Excellent. We have an issue however where this is all a bit... cumbersome, right
 
 Well, for small one-off validation tasks like this, we can use the two built-in validators `@PreValidate` and `@PostValidate`.
 
-The functions you use in these two validators can return: `Result!void`, `bool`, or `string`. So let's use `string` which signals
+The functions you use in these two validators can return: `ResultOf!void`, `bool`, or `string`. So let's use `string` which signals
 an error if we return non-null, and also `bool` which signals an error if we return `false`.
 
 This is what the above example would look like using these two validators:
@@ -747,7 +747,7 @@ This is what the above example would look like using these two validators:
 @Command("cat", "Displays the contents of a file.")
 struct CatCommand
 {
-    @CommandPositionalArg(0, "filePath", "The path to the file to display.")
+    @ArgPositional("filePath", "The path to the file to display.")
     @PreValidate!(str => !str.endsWith(".json") ? "Expected file to end with .json." : null)
     @PostValidate!(file => file.size() <= 2)
     File file;
@@ -773,10 +773,10 @@ Imagine we had a `copy` command that copies the contents of a file into another 
 @Command("copy", "Copies a file")
 struct CopyCommand
 {
-    @CommandPositionalArg(0, "source", "The source file.")
+    @ArgPositional("source", "The source file.")
     File source;
 
-    @CommandPositionalArg(1, "destination", "The destination file.")
+    @ArgPositional("destination", "The destination file.")
     File destination;
 
     void onExecute()
@@ -789,7 +789,7 @@ struct CopyCommand
 
 The issue here is that `source` needs to be opened in read-only mode(`r`), however `destination` needs be written in truncate/write mode(`w`).
 
-If we were to create a normal `@ArgBinderFunc`, we wouldn't be able to tell it the difference between the two files since we're limited in the amount
+If we were to create a normal `@Binder`, we wouldn't be able to tell it the difference between the two files since we're limited in the amount
 of information that is passed to an arg binder.
 
 What we need is a way to specify the binding behavior on a per-argument basis.
@@ -800,24 +800,24 @@ a much easier solution - `@ArgBindWith`:
 ```d
 import std.stdio : File;
 
-Result!File openReadOnly(string arg)
+ResultOf!File openReadOnly(string arg)
 {
     import std.file : exists;
 
     return (arg.exists)
-    ? Result!File.success(File(arg, "r"))
-    : Result!File.failure("The file doesn't exist: "~arg);
+    ? ResultOf!File.ok(File(arg, "r"))
+    : ResultOf!File.fail("The file doesn't exist: "~arg);
 }
 
 @Command("copy", "Copies a file")
 struct CopyCommand
 {
-    @CommandPositionalArg(0, "source", "The source file.")
+    @ArgPositional("source", "The source file.")
     @ArgBindWith!openReadOnly
     File source;
 
-    @CommandPositionalArg(1, "destination", "The destination file.")
-    @ArgBindWith!(arg => Result!File.success(File(arg, "w")))
+    @ArgPositional("destination", "The destination file.")
+    @ArgBindWith!(arg => ResultOf!File.ok(File(arg, "w")))
     File destination;
 
     void onExecute()
@@ -828,7 +828,7 @@ struct CopyCommand
 }
 ```
 
-To start off, we create the fairly self-explanatory `openReadOnly` function which looks exactly like an `@ArgBinderFunc`, except it doesn't have the UDA attached to it.
+To start off, we create the fairly self-explanatory `openReadOnly` function which looks exactly like an `@Binder`, except it doesn't have the UDA attached to it.
 
 Next, we attach `@ArgBindWith!openReadOnly` onto our `source` argument. This tells JCLI to use our `openReadOnly` function as this argument's binder.
 
@@ -836,7 +836,7 @@ Finally, we attach `@ArgBindWith!(/*lambda*/)` onto our `destination` argument, 
 
 And just like that we have now solved overcome our initial issue of "how to I customise binding for arguments of the same type?" in a simple, sane manner.
 
-I'd like to mention that this feature works alongside the usual arg binding behavior. In other words, you can define an `@ArgBinderFunc` for a type which will
+I'd like to mention that this feature works alongside the usual arg binding behavior. In other words, you can define an `@Binder` for a type which will
 serve as the default method for binding, but then for those awkward, one-off cases you can use `@ArgBindWith` to specify a different binding behavior on a per-argument
 basis.
 
@@ -850,7 +850,7 @@ Commands can access the raw arg list like so:
 @Command("echo", "Echos the raw arg list.")
 struct EchoCommand
 {
-    @CommandRawListArg
+    @ArgRaw
     string[] rawArgs;
 
     void onExecute()
@@ -862,7 +862,7 @@ struct EchoCommand
 }
 ```
 
-Simply make a field of type `string[]`, then mark it with `@CommandRawListArg`, and then voila:
+Simply make a field of type `string[]`, then mark it with `@ArgRaw`, and then voila:
 
 ```bash
 $> ./mytool echo -- Hello world, please be kind.
@@ -950,7 +950,7 @@ Inside of our new command, with have our constructor (`this(ICommandLineInterfac
 So, when JCLI is constructing a command instance it does so via JIOC's `Injector.construct` function.
 
 The way `Injector.construct` works is: it looks at every parameter of the command's constructor (if it has one); any type that is a class or interface, it'll
-attempt to retrieve via a `ServiceProvider`; if it was successful, and instance of that class or interface is passed as that constructor parameter, otherwise `null`
+attempt to retrieve via a `ServiceProvider`; if it was okful, and instance of that class or interface is passed as that constructor parameter, otherwise `null`
 is passed through.
 
 In other words, by asking for an `ICommandLineInterface` within our constructor, we're just telling JCLI to fetch that service from the Service Provider and pass it
@@ -1025,8 +1025,8 @@ struct SeedConfigCommand
                 config.counter = 200;
                 config.destroyComputerOnError = true;
             },
-            RollbackOnFailure.yes,
-            SaveOnSuccess.yes
+            RollbackOnfail.yes,
+            SaveOnok.yes
         );
         assert(yesOrNo == WasExceptionThrown.no);
     }
@@ -1076,10 +1076,10 @@ a shortcut function for this particular usage called `editAndSave`.
 The first parameter is a delegate (lambda) that is given a shallow copy of the configuration's value by reference. All this delegate needs to do is
 populate the configuration value with whatever it wants to set it to, by whatever means to get the data.
 
-The second parameter is a flag called `RollbackOnFailure`. As the name implies, if the delegate in the first parameter throws an exception then the
-`IConfig` will attempt to rollback any changes. Please see [this comment](https://jcli.dpldocs.info/jaster.cli.config.IConfig.edit.html) on it works exactly.
+The second parameter is a flag called `RollbackOnfail`. As the name implies, if the delegate in the first parameter throws an exception then the
+`IConfig` will attempt to rollback any changes. Please see [this comment](https://jcli.dpldocs.info/jcli.config.IConfig.edit.html) on it works exactly.
 
-The third and final parameter is a flag called `SaveOnSuccess`, which literally does at it says on the tin. If the delegate was successful, then call
+The third and final parameter is a flag called `SaveOnok`, which literally does at it says on the tin. If the delegate was okful, then call
 `IConfig.save` to save any changes.
 
 Finally with this `onExecute`, we just make sure that the return value was `WasExceptionThrown.no`, which explains itself.
@@ -1108,13 +1108,13 @@ The only rules with inheritance are:
 
 * Concrete classes must have `onExecute` defined, either by a base class or directly.
 
-Other than that, go wild. Every argument marked with `@CommandNamedArg` and `@CommandPostionalArg` will be discovered within the inheritance tree for a command,
+Other than that, go wild. Every argument marked with `@ArgNamed` and `@CommandPostionalArg` will be discovered within the inheritance tree for a command,
 and they will all be populated as expected:
 
 ```d
 abstract class CommandBase
 {
-    @CommandNamedArg("verbose|v", "Show verbose information.")
+    @ArgNamed("verbose|v", "Show verbose information.")
     Nullable!bool verbose;
 
     // This isn't recognised my JCLI, it's just a function all our
@@ -1199,29 +1199,29 @@ This can be achieved by using the `@CommandArgGroup` UDA - this is how to produc
 @Command("command", "This is a command that is totally super complicated.")
 struct ComplexCommand
 {
-    @CommandPositionalArg(0, "arg1", "This is a generic argument that isn't grouped anywhere")
+    @ArgPositional("arg1", "This is a generic argument that isn't grouped anywhere")
     int a;
-    @CommandPositionalArg(1, "arg2", "This is a generic argument that isn't grouped anywhere")
+    @ArgPositional("arg2", "This is a generic argument that isn't grouped anywhere")
     int b;
 
-    @CommandNamedArg("test-flag", "Test flag, please ignore.")
+    @ArgNamed("test-flag", "Test flag, please ignore.")
     bool flag;
 
     @CommandArgGroup("Debug", "Arguments related to debugging.")
     {
-        @CommandNamedArg("verbose|v", "Enables verbose logging.")
+        @ArgNamed("verbose|v", "Enables verbose logging.")
         Nullable!bool verbose;
 
-        @CommandNamedArg("log|l", "Specifies a log file to direct output to.")
+        @ArgNamed("log|l", "Specifies a log file to direct output to.")
         Nullable!string log;
     }
 
     @CommandArgGroup("I/O", "Arguments related to I/O.")
     {
-        @CommandPositionalArg(2, "output", "Where to place the output.")
+        @ArgPositional("output", "Where to place the output.")
         string output;
 
-        @CommandNamedArg("config|c", "Specifies the config file to use.")
+        @ArgNamed("config|c", "Specifies the config file to use.")
         Nullable!string config;
     }
 
@@ -1315,7 +1315,7 @@ Here's an example command:
 @CommandDefault("Outputs the value of '-a'.")
 struct SumCommand
 {
-    @CommandNamedArg("a")
+    @ArgNamed("a")
     @(CommandArgAction.count)
     int arg;
 
@@ -1344,7 +1344,7 @@ $> ./myTool
 In certain cases there may be a need for being able to gather and inspect the data of a command and its arguments, ideally in the same way
 JCLI is able to.
 
-JCLI exposes this via the `jaster.cli.infogen` package, which gathers all the JCLI-relevant details about a command and all of its recognised arguments.
+JCLI exposes this via the `jcli.infogen` package, which gathers all the JCLI-relevant details about a command and all of its recognised arguments.
 
 This information is available at compile-time, allowing for the usual meta-programming shenanigans that D allows. This is useful for those that want to build
 their own functionality on top of the several parts JCLI provides.
@@ -1352,19 +1352,19 @@ their own functionality on top of the several parts JCLI provides.
 Our example will simply be an empty command with a few arguments we'd like to get information of:
 
 ```d
-import std, jaster.cli;
+import std, jcli;
 
 @Command("name", "description")
 struct MyCommand
 {
-    @CommandNamedArg("v|verbose", "Toggle verbose output.")
+    @ArgNamed("v|verbose", "Toggle verbose output.")
     Nullable!bool verbose;
 
-    @CommandNamedArg("l", "Verbose level counter.")
+    @ArgNamed("l", "Verbose level counter.")
     @(CommandArgAction.count)
     uint lCount;
 
-    @CommandPositionalArg(0, "arg1", "The first argument to do stuff with.")
+    @ArgPositional("arg1", "The first argument to do stuff with.")
     string arg1;
 
     // No definition of 'onExecute' is required for this use-case.
@@ -1414,25 +1414,25 @@ With the output of:
 Pattern     = Pattern("name")
 Description = description
 
-[Argument Info - ArgumentInfo!(CommandNamedArg, MyCommand)]
+[Argument Info - ArgumentInfo!(ArgNamed, MyCommand)]
 Identifier  = verbose
-UDA         = CommandNamedArg(Pattern("v|verbose"), "Toggle verbose output.")
+UDA         = ArgNamed(Pattern("v|verbose"), "Toggle verbose output.")
 Action      = default_
 Group       = CommandArgGroup("", "")
 Existence   = optional
 ParseScheme = bool_
 
-[Argument Info - ArgumentInfo!(CommandNamedArg, MyCommand)]
+[Argument Info - ArgumentInfo!(ArgNamed, MyCommand)]
 Identifier  = lCount
-UDA         = CommandNamedArg(Pattern("l"), "Verbose level counter.")
+UDA         = ArgNamed(Pattern("l"), "Verbose level counter.")
 Action      = count
 Group       = CommandArgGroup("", "")
 Existence   = cast(CommandArgExistence)3 # NOTE: 3 = multiple | optional, result of the `count` action
 ParseScheme = allowRepeatedName          # Result of the `count` action
 
-[Argument Info - ArgumentInfo!(CommandPositionalArg, MyCommand)]
+[Argument Info - ArgumentInfo!(ArgPositional, MyCommand)]
 Identifier  = arg1
-UDA         = CommandPositionalArg(0, "arg1", "The first argument to do stuff with.")
+UDA         = ArgPositional("arg1", "The first argument to do stuff with.")
 Action      = default_
 Group       = CommandArgGroup("", "")
 Existence   = default_
@@ -1444,7 +1444,7 @@ Arg0Nullable = true
 ```
 
 I'll also note that every `ArgumentInfo` also contains an `actionFunc` variable which will be one of the functions inside of
-`jaster.cli.infogen.actions`. This function will perform the binding action (e.g. default_ goes through the `ArgBinder`, count increments, etc.).
+`jcli.infogen.actions`. This function will perform the binding action (e.g. default_ goes through the `ArgBinder`, count increments, etc.).
 
 ## Light-weight command parsing
 
@@ -1457,7 +1457,7 @@ how to construct a command, so you'll have to do that yourself beforehand.
 Here's an example:
 
 ```d
-import std, jaster.cli;
+import std, jcli;
 enum CalculateOperation
 {
     add,
@@ -1467,13 +1467,13 @@ enum CalculateOperation
 @CommandDefault // CommandParser doesn't really care about this UDA, it just wants it to exist (or @Command)
 struct CalculateCommand
 {
-    @CommandPositionalArg(0, "a", "The first value.")
+    @ArgPositional("a", "The first value.")
     int a;
 
-    @CommandPositionalArg(1, "b", "The second value.")
+    @ArgPositional("b", "The second value.")
     int b;
 
-    @CommandNamedArg("o|op", "The operation to perform.")
+    @ArgNamed("o|op", "The operation to perform.")
     CalculateOperation op;
 }
 
@@ -1483,12 +1483,12 @@ int main(string[] args)
     CommandParser!(CalculateCommand, ArgBinder!()) parser; // Same as: CommandParser!CalculateCommand
 
     CalculateCommand instance;
-    Result!void result = parser.parse(args[1..$], /*ref*/ instance); // args[0] is the program name, so we need to skip it.
+    ResultOf!void result = parser.parse(args[1..$], /*ref*/ instance); // args[0] is the program name, so we need to skip it.
 
     // Normally CommandLineInterface handles everything for us, but now we have to do this ourselves.
-    if(!result.isSuccess)
+    if(!result.isok)
     {
-        writeln("calculate: ", result.asFailure.error);
+        writeln("calculate: ", result.asfail.error);
         return -1;
     }
 
@@ -1522,34 +1522,34 @@ in the exact same format that you'd normally get by using `CommandLineInterface`
 
 ```d
 module app;
-import std, jaster.cli;
+import std, jcli;
 
 @Command("command", "This is a command that is totally super complicated.")
 struct ComplexCommand
 {
-    @CommandPositionalArg(0, "arg1", "This is a generic argument that isn't grouped anywhere")
+    @ArgPositional("arg1", "This is a generic argument that isn't grouped anywhere")
     int a;
-    @CommandPositionalArg(1, "arg2", "This is a generic argument that isn't grouped anywhere")
+    @ArgPositional("arg2", "This is a generic argument that isn't grouped anywhere")
     int b;
 
-    @CommandNamedArg("test-flag", "Test flag, please ignore.")
+    @ArgNamed("test-flag", "Test flag, please ignore.")
     bool flag;
 
     @CommandArgGroup("Debug", "Arguments related to debugging.")
     {
-        @CommandNamedArg("verbose|v", "Enables verbose logging.")
+        @ArgNamed("verbose|v", "Enables verbose logging.")
         Nullable!bool verbose;
 
-        @CommandNamedArg("log|l", "Specifies a log file to direct output to.")
+        @ArgNamed("log|l", "Specifies a log file to direct output to.")
         Nullable!string log;
     }
 
     @CommandArgGroup("I/O", "Arguments related to I/O.")
     {
-        @CommandPositionalArg(2, "output", "Where to place the output.")
+        @ArgPositional("output", "Where to place the output.")
         string output;
 
-        @CommandNamedArg("config|c", "Specifies the config file to use.")
+        @ArgNamed("config|c", "Specifies the config file to use.")
         Nullable!string config;
     }
 
@@ -1580,7 +1580,7 @@ To set this sink you must set the `CommandLineSettings.sink` value when passing 
 
 ```d
 module app;
-import std, jaster.cli;
+import std, jcli;
 
 @Command("dummy", "This is a dummy command")
 struct DummyCommand
@@ -1609,21 +1609,21 @@ If `CommandLineSettings.sink` is left as null (that is, `Nullable.isNull`, not `
 
 ## Argument configuration
 
-You can attach any values from the `CommandArgConfig` enum directly onto an argument, to configure certain behaviour about it.
+You can attach any values from the `ArgConfig` enum directly onto an argument, to configure certain behaviour about it.
 
-As a reminder, to attach enum values onto something as a UDA, you must use the form `@(CommandArgConfig.xxx)`.
+As a reminder, to attach enum values onto something as a UDA, you must use the form `@(ArgConfig.xxx)`.
 
-### CommandArgConfig.caseInsensitive
+### ArgConfig.caseInsensitive
 
 By default, named arguments are case-sensitive, meaning `abc` is not the same as `abC`.
 
-By attaching `@(CommandArgConfig.caseInsensitive)` onto a named argument, it will allow things like `abc` to match `abc`, `aBc`, `ABC`, etc.
+By attaching `@(ArgConfig.caseInsensitive)` onto a named argument, it will allow things like `abc` to match `abc`, `aBc`, `ABC`, etc.
 
-### CommandArgConfig.canRedefine
+### ArgConfig.canRedefine
 
 By default, named arguments can only be defined once, meaning `--abc 2 --abc 1` produces an error.
 
-By attaching `@(CommandArgConfig.canRedefine)` onto a named argument, the right-most definition will be used (so, `--abc 1` in this case).
+By attaching `@(ArgConfig.canRedefine)` onto a named argument, the right-most definition will be used (so, `--abc 1` in this case).
 
 # Using JCLI without Dub
 
@@ -1661,7 +1661,7 @@ However, it's not a clean replacement for using JCLI as a dub package/multi-file
 
 1. Because all of the code is now inside of a single file, this also means that there is only a single module.
 
-    * So instead of `import jaster.cli, jaster.cli.binder, jcli` and so on, the only thing you can import now is `import jcli`.
+    * So instead of `import jcli, jcli.binder, jcli` and so on, the only thing you can import now is `import jcli`.
 
     * This means that the module also suffers from pollution, which can be pretty annoying especially in regards to the fact JIOC will be implicitly included as well.
 
@@ -1684,7 +1684,7 @@ defined by dub if you have `asdf` as a dependency of your project. If you do not
 
 | Version                   | Description                                                                                                                    |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| JCLI_Verbose              | When defined, enables certain verbose compile-time logging, such as how `ArgBinder` is deciding which `@ArgBinderFunc` to use. |
+| JCLI_Verbose              | When defined, enables certain verbose compile-time logging, such as how `ArgBinder` is deciding which `@Binder` to use. |
 | Have_asdf                 | Enables the `AsdfConfigAdapter`, which uses the `asdf` library to serialise the configuration value.                           |
 
 # Contributing

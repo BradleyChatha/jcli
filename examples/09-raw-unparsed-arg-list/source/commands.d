@@ -1,6 +1,6 @@
 module commands;
 
-import jaster.cli;
+import jcli, std;
 
 /++
 
@@ -11,7 +11,7 @@ e.g "dub run -- these --are=passed to the -p rogram".
 Notice how after the double dash "--" we enter what JCLI refers to as the Raw Arg List. A list
 of arguments that JCLI completely ignores and will pass over to your program directly.
 
-To gain access to the raw arg list, all you need to do is add a `string[]` variable marked with `@CommandRawListArg`,
+To gain access to the raw arg list, all you need to do is add a `string[]` variable marked with `@ArgRaw`,
 and then this variable's value will contain the entirety of the raw arg list.
 
 ++/
@@ -19,15 +19,15 @@ and then this variable's value will contain the entirety of the raw arg list.
 @CommandDefault("Runs a command with the given arguments.")
 struct RunCommand
 {
-    @CommandPositionalArg(0, "command", "The command to run.")
+    @ArgPositional("command", "The command to run.")
     string command;
 
-    @CommandRawListArg
-    string[] args;
+    @ArgRaw
+    ArgParser args;
 
     void onExecute()
     {
-        UserIO.logInfof("Running command '%s' with arguments %s", this.command, args);
+        writefln("Running command '%s' with arguments %s", this.command, args.map!(arg => arg.fullSlice).filter!(arg => arg.length));
     }
 
     /++
