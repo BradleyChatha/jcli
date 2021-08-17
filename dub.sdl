@@ -1,25 +1,22 @@
 name "jcli"
-description "A CLI framework library."
-authors "Bradley Chatha" "Andrey Zherikov" "Christian Köstlin"
-copyright "Copyright © 2021, Bradley Chatha"
+description "A fully featured CLI framework for D"
 license "MIT"
-dependency "jioc" version=">=0.2.0"
-dependency "asdf" version="~>0.5.7" optional=true
-targetType "library"
-targetPath "bin"
+authors "Bradley Chatha"
 
-configuration "default"{
-    versions "d"
-}
+dependency "jcli:argbinder" 
+dependency "jcli:argparser" 
+dependency "jcli:commandparser" 
+dependency "jcli:core" 
+dependency "jcli:helptext" 
+dependency "jcli:introspect" 
+dependency "jcli:resolver" 
+dependency "jcli:text" 
 
-configuration "unittest" {
-    dependency "silly" version="~>1.0.2"
-}
-
-configuration "verbose_debug" {
-    versions "JCLI_Verbose"
-}
-
-configuration "binder_debug" {
-    versions "JCLI_Verbose" "JCLI_BinderCompilerErrors"
-}
+subPackage "subprojects/argbinder"
+subPackage "subprojects/argparser"
+subPackage "subprojects/commandparser"
+subPackage "subprojects/core"
+subPackage "subprojects/helptext"
+subPackage "subprojects/introspect"
+subPackage "subprojects/resolver"
+subPackage "subprojects/text"

@@ -1,0 +1,6 @@
+name "commandparser"
+targetType "library"
+dependency "jcli:core" 
+dependency "jcli:introspect" 
+dependency "jcli:argbinder" 
+dependency "jcli:argparser" 

@@ -1,0 +1,4 @@
+name "argbinder"
+targetType "library"
+dependency "jcli:core" 
+dependency "jcli:introspect" 
