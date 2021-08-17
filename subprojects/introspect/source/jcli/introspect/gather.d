@@ -58,7 +58,7 @@ private auto findArgs(alias CommandT, alias UDA)()
         );
         static assert(SanityCheckUdas.length == 1, "Cannot mix multiple @ArgXXX UDAs together.");
 
-        static if(__traits(compiles, { auto a = Udas[0]; }))
+        static if(__traits(compiles, { enum a = Udas[0]; }))
             enum Uda = Udas[0];
         else
             enum Uda = Udas[0].init;

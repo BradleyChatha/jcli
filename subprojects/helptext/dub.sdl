@@ -1,5 +1,5 @@
 name "helptext"
 targetType "library"
-dependency "jcli:core" 
-dependency "jcli:text" 
-dependency "jcli:introspect" 
+dependency "jcli:core" version="*"
+dependency "jcli:text" version="*"
+dependency "jcli:introspect" version="*"

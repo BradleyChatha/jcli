@@ -195,20 +195,20 @@ private struct AssertEvenCommand
     }
 }
 
-// version(unittest)
-// @CommandDefault("echo")
-// private struct EchoCommand
-// {
-//     @ArgOverflow
-//     string[] overflow;
+version(unittest)
+@CommandDefault("echo")
+private struct EchoCommand
+{
+    @ArgOverflow
+    string[] overflow;
 
-//     int onExecute()
-//     {
-//         foreach(value; overflow)
-//             writeln(value);
-//         return 69;
-//     }
-// }
+    int onExecute()
+    {
+        foreach(value; overflow)
+            writeln(value);
+        return 69;
+    }
+}
 
 unittest
 {
@@ -246,6 +246,6 @@ unittest
     assert(cli.parseAndExecute(["assert", "even", "2", "-r"], false) == 128);
     assert(cli.parseAndExecute(["assert", "even", "1"], false) == 128);
 
-    assert(cli.parseAndExecute(["assrt", "evn", "20"], false) == 69);
-    assert(false);
+    // Commented out to stop it from writing output.
+    // assert(cli.parseAndExecute(["assrt", "evn", "20"], false) == 69);
 }

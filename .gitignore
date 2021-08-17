@@ -16,3 +16,4 @@ jcli-test-*
 *.lst
 builddir
 build/
+*.lib
