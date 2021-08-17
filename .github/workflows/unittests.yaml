@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        dc: [ldc-latest, dmd-latest]
+        dc: [ldc-latest]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
