@@ -65,7 +65,7 @@ struct CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
 
                             default:
                                 static if(CommandInfo.overflowArg == typeof(CommandInfo.overflowArg).init)
-                                    return fail!CommandT("Too many positional arguments near '%s'. Expected %s".format(arg.fullSlice, MaxPositionals));
+                                    return fail!CommandT("Too many positional arguments near '%s'. Expected %s positional arguments.".format(arg.fullSlice, MaxPositionals));
                                 else
                                 {
                                     getArg!(CommandInfo.overflowArg)(command) ~= arg.fullSlice;
@@ -139,6 +139,16 @@ struct CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
             }
         }
 
+        enforce(
+            positionCount >= CommandInfo.positionalArgs.length,
+            "Expected %s positional arguments but got %s instead. Missing the following required positional arguments:%s".format(
+                CommandInfo.positionalArgs.length, positionCount,
+                CommandInfo.positionalArgs[positionCount..$]
+                           .map!(arg => arg.uda.name.length ? arg.uda.name : "NO_NAME")
+                           .fold!((a,b) => a~" "~b)("")
+            )
+        );
+
         Pattern[] notFound;
         foreach(k, v; requiredNamed)
         {
@@ -149,7 +159,7 @@ struct CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
         if(notFound.length)
         {
             return fail!CommandT(
-                "The following required arguments were not found: "
+                "The following required named arguments were not found: "
                 ~notFound.fold!((a,b) => a.length ? a~", "~b.pattern : b.pattern)("")
             );
         }

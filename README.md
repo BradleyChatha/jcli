@@ -7,6 +7,8 @@
 ![Tests](https://github.com/BradleyChatha/jcli/workflows/Test%20LDC%20x64/badge.svg)
 ![Examples](https://github.com/BradleyChatha/jcli/workflows/Test%20Examples/badge.svg)
 
+** As of v0.20.0 JCLI is using a fully rewritten code base, which has major breaking changes. **
+
 JCLI is a library to aid in the creation of command line tooling, with an aim of being easy to use, while also allowing
 the individual parts of the library to be used on their own, aiding more dedicated users in creation of their own CLI core.
 
@@ -14,19 +16,34 @@ As a firm believer of good documentation, JCLI is completely documented with in-
 
 Tested on Windows and Ubuntu 18.04.
 
-1. [Overview](#overview)
-1. [Features](#features)
-1. ["Quick" Start/HOWTO](#quick-start)
-    * Basic usage:
-        1. [Creating a default command](#creating-a-default-command)
-        1. [Positional arguments](#positional-arguments)
-        1. [Registering commands](#registering-commands)
-        1. [Running the program](#running-the-program)
-        1. [Named arguments](#named-arguments)
-        1. [Optional arguments](#optional-arguments)
-        1. [Arguments with multiple names](#arguments-with-multiple-names)
-        1. [Named commands](#named-commands)
-        1. [Unparsed Raw Arg List](#unparsed-raw-arg-list)
+- [Overview](#overview)
+- [Features](#features)
+- [Quick Start](#quick-start)
+  - [Creating a default command](#creating-a-default-command)
+  - [Positional Arguments](#positional-arguments)
+  - [Registering commands](#registering-commands)
+  - [Running the program](#running-the-program)
+  - [Named arguments](#named-arguments)
+  - [Optional Arguments](#optional-arguments)
+  - [Arguments with multiple names](#arguments-with-multiple-names)
+  - [Named Commands](#named-commands)
+  - [User Defined argument binding](#user-defined-argument-binding)
+  - [User Defined argument validation](#user-defined-argument-validation)
+  - [Per-argument binding](#per-argument-binding)
+  - [Unparsed Raw Arg List](#unparsed-raw-arg-list)
+  - [Inheritance](#inheritance)
+  - [Argument groups](#argument-groups)
+  - [Bash Completion](#bash-completion)
+  - [Argument parsing actions](#argument-parsing-actions)
+    - [ArgAction.count](#argactioncount)
+  - [Command Introspection](#command-introspection)
+  - [Light-weight command parsing](#light-weight-command-parsing)
+  - [Light-weight command help text](#light-weight-command-help-text)
+  - [Argument configuration](#argument-configuration)
+    - [ArgConfig.caseInsensitive](#argconfigcaseinsensitive)
+    - [ArgConfig.canRedefine](#argconfigcanredefine)
+- [Using JCLI without Dub](#using-jcli-without-dub)
+- [Contributing](#contributing)
 
     * Advanced usage:
         1. [User Defined argument binding](#user-defined-argument-binding)
@@ -41,7 +58,7 @@ Tested on Windows and Ubuntu 18.04.
             1. [Using eval](#using-eval)
             1. [Using bash-completion](#using-bash-completion)
         1. [Argument parsing actions](#argument-parsing-actions)
-            1. [CommandArgAction.count](#commandargactioncount)
+            1. [ArgAction.count](#ArgActioncount)
         1. [Command Introspection](#command-introspection)
         1. [Light-weight command parsing](#light-weight-command-parsing)
         1. [Light-weight command help text](#light-weight-command-help-text)
@@ -55,6 +72,14 @@ Tested on Windows and Ubuntu 18.04.
 1. [Contributing](#contributing)
 
 # Features
+
+* Building:
+
+    * This library was primarily built using [Meson](https://mesonbuild.com) as the build system, so should be fully integratable into other Meson projects.
+
+    * All individual parts of this library are intended to be reusable. Allowing you to build your own CLI core using these already-made components, if desired.
+
+    * All individual parts of this library are split into sub packages, so you can only include what you need if you're not using the main `jcli` package.
 
 * Argument parsing:
 
@@ -70,6 +95,8 @@ Tested on Windows and Ubuntu 18.04.
 
     * Pass through unparsed arguments (`./mytool parsed args -- these are unparsed args`).
 
+    * Capture overflowed arguments (`./mytool arg1 arg2 overflow1 overflow2`)
+
     * Automatic error messages for missing and malformed arguments.
 
 * Commands:
@@ -84,11 +111,9 @@ Tested on Windows and Ubuntu 18.04.
 
     * Supports named commands that allow for multiple words and per-command argument parsing.
 
-    * Opt-in dependency injection via constructor injection.
-
     * ~~Support for command inheritance~~ (currently broken).
 
-    * Both `struct` and `class` are allowed.
+    * Only `structs` are allowed for the moment.
 
 * Help text:
 
@@ -104,23 +129,11 @@ Tested on Windows and Ubuntu 18.04.
 
 * Utilities:
 
-    * Opt-in bash completion support.
+    * ~~Opt-in bash completion support.~~ (v0.20.0 hasn't reimplemented this yet)
 
-    * Coloured, configurable logging.
-
-    * User Input that integrates with User-Defined argument binding and validation.
-
-    * Decent support for writing and parsing ANSI text.
-
-    * Basic but flexible Configuration Providers, used alongside Dependency Injection.
+    * Decent support for writing and parsing ANSI text via [jcli](https://github.com/BradleyChatha/jcli).
 
     * An ANSI-enabled text buffer, for easier and efficient control over coloured, non-uniform text output.
-
-    * Shell utilities such as `pushLocation` and `popLocation`, synonymous with Powershell's `Push-Location` and `Pop-Location`.
-
-* Customisable design:
-
-    * All individual parts of this library are intended to be reusable. Allowing you to build your own CLI core using these already-made components, if desired.
 
 # Quick Start
 
@@ -175,21 +188,43 @@ struct DefaultCommand
 
 We create the field member `int number;` and decorate it with the `@ArgPositional` UDA to specify it as a positional argument.
 
-The first parameter is the position this argument should be at, which we define as the 0th position.
-
-The second parameter is an optional name we can give the parameter, which is shown in the command's help text, but serves no other function.
+The first parameter is an optional name we can give the parameter, which is shown in the command's help text, but serves no other function.
 
 The last parameter is simply a description.
 
 An example of the help text is shown in the [Running your program](#running-your-program) section, which demonstrates why
 you should provide a name to positional arguments.
 
+The position of a positional argument is defined by the order it appears in your command, relative to other positional arguments.
+
+For example:
+
+```d
+@CommandDefault
+struct Command
+{
+    @ArgPositional // I'm at position 0
+    int one;
+    
+    @ArgPositional // I'm at position 1
+    int two;
+
+    @ArgPositional // I'm at position 2
+    int three;
+}
+
+// myTool.exe one two three
+```
+
 ## Registering commands
 
 To use our new command, we just need to register it first:
 
 ```d
-import jcli
+module app;
+
+import jcli;
+import std.stdio;
 
 // This is still in app.d
 int main(string[] args)
@@ -201,6 +236,8 @@ int main(string[] args)
 
     return statusCode;
 }
+
+// Imagine our previous command code is here.
 ```
 
 Our main function is defined to return an `int` (status code) while also taking in any arguments passed to us via the `args` parameter.
@@ -219,13 +256,13 @@ First, let's have a look at the help text for our default command:
 
 ```bash
 $> ./mytool --help
-Usage: mytool.exe DEFAULT <number>
+mytool DEFAULT number
 
 Description:
     The default command.
 
-Positional Args:
-    number                       - The number to check.
+Positional Arguments:
+    number                 The number to check.
 ```
 
 So we can see that the help text matches the structure of our `DefaultCommand` struct.
@@ -243,12 +280,12 @@ Program exited with status code 0
 
 # No number
 $> ./mytool
-mytool.exe: Missing required arguments <number>
+temp.exe: Expected 1 positional arguments but got 0 instead. Missing the following required positional arguments: number
 Program exited with status code -1
 
 # Too many numbers
 $> ./mytool 1 2
-mytool.exe: too many arguments starting at '2'
+temp.exe: Too many positional arguments near '2'. Expected 1 positional arguments.
 Program exited with status code -1
 ```
 
@@ -296,16 +333,16 @@ Let's have a quick look at the help text first, to see the changes being reflect
 
 ```bash
 $> ./mytool --help
-Usage: mytool.exe DEFAULT <number> --mode
+temp.exe DEFAULT number --mode
 
 Description:
     The default command.
 
-Positional Args:
-    number                       - The number to check.
+Positional Arguments:
+    number                 The number to check.
 
-Named Args:
-    --mode                       - Which mode to use.
+Named Arguments:
+    --mode                 Which mode to use.
 ```
 
 And now let's test our functionality:
@@ -323,14 +360,14 @@ Program exited with status code 0
 
 # Bad value for mode
 $> mytool 60 --mode non_existing_mode
-mytool.exe: For named argument mode: Mode does not have a member named 'non_existing_mode'
+temp.exe: Mode does not have a member named 'non_existing_mode'
 Program exited with status code -1
 
 # Can safely assume Odd behaves properly.
 
 # Now, we haven't marked --mode as optional, so...
 $> mytool 60
-mytool.exe: Missing required arguments --mode
+temp.exe: The following required named arguments were not found: mode
 Program exited with status code -1
 ```
 
@@ -368,19 +405,19 @@ First, let's look at the help text, as it very slightly changes for nullable arg
 
 ```bash
 $> ./mytool --help
-Usage: mytool.exe DEFAULT <number> [--mode]
+temp.exe DEFAULT number [--mode]
 
 Description:
     The default command.
 
-Positional Args:
-    number                       - The number to check.
+Positional Arguments:
+    number                 The number to check.
 
-Named Args:
-    --mode                       - Which mode to use.
+Named Arguments:
+    --mode                 Which mode to use.
 ```
 
-Notice the "Usage:" line. `--mode` has now become `[--mode]` to indicate it is optional.
+Notice the "Usage" line. `--mode` has now become `[--mode]` to indicate it is optional.
 
 So now let's test that the argument is now optional:
 
@@ -421,22 +458,18 @@ Let's do a quick test as usual:
 $> ./mytool 60 -m normal
 Program exited with status code 1
 
-# JCLI even supports this weird syntax shorthand arguments sometimes use.
-$> ./mytool 60 -mreversed
-Program exited with status code 0
-
 # And here's the help text
 $> ./mytool --help
-Usage: mytool.exe DEFAULT <number> [--mode|-m]
+temp.exe DEFAULT number [--mode|-m]
 
 Description:
     The default command.
 
-Positional Args:
-    number                       - The number to check.
+Positional Arguments:
+    number                 The number to check.
 
-Named Args:
-    --mode,-m                    - Which mode to use.
+Named Arguments:
+    --mode|-m              Which mode to use.
 ```
 
 ## Named Commands
@@ -463,9 +496,9 @@ As a bit of a difference, let's test the code first:
 ```bash
 # We have to specify a name now. JCLI will offer suggestions!
 $> ./mytool 60
-mytool.exe: Unknown command '60'.
+temp.exe: Unknown command
 Did you mean:
-    assert                       - Asserts that a number is even.
+    assert                 Asserts that a number is even.
 
 # Passing cases (all producing the same output)
 $> ./mytool assert 60
@@ -481,13 +514,10 @@ names for commands that may have multiple names:
 # JCLI will always display the first name of each commands' pattern.
 $> ./mytool --help
 Available commands:
-    assert                       - Asserts that a number is even.
+    assert                 Asserts that a number is even.
 ```
 
 The other feature of this help text is that JCLI has support for partial command matches:
-
-**FUTURE ME I NEED TO FIX THIS BELOW EXAMPLE** - It should display "is even" instead of "assert" for the last set of help text.
-I find it funny that the bash completion code knows how to do this, but the help text generator doesn't.
 
 ```bash
 # So let's first start with a tool that has two commands.
@@ -532,11 +562,10 @@ import jcli      : Result;
 ResultOf!File fileBinder(string arg)
 {
     import std.file : exists;
-
-    // Alternatively: ResultOf!File.failIf(!arg.exists, File(arg, "r"), "File does not exist: "~arg)
+    
     return (arg.exists)
-    ? ResultOf!File.ok(File(arg, "r"))
-    : ResultOf!File.fail("File does not exist: "~arg);
+    ? ok(File(arg, "r"))
+    : fail!File("File does not exist: "~arg);
 }
 ```
 
@@ -549,12 +578,12 @@ Second, we create a function, decorated with `@Binder`, that follow a specific c
 ResultOf!<OutputType> <anyNameItDoesntMatter>(string arg);
 ```
 
-The return type is a `Result`, whose `<OutputType>` is the type of the value that the binder sets the argument to, which is a `File` in our case.
+The return type is a `ResultOf`, whose `<OutputType>` is the type of the value that the binder sets the argument to, which is a `File` in our case.
 
 The `arg` parameter is the raw string provided by the user, for whichever argument we're binding from.
 
-Finally, we check if the file exists, and if it does we return a `ResultOf!File.ok` with a `File` opened in read-only mode. If it doesn't exist then we
-return a `ResultOf!File.fail` alongside a user-friendly error message.
+Finally, we check if the file exists, and if it does we return a `ok!File` with a `File` opened in read-only mode. If it doesn't exist then we
+return a `fail!File` alongside a user-friendly error message.
 
 Arg binders need to be marked with the `@Binder` UDA so that the `CommandLineInterface` class can discover them. Talking about `CommandLineInterface`, it'll automatically discover any arg binder from the modules you tell it about, just like it does with commands.
 
@@ -601,7 +630,7 @@ Program exited with status code 0
 
 # And just for good measure, let's see what happens if the file doesn't exist
 $> ./mytool cat non-existing-file
-mytool.exe: For positional arg 0(filePath): File does not exist: non-existing-file
+temp.exe: File does not exist: non-existing-file
 ```
 
 Very simple. Very useful.
@@ -619,20 +648,18 @@ JCLI handles all of this via argument validators.
 Let's start off with the first example, making sure the user only passes in files with a `.json` extention, and apply it to our `cat` command. Code first, explanation after:
 
 ```d
-@ArgValidator
+@PreValidator
 struct HasExtention
 {
     string wantedExtention;
 
-    ResultOf!void onPreValidate(string arg)
+    ResultOf!void preValidate(string arg)
     {
         import std.algorithm : endsWith;
 
-        // If the condition is true, return a fail result with a message, otherwise return a ok result.
-        return ResultOf!void.failIf(
-            !arg.endsWith(this.wantedExtention), 
-            "Expected file to have extention of "~this.wantedExtention
-        );
+        return arg.endsWith(this.wantedExtention)
+            ? ok()
+            : fail!void("Expected file to have extention of "~this.wantedExtention);
     }
 }
 
@@ -647,19 +674,19 @@ struct CatCommand
 }
 ```
 
-To start, we create a struct called `HasExtention`, we decorate it with `@ArgValidator`, and we give it a field member called `string wantedExtention;`.
+To start, we create a struct called `HasExtention`, we decorate it with `@PreValidator`, and we give it a field member called `string wantedExtention;`.
 
 Before I continue, I want to explicitly state that this validator wants to perform validation on the raw string that the user provides (pre-arg-binded) and *not* on the final value (post-arg-binded). This is referred to as "Pre Validation". So on that note...
 
-Next, and most importantly, we define a function that specifically called `onPreValidate` that follows the following convention:
+Next, and most importantly, we define a function that specifically called `preValidate` that follows the following convention:
 
 ```d
-ResultOf!void onPreValidate(string arg);
+ResultOf!void preValidate(string arg);
 ```
 
 This is the function that performs the actual validation (in this case, "Pre" validation).
 
-It returns `ResultOf!void.ok()` if there are no validation errors, otherwise it returns `ResultOf!void.fail()` and optionally provides an error string as a user-friendly error (one is automatically generated otherwise).
+It returns `ok()` if there are no validation errors, otherwise it returns `fail!void()` and optionally provides an error string as a user-friendly error (one is automatically generated otherwise).
 
 The return type is a `ResultOf!void`, so a result that doesn't contain a value, but still states whether there was a fail or a ok.
 
@@ -667,7 +694,7 @@ The first parameter to our function is the raw string that the user has provided
 
 So for our `HasExtention` validator, all we do is check if the user's file path ends with `this.wantedExtention`, which we set the value of later.
 
-Now, inside `CatCommand` all we've done is attach our `HasExtention` struct as a UDA (and if you're not familiar with D, congrats, you just made your first UDA!). JCLI will automatically detect that `@HasExtention` is a validator because it is decorated with `@ArgValidator`.
+Now, inside `CatCommand` all we've done is attach our `HasExtention` struct as a UDA (and if you're not familiar with D, congrats, you just made your first UDA!). JCLI will automatically detect that `@HasExtention` is a pre-bind validator because it is decorated with `@PreValidator`.
 
 Because D is wonderful, it will automatically generate a constructor for us where the first parameter sets the `wantedExtention` member. So `@HasExtention(".json")` will set the extention we want to `".json"`.
 
@@ -681,7 +708,7 @@ Program exited with status code 0
 
 # Failing
 $> ./mytool cat ./.gitignore
-mytool.exe: For positional arg 0(filePath): Expected file to have extention of .json
+temp.exe: Expected file to have extention of .json
 Program exited with status code -1
 ```
 
@@ -690,17 +717,16 @@ The other type of validation is post-arg-binded validation, which performs valid
 Let's make a validator that ensures that the file is under a certain size:
 
 ```d
-@ArgValidator
+@PostValidator
 struct MaxSize
 {
     ulong maxSize;
 
-    ResultOf!void onValidate(File file)
+    ResultOf!void postValidate(File file)
     {
-        return ResultOf!void.failIf(
-            file.size() > this.maxSize,
-            "File is too large."
-        );
+        return file.size() <= this.maxSize
+            ? ok()
+            : fail!void("File is too large.");
     }
 }
 
@@ -719,10 +745,12 @@ struct CatCommand
 The convention for post-arg-binded validation is almost exactly the same as pre-arg-binded validation, it also functions in exactly the same way:
 
 ```d
-ResultOf!void onValidate(<TYPE_OF_VALUE_TO_VALIDATE> value);
+ResultOf!void postValidate(<TYPE_OF_VALUE_TO_VALIDATE> value);
 ```
 
 The only difference is that the first parameter isn't a `string`, but instead the type of value that this validator will work with.
+
+You must also mark the struct with `@PostValidator` instead of `@PreValidator`.
 
 Validators can have different overloads of this function if required. You can even make it a template. JCLI is fine with any of that.
 
@@ -730,11 +758,13 @@ We've set the max size to something really small, so we can easily test that it 
 
 ```bash
 $> ./mytool cat ./dub.json
-mytool.exe: For positional arg 0(filePath): File is too large.
+temp.exe: File is too large.
 Program exited with status code -1
 ```
 
 Excellent. We have an issue however where this is all a bit... cumbersome, right?
+
+**Currently not implemented in v0.20.0** 
 
 Well, for small one-off validation tasks like this, we can use the two built-in validators `@PreValidate` and `@PostValidate`.
 
@@ -795,7 +825,7 @@ of information that is passed to an arg binder.
 What we need is a way to specify the binding behavior on a per-argument basis.
 
 While you *could* do a hackish thing such as creating two separate file types (`ReadOnlyFile` and `WriteFile`) then making arg binders for them, there's actually
-a much easier solution - `@ArgBindWith`:
+a much easier solution - `@BindWith`:
 
 ```d
 import std.stdio : File;
@@ -805,19 +835,19 @@ ResultOf!File openReadOnly(string arg)
     import std.file : exists;
 
     return (arg.exists)
-    ? ResultOf!File.ok(File(arg, "r"))
-    : ResultOf!File.fail("The file doesn't exist: "~arg);
+    ? ok!File(File(arg, "r"))
+    : fail!File("The file doesn't exist: "~arg);
 }
 
 @Command("copy", "Copies a file")
 struct CopyCommand
 {
     @ArgPositional("source", "The source file.")
-    @ArgBindWith!openReadOnly
+    @BindWith!openReadOnly
     File source;
 
     @ArgPositional("destination", "The destination file.")
-    @ArgBindWith!(arg => ResultOf!File.ok(File(arg, "w")))
+    @BindWith!(arg => ok!File(File(arg, "w")))
     File destination;
 
     void onExecute()
@@ -830,14 +860,14 @@ struct CopyCommand
 
 To start off, we create the fairly self-explanatory `openReadOnly` function which looks exactly like an `@Binder`, except it doesn't have the UDA attached to it.
 
-Next, we attach `@ArgBindWith!openReadOnly` onto our `source` argument. This tells JCLI to use our `openReadOnly` function as this argument's binder.
+Next, we attach `@BindWith!openReadOnly` onto our `source` argument. This tells JCLI to use our `openReadOnly` function as this argument's binder.
 
-Finally, we attach `@ArgBindWith!(/*lambda*/)` onto our `destination` argument, for the same reasons as above. A lambda is used here for demonstration purposes.
+Finally, we attach `@BindWith!(/*lambda*/)` onto our `destination` argument, for the same reasons as above. A lambda is used here for demonstration purposes.
 
 And just like that we have now solved overcome our initial issue of "how to I customise binding for arguments of the same type?" in a simple, sane manner.
 
 I'd like to mention that this feature works alongside the usual arg binding behavior. In other words, you can define an `@Binder` for a type which will
-serve as the default method for binding, but then for those awkward, one-off cases you can use `@ArgBindWith` to specify a different binding behavior on a per-argument
+serve as the default method for binding, but then for those awkward, one-off cases you can use `@BindWith` to specify a different binding behavior on a per-argument
 basis.
 
 ## Unparsed Raw Arg List
@@ -851,18 +881,18 @@ Commands can access the raw arg list like so:
 struct EchoCommand
 {
     @ArgRaw
-    string[] rawArgs;
+    ArgParser rawArgs;
 
     void onExecute()
     {
-        import std.stdio;
-        foreach(arg; this.rawArgs)
+        import std.stdio, std.algorithm;
+        foreach(arg; this.rawArgs.map!(arg => arg.fullSlice))
             writeln(arg);
     }
 }
 ```
 
-Simply make a field of type `string[]`, then mark it with `@ArgRaw`, and then voila:
+Simply make a field of type `ArgParser`, then mark it with `@ArgRaw`, and then voila:
 
 ```bash
 $> ./mytool echo -- Hello world, please be kind.
@@ -873,227 +903,6 @@ be
 kind.
 Program exited with status code 0
 ```
-
-## Dependency Injection
-
-Commands in JCLI actually live inside an IOC container (henceforth 'Service Provider'), provided by my other library called [jioc](https://github.com/BradleyChatha/jioc).
-
-By default, JCLI will construct the Service Provider on its own and register some internal services to it.
-
-However JCLI will also allow you to provide it with an already-made Service Provider so that you can inject your own services into your commands via
-constructor injection.
-
-To start off, you'll need to run `dub add jioc`, as well as `import jaster.ioc`:
-
-```d
-import jaster.ioc;
-
-int main(string[] args)
-{
-    ServiceInfo[] services;
-    // We'll leave the array empty for now, as different sections will go over some specifics.
-
-    auto provider = new ServiceProvider(services);
-    auto executor = new CommandLineInterface!(app)(provider);
-    // same as before from here...
-}
-```
-
-To start off, build up an array of `ServiceInfo`. If you want to learn about making your own services, for now you'll need
-to take a look at the [example](https://github.com/BradleyChatha/jcli/tree/master/examples/05-dependency-injection/source) code, and maybe also some of JIOC's 
-[code](https://github.com/BradleyChatha/jioc). I'll get around to better docs *eventually*.
-
-Anyway, that's basically it to start off with. Any services you provide a `ServiceInfo` for can now be obtained via constructor injection. The section below will
-show off an example.
-
-## Calling a command from another command
-
-It can be useful to call different commands from within another command, so JCLI sort of has you covered here.
-
-JCLI, via dependency injection, provides the `ICommandLineInterface` service which exposes the `parseAndExecute` function that you already know and love.
-
-So, following on from the code in the [Dependency Injection](#dependency-injection) section, we'll inject an `ICommandLineInterface` into a new command, whose
-purpose is to call the `echo` command (from the [Raw Arg List](#unparsed-raw-arg-list) section) with a predefined set of arguments:
-
-```d
-int main(string[] args)
-{
-    ServiceInfo[] services;
-    services.addCommandLineInterfaceService();
-
-    // omitted...
-}
-
-@Command("say hello", "Says hello!")
-struct SayHelloCommand
-{
-    private ICommandLineInterface _cli;
-
-    this(ICommandLineInterface cli)
-    {
-        assert(cli !is null);
-        this._cli = cli;
-    }
-
-    int onExecute()
-    {
-        return this._cli.parseAndExecute(["echo", "--", "Hello!"], IgnoreFirstArg.no);
-    }
-}
-```
-
-Within the main function we first call `services.addCommandLineInterfaceService`, which is provided by JCLI to create the `ServiceInfo` that describes
-`ICommandLineInterface`. i.e. This tells the `ServiceProvider` on how to create a solid instance of `ICommandLineInterface` when we need one.
-
-Inside of our new command, with have our constructor (`this(ICommandLineInterface)`) that is asking for an `ICommandLineInterface`.
-
-So, when JCLI is constructing a command instance it does so via JIOC's `Injector.construct` function.
-
-The way `Injector.construct` works is: it looks at every parameter of the command's constructor (if it has one); any type that is a class or interface, it'll
-attempt to retrieve via a `ServiceProvider`; if it was okful, and instance of that class or interface is passed as that constructor parameter, otherwise `null`
-is passed through.
-
-In other words, by asking for an `ICommandLineInterface` within our constructor, we're just telling JCLI to fetch that service from the Service Provider and pass it
-through via our constructor, which from there we'll store the reference. We do a null check assert just in case our service doesn't exist within the Service Provider.
-
-After that, when we're executing our new command we essentially generate a call similar to `./mytool echo -- Hello!`, except programmatically, making sure we
-forward the status code.
-
-A note about `parseAndExecute`'s second parameter - the `args` from the main function will usually have the program's name as the 0th element, which we generally
-don't care about so `parseAndExecute` will skip it by default.
-
-However, when we want to manually pass in arguments we *don't* want it to skip over the first element, which is what the second parameter is telling it to do.
-
-## Configuration
-
-Many tools require persistent configuration, which is an easy yet tedious task to setup, so JCLI provides a rather basic yet useable configuration interface.
-
-The configuration provided by JCLI isn't meant to be overly advanced, it's more just a "get me a working config file ASAP" useful for smaller applications/prototypes,
-who don't really need something too fancy.
-
-Configuration is provided via Dependency Injection, using the `IConfig` interface.
-
-There are two implementations of `IConfig` provided by JCLI currently: an in-memory config, and a file config. Both of these implementations are `Adaptable` - as in their
-serialisation logic is provided by an external library, bridged into JCLI via an adapter.
-
-JCLI currently only has one built-in adapter which is for [asdf](https://github.com/libmir/asdf), a fast and relatively robust JSON serialisation library.
-
-Writing adapters is very easy to the point where, after all this talk about certain things following a "convention", you should be able to pick it up pretty quickly
-by looking at the [asdf adapter](https://github.com/BradleyChatha/jcli/blob/master/source/jaster/cli/adapters/config/asdf.d) itself.
-
-So to put it all together, if you want a file config that uses asdf for serialisation (which means you also get to use all the UDAs and other idiosyncrasies of
-whichever library you use), then you can go with an `AdaptableFileConfig` paired with the `AsdfConfigAdapter`.
-
-So, after all that mumbo jumbo, let's see how to use actually use it inside of a program. Before you being, you must run `dub add asdf` otherwise the asdf adapter
-won't be available:
-
-```d
-struct Config
-{
-    string file;
-    int counter;
-    bool destroyComputerOnError;
-}
-
-int main(string[] args)
-{
-    ServiceInfo[] services;
-    services.addFileConfig!(Config, AsdfConfigAdapter)("./config.json");
-
-    /// omitted.
-}
-
-@Command("seed config", "Seeds the config file with some odd data.")
-struct SeedConfigCommand
-{
-    IConfig!Config _config;
-
-    this(IConfig!Config config)
-    {
-        assert(config !is null);
-        this._config = config;
-    }
-
-    void onExecute()
-    {
-        // A shortcut for this is `editAndSave`
-        WasExceptionThrown yesOrNo = this._config.edit(
-            // Don't forget the `scope ref`
-            (scope ref config)
-            {
-                config.file = "Andy's dirty secret.txt";
-                config.counter = 200;
-                config.destroyComputerOnError = true;
-            },
-            RollbackOnfail.yes,
-            SaveOnok.yes
-        );
-        assert(yesOrNo == WasExceptionThrown.no);
-    }
-}
-
-@Command("print config", "Prints the config to the screen.")
-struct PrintConfigCommand
-{
-    IConfig!Config _config;
-
-    this(IConfig!Config config)
-    {
-        assert(config !is null);
-        this._config = config;
-    }
-
-    void onExecute()
-    {
-        import std.stdio;
-        writeln(this._config.value);
-    }
-}
-```
-
-Quite a big chunk of code this time, but when broken down it's pretty simple.
-
-We first define our `Config` struct, which is just your average POD struct with some data we want to persist.
-
-Then we use the `services.addFileConfig` function to create a `ServiceInfo` that describes an `AdaptableFileConfig`.
-
-The first template parameter is the user-defined type to store into the file, so `Config` in this case.
-
-The second template parameter is the adapter to use, which is the `AsdfConfigAdapter`.
-
-The first runtime parameter is the path to where the file should be stored.
-
-So we are using asdf to store/retrieve our `Config` from the file `"./config.json"`, in essence.
-
-We can access this service from our commands by requesting an `IConfig!Config`.
-
-Over inside of the `SeedConfigCommand` struct, we have an instance of `IConfig!Config` injected, and then inside of `onExecute` we do something
-a bit more peculiar.
-
-The `IConfig.edit` function is used here, as I want to demonstrate the handful of capabilities that `IConfig` supports. As the comment says, there's
-a shortcut function for this particular usage called `editAndSave`.
-
-The first parameter is a delegate (lambda) that is given a shallow copy of the configuration's value by reference. All this delegate needs to do is
-populate the configuration value with whatever it wants to set it to, by whatever means to get the data.
-
-The second parameter is a flag called `RollbackOnfail`. As the name implies, if the delegate in the first parameter throws an exception then the
-`IConfig` will attempt to rollback any changes. Please see [this comment](https://jcli.dpldocs.info/jcli.config.IConfig.edit.html) on it works exactly.
-
-The third and final parameter is a flag called `SaveOnok`, which literally does at it says on the tin. If the delegate was okful, then call
-`IConfig.save` to save any changes.
-
-Finally with this `onExecute`, we just make sure that the return value was `WasExceptionThrown.no`, which explains itself.
-
-Alternatively you can just set `IConfig.value` to something, and then call `IConfig.save`. The `IConfig.edit` function was just supposed to be a helper
-around things.
-
-We're now onto the final part of this code which is the `PrintConfigCommand`.
-
-Literally all it does it ask for the config to be injected, retrieves its value via `IConfig.value`, and then prints it to the screen
-(D's `writeln` automatically pretty prints structs).
-
-As I said, JCLI's built-in configuration isn't terribly fancy, and offloads the majority of the work onto third party code. But it gets the job
-done when you just want something up quick and easy.
 
 ## Inheritance
 
@@ -1108,7 +917,7 @@ The only rules with inheritance are:
 
 * Concrete classes must have `onExecute` defined, either by a base class or directly.
 
-Other than that, go wild. Every argument marked with `@ArgNamed` and `@CommandPostionalArg` will be discovered within the inheritance tree for a command,
+Other than that, go wild. Every argument marked with `@ArgNamed` and `@ArgPositional` will be discovered within the inheritance tree for a command,
 and they will all be populated as expected:
 
 ```d
@@ -1166,34 +975,34 @@ to your own design.
 
 Some applications will find it useful to group their arguments together inside of their help text, for example:
 
-```bash
+```text
 $> ./mytool command -h
-Usage: mytool.exe command <arg1> <arg2> <output> --test-flag [--verbose|-v] [--log|-l] [--config|-c]
+temp.exe command arg1 arg2 output [--config|-c] [--log|-l] [--test-flag] [--verbose|-v]
 
 Description:
     This is a command that is totally super complicated.
 
-Positional Args:
-    arg1                         - This is a generic argument that isn't grouped anywhere
-    arg2                         - This is a generic argument that isn't grouped anywhere
+Positional Arguments:
+    arg1                   This is a generic argument that isn't grouped anywhere
+    arg2                   This is a generic argument that isn't grouped anywhere
+    output                 Where to place the output.
 
-Named Args:
-    --test-flag                  - Test flag, please ignore.
+Named Arguments:
+    --test-flag            Test flag, please ignore.
 
-Debug:
-    Arguments related to debugging.
-
-    --verbose,-v                 - Enables verbose logging.
-    --log,-l                     - Specifies a log file to direct output to.
-
-I/O:
+I/O
     Arguments related to I/O.
 
-    output                       - Where to place the output.
-    --config,-c                  - Specifies the config file to use.
+    --config|-c            Specifies the config file to use.
+
+Debug
+    Arguments related to debugging.
+
+    --log|-l               Specifies a log file to direct output to.
+    --verbose|-v           Enables verbose logging.
 ```
 
-This can be achieved by using the `@CommandArgGroup` UDA - this is how to produce the above help text:
+This can be achieved by using the `@ArgGroup` UDA - this is how to produce the above help text:
 
 ```d
 @Command("command", "This is a command that is totally super complicated.")
@@ -1207,7 +1016,7 @@ struct ComplexCommand
     @ArgNamed("test-flag", "Test flag, please ignore.")
     bool flag;
 
-    @CommandArgGroup("Debug", "Arguments related to debugging.")
+    @ArgGroup("Debug", "Arguments related to debugging.")
     {
         @ArgNamed("verbose|v", "Enables verbose logging.")
         Nullable!bool verbose;
@@ -1216,8 +1025,10 @@ struct ComplexCommand
         Nullable!string log;
     }
 
-    @CommandArgGroup("I/O", "Arguments related to I/O.")
+    @ArgGroup("I/O", "Arguments related to I/O.")
     {
+        // Notice that positional args DON'T get moved. This is to avoid unneeded confusion
+        // since positional args are always required, and thus should be next to eachother in help text.
         @ArgPositional("output", "Where to place the output.")
         string output;
 
@@ -1229,73 +1040,17 @@ struct ComplexCommand
 }
 ```
 
-Currently, the order of groups is based on their order in the source code.
-
 ## Bash Completion
 
-JCLI's bash completion is opt-in, so first you'll need to enable it inside of `CommandLineSettings`:
-
-```d
-import jcli
-
-int main(string[] args)
-{
-    CommandLineSettings settings;
-    settings.bashCompletion = true;
-
-    auto cli = new CommandLineInterface!()(settings /*, services - if you were using Dependency Injection*/);
-    return cli.parseAndExecute(args);
-}
-```
-
-This will enable two special commands - `__jcli:complete`, and `__jcli:bash_complete_script`.
-
-The first command is used to perform the actual logic behind bash completion, and generally you don't need to call it directly.
-
-The second command however will output a bash script that can enable bash completion for your executable.
-
-From this point on, it is mostly down to how your system is setup, will be listed below.
-
-### Using eval
-
-By using the `eval` command, you can enable bash completion for the **current** shell session.
-
-```bash
-$> eval "$(./myTool __jcli:bash_complete_script)"
-
-# Provide command names.
-$> ./myTool [TAB]
-ansi    benchmark   build
-
-# Filter commands by current input.
-$> ./myTool b[TAB]
-benchmark build
-
-# Provide argument names.
-$> ./myTool benchmark -[TAB]
---runs --verbose
-
-# Smartly removes suggestions for arguments already in use.
-$> ./myTool benchmark --runs 20 -[TAB]
---verbose
-```
-
-### Using bash-completion
-
-If your system uses bash-completion, then the following command will add completion for your tool into every shell session:
-
-```bash
-# NOTE: The actual path may be different on your system/distro.
-$> myTool __jcli:bash_complete_script > /etc/.bash_completion.d/myTool
-```
+**Awaiting to be rewritten for v0.20.0**
 
 ## Argument parsing actions
 
-There are specific cases where arguments may need to be parsed in a different manner. You can customise parsing behavior on a per-argument basis by attaching any enum value from the `CommandArgAction` enum.
+There are specific cases where arguments may need to be parsed in a different manner. You can customise parsing behavior on a per-argument basis by attaching any enum value from the `ArgAction` enum.
 
-### CommandArgAction.count
+### ArgAction.count
 
-By attaching `@(CommandArgAction.count)` onto a named argument, the argument's behavior will change in the following ways:
+By attaching `@(ArgAction.count)` onto a named argument, the argument's behavior will change in the following ways:
 
 * Every time the argument is defined within the command's parameters, the value of the argument is incremented.
 
@@ -1307,8 +1062,6 @@ By attaching `@(CommandArgAction.count)` onto a named argument, the argument's b
 
 * Special syntax `-aaaa` (where 'a' is the name of the arg) is supported. (Increments 4 times).
 
-You can use any type that supports `opUnary!"++"`, even custom types.
-
 Here's an example command:
 
 ```d
@@ -1316,7 +1069,7 @@ Here's an example command:
 struct SumCommand
 {
     @ArgNamed("a")
-    @(CommandArgAction.count)
+    @(ArgAction.count)
     int arg;
 
     void onExecute()
@@ -1344,12 +1097,14 @@ $> ./myTool
 In certain cases there may be a need for being able to gather and inspect the data of a command and its arguments, ideally in the same way
 JCLI is able to.
 
-JCLI exposes this via the `jcli.infogen` package, which gathers all the JCLI-relevant details about a command and all of its recognised arguments.
+JCLI exposes this via the `jcli.introspect` package, which gathers all the JCLI-relevant details about a command and all of its recognised arguments.
 
 This information is available at compile-time, allowing for the usual meta-programming shenanigans that D allows. This is useful for those that want to build
 their own functionality on top of the several parts JCLI provides.
 
 Our example will simply be an empty command with a few arguments we'd like to get information of:
+
+**TODO Update this for v0.20.0 since this is outdated**
 
 ```d
 import std, jcli;
@@ -1361,7 +1116,7 @@ struct MyCommand
     Nullable!bool verbose;
 
     @ArgNamed("l", "Verbose level counter.")
-    @(CommandArgAction.count)
+    @(ArgAction.count)
     uint lCount;
 
     @ArgPositional("arg1", "The first argument to do stuff with.")
@@ -1418,7 +1173,7 @@ Description = description
 Identifier  = verbose
 UDA         = ArgNamed(Pattern("v|verbose"), "Toggle verbose output.")
 Action      = default_
-Group       = CommandArgGroup("", "")
+Group       = ArgGroup("", "")
 Existence   = optional
 ParseScheme = bool_
 
@@ -1426,7 +1181,7 @@ ParseScheme = bool_
 Identifier  = lCount
 UDA         = ArgNamed(Pattern("l"), "Verbose level counter.")
 Action      = count
-Group       = CommandArgGroup("", "")
+Group       = ArgGroup("", "")
 Existence   = cast(CommandArgExistence)3 # NOTE: 3 = multiple | optional, result of the `count` action
 ParseScheme = allowRepeatedName          # Result of the `count` action
 
@@ -1434,7 +1189,7 @@ ParseScheme = allowRepeatedName          # Result of the `count` action
 Identifier  = arg1
 UDA         = ArgPositional("arg1", "The first argument to do stuff with.")
 Action      = default_
-Group       = CommandArgGroup("", "")
+Group       = ArgGroup("", "")
 Existence   = default_
 ParseScheme = default_
 
@@ -1444,15 +1199,14 @@ Arg0Nullable = true
 ```
 
 I'll also note that every `ArgumentInfo` also contains an `actionFunc` variable which will be one of the functions inside of
-`jcli.infogen.actions`. This function will perform the binding action (e.g. default_ goes through the `ArgBinder`, count increments, etc.).
+`jcli.introspect.actions`. This function will perform the binding action (e.g. default_ goes through the `ArgBinder`, count increments, etc.).
 
 ## Light-weight command parsing
 
 Some users may find `CommandLineInterface` too *forceful* and heavy in how it works. Some users may prefer that JCLI only handle
 argument parsing and value binding, and then these users will handle the execution/logic themselves.
 
-To do this, you can use the `CommandParser` struct, which is responsible for only parsing data into a command instance. It doesn't even know
-how to construct a command, so you'll have to do that yourself beforehand.
+To do this, you can use the `CommandParser` struct, which is responsible for only parsing data into a command instance.
 
 Here's an example:
 
@@ -1482,15 +1236,16 @@ int main(string[] args)
     // If you don't specify an `ArgBinder`, then `CommandParser` will use the default one.
     CommandParser!(CalculateCommand, ArgBinder!()) parser; // Same as: CommandParser!CalculateCommand
 
-    CalculateCommand instance;
-    ResultOf!void result = parser.parse(args[1..$], /*ref*/ instance); // args[0] is the program name, so we need to skip it.
+    ResultOf!CalculateCommand result = parser.parse(args[1..$]); // args[0] is the program name, so we need to skip it.
 
     // Normally CommandLineInterface handles everything for us, but now we have to do this ourselves.
-    if(!result.isok)
+    if(!result.isOk)
     {
-        writeln("calculate: ", result.asfail.error);
+        writeln("calculate: ", result.error);
         return -1;
     }
+
+    auto instance = result.value;
 
     // We also have to call/handle command logic ourself.
     final switch(instance.op) with(CalculateOperation)
@@ -1507,7 +1262,6 @@ If you're this far down you won't need any example output of the above, so I've 
 
 This usage of JCLI supports all forms of argument parsing and value binding (validators, custom binders, etc.) but does not support:
     * Help text generation (see: [Light-weight command help text](#light-weight-command-help-text))
-    * Dependency Injection
     * Automatic support for multiple commands (you'll have to build that yourself on top of `CommandParser`)
     * Bash Completion (planned to become an independent component though)
     * Basically anything other than parsing arguments.
@@ -1535,7 +1289,7 @@ struct ComplexCommand
     @ArgNamed("test-flag", "Test flag, please ignore.")
     bool flag;
 
-    @CommandArgGroup("Debug", "Arguments related to debugging.")
+    @ArgGroup("Debug", "Arguments related to debugging.")
     {
         @ArgNamed("verbose|v", "Enables verbose logging.")
         Nullable!bool verbose;
@@ -1544,7 +1298,7 @@ struct ComplexCommand
         Nullable!string log;
     }
 
-    @CommandArgGroup("I/O", "Arguments related to I/O.")
+    @ArgGroup("I/O", "Arguments related to I/O.")
     {
         @ArgPositional("output", "Where to place the output.")
         string output;
@@ -1559,7 +1313,7 @@ struct ComplexCommand
 void main(string[] args)
 {
     CommandHelpText!ComplexCommand helpText;
-    writeln(helpText.toString("mytool.exe"));
+    writeln(helpText.generate());
 }
 ```
 
@@ -1567,45 +1321,6 @@ This is almost exactly the same as the [argument groups](#argument-groups) examp
 to directly access the help text for our `ComplexCommand`.
 
 The output is exactly the same as shown in the [argument groups](#argument-groups) example, so I won't be duplicating it here.
-
-## Using a custom sink in CommandLineInterface
-
-By default `CommandLineInterface` will always output onto stdout. This can be undesirable in certain cases, so `CommandLineInterface` allows you
-to specify your own sink to output to.
-
-Please note however that this sink will only affect `CommandLineInterface` itself. Commands may use whatever I/O they desire, so it's unreasonable
-to expect this sink to carry over to commands.
-
-To set this sink you must set the `CommandLineSettings.sink` value when passing in an instance of `CommandLineSettings` into your `CommandLineInterface`:
-
-```d
-module app;
-import std, jcli;
-
-@Command("dummy", "This is a dummy command")
-struct DummyCommand
-{
-    void onExecute(){}
-}
-
-void main()
-{
-    string log;
-
-    CommandLineSettings settings;
-    settings.sink = (string str) { log ~= str; };
-
-    auto cli = new CommandLineInterface!app(settings);
-    cli.parseAndExecute(["--help"], IgnoreFirstArg.no);
-
-    assert(log.length > 0);
-    assert(log.canFind("dummy"));
-}
-```
-
-The above example shows a minimal program that captures the output of `CommandLineInterface` into a string.
-
-If `CommandLineSettings.sink` is left as null (that is, `Nullable.isNull`, not `is null`) then `CommandLineInterface` will default to using `std.stdio.write`.
 
 ## Argument configuration
 
@@ -1627,65 +1342,10 @@ By attaching `@(ArgConfig.canRedefine)` onto a named argument, the right-most de
 
 # Using JCLI without Dub
 
-It is entirely possible to use JCLI without needing to use dub, there are just two things to keep in mind.
+It's possible to use JCLI without dub, especially because it has no external dependencies (other than JANSI, which is actually bundled instead of added as a proper
+dub dependency).
 
-1. JCLI has a hard dependency on [JIOC](https://github.com/BradleyChatha/jioc), however I am the maintainer of this library, and it is a single-file library, so it is both
-safe to assume it'll stay up-to-date, and it is easy to add into your project.
-
-2. For optional dependencies that JCLI supports, such as asdf, these are locked behind different [versions](#versions) so you only need to include them if you're using
-them in the first place.
-
-Other than that, if you're not using dub/dub-compatible build system, then I assume you already understand how you would go about adding third party code into your builds.
-
-Furthermore, you may also make use of the [amalgamation](#using-the-amalgamation) file if needed.
-
-# Using the amalgamation
-
-The amalgamation [file](https://github.com/BradleyChatha/jcli/blob/master/single-file/jcli.d) is a file with JCLI's source code bundled into a single file, with
-a few patches made to ensure that it can compile.
-
-The existence of this file was inspired by a certain property of the excellent [arsd](https://github.com/adamdruppe/arsd) collection: all you need is a file or two
-and suddenly you have access to some very useful code.
-
-Likewise the idea with the amalgamation file is that all you have to do is copy it into your project and then it's ready to use.
-
-However, it's not a clean replacement for using JCLI as a dub package/multi-file library, as there are certain side effects and considerations:
-
-1. JCLI has a hard dependency on JIOC, so JIOC's source code is *also* included inside of the amalgamation.
-
-    * This means if your project already includes JIOC as a dub package, you'll have to remove it and use the amalgamation version otherwise you'll get conflicts.
-
-    * Whether or not you want or need it, you now have JIOC included within your project as well.
-
-    * I may provide another amalgamation file that doesn't include JIOC's source code, but assumes your project will have `import jioc` available.
-
-1. Because all of the code is now inside of a single file, this also means that there is only a single module.
-
-    * So instead of `import jcli, jcli.binder, jcli` and so on, the only thing you can import now is `import jcli`.
-
-    * This means that the module also suffers from pollution, which can be pretty annoying especially in regards to the fact JIOC will be implicitly included as well.
-
-    * D's module system however provides selective imports, so that can aid you in avoiding symbol pollution within your code.
-
-1. Support for this is still in the early stages.
-
-    * Throwing a bunch of files together with a few hacks to make them compile can lead to compiler errors, or worse, behavioural differences.
-
-    * Please file an issue if you encounter any problems that are unique to the amalgamation.
-
-Finally, if the idea of the amalgamation is appealing to you, but you feel there are certain problems or difficulties that can be addressed, feel free to file an issue.
-
-# Versions
-
-JCLI makes use of the `version` statement in various areas. Here is a list of all versions that JCLI utilises.
-
-Any versions prefixed with `Have_` are automatically created by dub for each dependency in your project. For example, `Have_asdf` will be automatically
-defined by dub if you have `asdf` as a dependency of your project. If you do not use dub then you'll have to manually specify these versions when relevant.
-
-| Version                   | Description                                                                                                                    |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| JCLI_Verbose              | When defined, enables certain verbose compile-time logging, such as how `ArgBinder` is deciding which `@Binder` to use. |
-| Have_asdf                 | Enables the `AsdfConfigAdapter`, which uses the `asdf` library to serialise the configuration value.                           |
+In fact, this library is developed under [Meson](https://mesonbuild.com) as the build tool, which means that you can easily integrated this library into your own Meson projects.
 
 # Contributing
 

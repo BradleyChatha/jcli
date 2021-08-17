@@ -60,6 +60,9 @@ struct CommandHelpText(alias CommandT_)
         ));
         help.addLine(null);
 
+        if(CommandInfo.description)
+            help.addHeaderWithText("Description:", CommandInfo.description);
+
         help.addHeader("Positional Arguments:");
         foreach(pos; positionals)
         {

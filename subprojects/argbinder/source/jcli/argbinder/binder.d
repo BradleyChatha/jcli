@@ -109,23 +109,28 @@ private template getBindWith(alias ArgSymbol, Binders...)
     enum isBindWith(alias Uda)  = isInstanceOf!(BindWith, Uda);
     alias Found                 = Filter!(isBindWith, Udas);
 
+    static if(isInstanceOf!(Nullable, typeof(ArgSymbol)))
+        alias ArgT = typeof(ArgSymbol.get());
+    else
+        alias ArgT = typeof(ArgSymbol);
+
     static assert(Found.length <= 1, "Only one @BindWith may exist.");
     static if(Found.length == 0)
     {
         enum isValidBinder(alias Binder) = 
-            __traits(compiles, { typeof(ArgSymbol) a = Binder!(typeof(ArgSymbol))("").value; })
-            || __traits(compiles, { typeof(ArgSymbol) a = Binder("").value; });
+            __traits(compiles, { ArgT a = Binder!(ArgT)("").value; })
+            || __traits(compiles, { ArgT a = Binder("").value; });
         alias ValidBinders = Filter!(isValidBinder, Binders);
 
         static if(ValidBinders.length)
         {
-            static if(__traits(compiles, Instantiate!(ValidBinders[0], typeof(ArgSymbol))))
-                alias getBindWith = Instantiate!(ValidBinders[0], typeof(ArgSymbol));
+            static if(__traits(compiles, Instantiate!(ValidBinders[0], ArgT)))
+                alias getBindWith = Instantiate!(ValidBinders[0], ArgT);
             else
                 alias getBindWith = ValidBinders[0];
         }
         else
-            static assert(false, "No binders available for symbol "~__traits(identifier, ArgSymbol)~" of type "~typeof(ArgSymbol).stringof);
+            static assert(false, "No binders available for symbol "~__traits(identifier, ArgSymbol)~" of type "~ArgT.stringof);
     }
     else
         alias getBindWith = Found[0].Func;
