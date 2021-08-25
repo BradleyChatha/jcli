@@ -1,0 +1,5 @@
+name "autocomplete"
+targetType "library"
+dependency "jcli:core" version="*"
+dependency "jcli:introspect" version="*"
+dependency "jcli:argparser" version="*"

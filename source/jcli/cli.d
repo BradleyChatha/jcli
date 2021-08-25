@@ -44,14 +44,15 @@ final class CommandLineInterface(Modules...)
         if(parser.empty)
             parser = ArgParser(["-h"]);
 
-        auto command = this.resolveCommand(parser);
+        string[] args;
+        auto command = this.resolveCommand(parser, args);
         if(command.kind == command.Kind.partial || command == typeof(command).init)
         {
             if(this._default == CommandInfo.init)
             {
                 HelpText help = HelpText.make(180);
                 
-                if(parserCopy.empty)
+                if(parserCopy.empty || parserCopy == ArgParser(["-h"]))
                     help.addHeader("Available commands:");
                 else
                 {
@@ -87,6 +88,16 @@ final class CommandLineInterface(Modules...)
             writeln(command.fullMatchChain[$-1].userData.onHelp());
             return 0;
         }
+        else if(args.length && args[$-1] == "--__jcli:complete")
+        {
+            args = args[0..$-1];
+
+            if(command.valueProvider)
+                writeln(command.valueProvider(args));
+            else
+                writeln("Command does not contain a value provider.");
+            return 0;
+        }
 
         try return command.fullMatchChain[$-1].userData.onExecute(parser);
         catch(Exception ex)
@@ -98,11 +109,13 @@ final class CommandLineInterface(Modules...)
         }
     }
 
-    ResolveResult!CommandInfo resolveCommand(ref ArgParser parser)
+    ResolveResult!CommandInfo resolveCommand(ref ArgParser parser, out string[] args)
     {
         typeof(return) lastPartial;
 
         string[] command;
+        scope(exit)
+            args = parser.map!(r => r.fullSlice).array;
 
         while(true)
         {
@@ -155,7 +168,7 @@ final class CommandLineInterface(Modules...)
             info.pattern = getUDAs!(CommandT, Command)[0].pattern;
             info.description = getUDAs!(CommandT, Command)[0].description;
             foreach(pattern; info.pattern.patterns)
-                this._resolver.add(pattern.splitter(' ').array, info, null);
+                this._resolver.add(pattern.splitter(' ').array, info, &(AutoComplete!CommandT()).complete);
             this._uniqueCommands ~= info;
         }
         else

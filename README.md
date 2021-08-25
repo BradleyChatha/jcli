@@ -129,7 +129,7 @@ Tested on Windows and Ubuntu 18.04.
 
 * Utilities:
 
-    * ~~Opt-in bash completion support.~~ (v0.20.0 hasn't reimplemented this yet)
+    * Bash completion support.
 
     * Decent support for writing and parsing ANSI text via [jcli](https://github.com/BradleyChatha/jcli).
 
@@ -1042,7 +1042,9 @@ struct ComplexCommand
 
 ## Bash Completion
 
-**Awaiting to be rewritten for v0.20.0**
+JCLI provides automatic autocomplete for commands (currently only for command arguments, not commands themselves) via the `jcli.autocomplete` package.
+
+yada yada, do this up eventually.
 
 ## Argument parsing actions
 

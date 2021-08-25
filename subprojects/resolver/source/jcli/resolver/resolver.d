@@ -2,7 +2,7 @@ module jcli.resolver.resolver;
 
 import std;
 
-alias ResolveValueProvider = string[] delegate(string partialInput);
+alias ResolveValueProvider = string[] delegate(string[] currArgs);
 
 struct ResolveResult(alias UserDataT)
 {
@@ -15,7 +15,7 @@ struct ResolveResult(alias UserDataT)
     Kind kind;
     ResolveNode!UserDataT*[] fullMatchChain;
     ResolveNode!UserDataT*[] partialMatches;
-    string[] valueOptions;
+    ResolveValueProvider valueProvider;
 }
 
 struct ResolveNode(alias UserDataT)
@@ -98,7 +98,7 @@ final class Resolver(alias UserDataT_)
         {
             ret.kind = ret.Kind.full;
             if(node.valueProvider)
-                ret.valueOptions = node.valueProvider(null);
+                ret.valueProvider = node.valueProvider;
             return ret;
         }
 

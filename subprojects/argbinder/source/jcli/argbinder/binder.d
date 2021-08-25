@@ -65,8 +65,8 @@ unittest
 }
 
 @Binder
-ResultOf!T binderNumber(T)(string value)
-if(isNumeric!T)
+ResultOf!T binderTo(T)(string value)
+if(__traits(compiles, to!T(value)))
 {
     try return ok(value.to!T);
     catch(ConvException msg) return fail!T(msg.msg);

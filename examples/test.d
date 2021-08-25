@@ -122,6 +122,11 @@ auto TEST_CASES =
               .expectStatusToBe (-1)
               .finish           (),
 
+    testCase().inFolder         ("./05-built-in-binders/")
+              .withParams       ("echo -b -i 2 -f 2.2 -s Hola -e red")
+              .expectStatusToBe (0)
+              .finish           (),
+
     testCase().inFolder             ("./08-arg-binder-validation")
               .withParams           ("20 69")
               .expectStatusToBe     (0)

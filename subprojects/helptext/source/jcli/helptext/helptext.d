@@ -51,13 +51,13 @@ struct CommandHelpText(alias CommandT_)
 
         named.multiSort!("a.optional != b.optional", "a.name < b.name");
 
-        help.addLine(null);
-        help.addLine("%s %s%s%s".format(
+        help.addLineWithPrefix("Usage: ", "%s %s%s%s".format(
             appName,
             CommandInfo.pattern.patterns.walkLength ? CommandInfo.pattern.patterns.front : "DEFAULT",
-            positionals.map!(p => p.name).fold!((a,b) => a~" "~b)(""),
+            positionals.map!(p => "<"~p.name~">").fold!((a,b) => a~" "~b)(""),
             named.map!(p => p.optional ? "["~p.name~"]" : p.name).fold!((a,b) => a~" "~b)("")
-        ));
+        ), AnsiStyleSet.init.style(AnsiStyle.init.bold).nullable);
+        help.addLine(null);
         help.addLine(null);
 
         if(CommandInfo.description)
