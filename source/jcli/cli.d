@@ -242,7 +242,8 @@ unittest
 {
     auto cli = new CommandLineInterface!(jcli.cli);
     auto p = ArgParser(["a"]);
-    auto r = cli.resolveCommand(p);
+    string[] a;
+    auto r = cli.resolveCommand(p, a);
     assert(r.kind == r.Kind.partial);
     assert(r.fullMatchChain.length == 1);
     assert(r.fullMatchChain[0].fullMatchString == "a");
@@ -253,7 +254,7 @@ unittest
     foreach(args; [["ae", "2"], ["assert", "even", "2"], ["a", "e", "2"]])
     {
         p = ArgParser(args);
-        r = cli.resolveCommand(p);
+        r = cli.resolveCommand(p, a);
         assert(r.kind == r.Kind.full);
         assert(r.fullMatchChain.length == args.length-1);
         assert(r.fullMatchChain.map!(fm => fm.fullMatchString).equal(args[0..$-1]));
@@ -264,7 +265,7 @@ unittest
     foreach(args; [["ae", "1", "--reverse"], ["a", "e", "-r", "1"]])
     {
         p = ArgParser(args);
-        r = cli.resolveCommand(p);
+        r = cli.resolveCommand(p, a);
         assert(r.kind == r.Kind.full);
         assert(r.fullMatchChain[$-1].userData.onExecute(p) == 0);
     }
