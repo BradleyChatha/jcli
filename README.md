@@ -1044,7 +1044,7 @@ struct ComplexCommand
 
 JCLI provides automatic autocomplete for commands (currently only for command arguments, not commands themselves) via the `jcli.autocomplete` package.
 
-yada yada, do this up eventually.
+yada yada, do this up eventually once this is up and running again (it's almost ready though!).
 
 ## Argument parsing actions
 
