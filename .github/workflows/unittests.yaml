@@ -41,7 +41,7 @@ jobs:
         run: dub test
 
       - name: Test CommandParser
-        working-directory: ./subprojects/commandParser
+        working-directory: ./subprojects/commandparser
         run: dub test
 
       - name: Test Core
