@@ -72,7 +72,7 @@ struct BorderWidget
         }
     }
 
-    @safe @nogc nothrow pure const:
+    @safe const:
 
     Rect innerArea(const Layout parent)
     {
@@ -133,37 +133,3 @@ struct BorderWidgetBuilder
         return this._widget;
     }
 }
-
-// unittest
-// {
-//     // TEMP, since it's obviously stupidly annoying to automatically test this.
-//     Console.attach();
-//     auto buffer = Console.createTextBuffer();
-//     auto layout = Layout(Rect(0, 0, buffer.width, buffer.height), 2, 2);
-//     auto builder = BorderWidgetBuilder
-//         .init
-//         .withBlockArea(Rect(0, 0, 1, 1))
-//         .withBorderStyle(BorderStyle.all)
-//         .withForeground(AnsiColour(Ansi4BitColour.brightYellow))
-//         .withBackground(AnsiColour(Ansi4BitColour.red))
-//         .withTitle("THIS IS RED lol")
-//         .withTitleAlignment(Alignment.left);
-//     builder.build().render(layout, buffer);
-//     builder
-//         .withBlockArea(Rect(1, 0, 2, 1))
-//         .withBackground(AnsiColour(Ansi4BitColour.blue))
-//         .withTitle("But this is blu tho")
-//         .withTitleAlignment(Alignment.right)
-//         .build()
-//         .render(layout, buffer);
-//     builder
-//         .withBlockArea(Rect(0, 1, 2, 2))
-//         .withBackground(AnsiColour(Ansi4BitColour.green))
-//         .withTitle("And this is greeeeeeeeen!")
-//         .withTitleAlignment(Alignment.center)
-//         .build()
-//         .render(layout, buffer);
-//     buffer.refresh();
-//     readln();
-//     Console.detach();
-// }

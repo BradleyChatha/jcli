@@ -115,6 +115,15 @@ final class Console
         }
     }
 
+    void waitForInput()
+    {
+        assert(Console.isAttached, "We're not attached to the console.");
+        version(Windows)
+        {
+            WaitForSingleObject(Console._stdin, 0);
+        }
+    }
+
     void setCursor(uint x, uint y)
     {
         stdout.writef("\033[%s;%sH", y, x);

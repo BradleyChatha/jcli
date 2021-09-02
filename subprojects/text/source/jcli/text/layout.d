@@ -19,29 +19,28 @@ struct Layout
         this._vertBlocks = vertBlocks;
     }
 
-    @safe @nogc
-    Rect blockRectToRealRect(Rect blockRect) nothrow pure const
+    @safe
+    Rect blockRectToRealRect(Rect blockRect) const
     {
         blockRect = oobRect(OnOOB.constrain, Rect(0, 0, this._horizBlocks, this._vertBlocks), blockRect);
-            
         return Rect(
-            (this.blockWidth * blockRect.left),
-            (this.blockHeight * blockRect.top),
-            (this.blockWidth * blockRect.right),
-            (this.blockHeight * blockRect.bottom),
+            this._area.left + (this.blockWidth * blockRect.left).round.to!int,
+            this._area.top  + (this.blockHeight * blockRect.top).round.to!int,
+            this._area.left + (this.blockWidth * blockRect.right).round.to!int,
+            this._area.top  + (this.blockHeight * blockRect.bottom).round.to!int,
         );
     }
 
-    @safe @nogc
-    private int blockWidth() nothrow pure const
+    @safe
+    private float blockWidth() const
     {
-        return this._area.width / this._horizBlocks;
+        return cast(float)this._area.width / cast(float)this._horizBlocks;
     }
 
-    @safe @nogc
-    private int blockHeight() nothrow pure const
+    @safe
+    private float blockHeight() const
     {
-        return this._area.height / this._vertBlocks;
+        return cast(float)this._area.height / cast(float)this._vertBlocks;
     }
 }
 

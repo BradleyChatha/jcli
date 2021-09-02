@@ -9,6 +9,8 @@ jcli_text_srcs = [
     'source/jcli/text/layout.d',
     'source/jcli/text/widgets/package.d',
     'source/jcli/text/widgets/border.d',
+    'source/jcli/text/widgets/text.d',
+    'source/jcli/text/widgets/shortcuts.d',
     'source/jansi.d'
 ]
 

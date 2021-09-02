@@ -69,6 +69,11 @@ struct TestResult
     bool     passed;
     string[] failedReasons;
     TestCase testCase;
+
+    int      buildStatus;
+    int      runStatus;
+    string   buildOut;
+    string   runOut;
 }
 
 /++ CONFIGURATION ++/
@@ -206,6 +211,16 @@ struct DefaultCommand
     }
 }
 
+@Command("ui", "Runs the test UI")
+struct UICommand
+{
+    void onExecute()
+    {
+        auto ui = new UI();
+        ui.run();
+    }
+}
+
 @Command("cleanup", "Runs the cleanup command for all test cases")
 struct CleanupCommand
 {
@@ -286,7 +301,7 @@ TestResult runTest(TestCase testCase)
     else
         writefln("%s", "Test PASSED".ansi.fg(Ansi4BitColour.green));
 
-    return TestResult(passed, reasons, testCase);
+    return TestResult(passed, reasons, testCase, results[0].status, results[1].status, results[0].output, results[1].output);
 }
 
 // [0] = build result, [1] = test result
@@ -330,4 +345,204 @@ void runCleanup(TestCase testCase)
     chdir(testCase.folder);
     scope(exit) chdir(cwd);
     executeShell("dub clean");
+}
+
+final class UI
+{
+    TextBuffer buffer;
+    Layout layout;
+    size_t selectedTest;
+    size_t buildOffset;
+    size_t buildXOffset;
+    size_t runOffset;
+
+    static struct Test
+    {
+        enum State
+        {
+            notRan,
+            success,
+            failure
+        }
+        string displayName;
+        State state;
+        int buildStatus;
+        int runStatus;
+        string buildOutput;
+        string runOutput;
+    }
+    Test[] tests;
+
+    void run()
+    {
+        Console.attach();
+        this.buffer = Console.createTextBuffer();
+        this.layout = Layout(
+            Rect(0, 0, this.buffer.width, this.buffer.height),
+            8, 8
+        );
+
+        this.tests = TEST_CASES.map!(t => Test(" " ~ t.folder ~ " " ~ t.params ~ " ")).array;
+
+        while(Console.isAttached)
+        {
+            Console.processEvents((e)
+            {
+                e.match!(
+                    (ConsoleKeyEvent key) => handleKey(key),
+                    (_){}
+                );
+            });
+
+            if(Console.isAttached)
+                this.draw();
+        }
+    }
+
+    private void handleKey(ConsoleKeyEvent key)
+    {
+        import core.sys.windows.windows;
+        if(!key.isDown)
+            return;
+
+        // If I weren't lazy I'd bring the shift and ctrl keys into play, but I'm lazy.
+        if(key.keycode == VK_ESCAPE)
+            Console.detach();
+        else if(key.keycode == VK_UP && this.selectedTest != 0)
+            this.selectedTest--;
+        else if(key.keycode == VK_DOWN && this.selectedTest < TEST_CASES.length-1)
+            this.selectedTest++;
+        else if(key.keycode == VK_RETURN)
+            this.runTest(this.selectedTest);
+        else if(key.keycode == VK_HOME && this.buildOffset != 0)
+            this.buildOffset--;
+        else if(key.keycode == VK_END)
+            this.buildOffset++;
+        else if(key.keycode == VK_INSERT && this.runOffset != 0)
+            this.runOffset--;
+        else if(key.keycode == VK_DELETE)
+            this.runOffset++;
+        else if(key.keycode == VK_RIGHT)
+            this.buildXOffset++;
+        else if(key.keycode == VK_LEFT && this.buildXOffset != 0)
+            this.buildXOffset--;
+        else if(key.keycode == VK_BACK)
+        {
+            foreach(i; 0..TEST_CASES.length)
+                this.runTest(i);
+        }
+    }
+
+    private void runTest(size_t test)
+    {
+        const TestResult result = .runTest(TEST_CASES[test]);
+        this.tests[test].state = (result.passed) ? Test.State.success : Test.State.failure;
+        this.tests[test].buildOutput = result.buildOut;
+        this.tests[test].runOutput = result.runOut;
+    }
+
+    private void draw()
+    {
+        auto testBlock = BorderWidgetBuilder()
+            .withBackground(AnsiColour(Ansi4BitColour.black))
+            .withForeground(AnsiColour(Ansi4BitColour.yellow))
+            .withBlockArea(Rect(0, 0, 3, 7))
+            .withBorderStyle(BorderStyle.all)
+            .withTitle("TESTS")
+            .withTitleAlignment(Alignment.center)
+            .build();
+
+        auto resultBlock = BorderWidgetBuilder()
+            .withBackground(AnsiColour(Ansi4BitColour.black))
+            .withForeground(AnsiColour(Ansi4BitColour.yellow))
+            .withBlockArea(Rect(3, 0, 8, 7))
+            .withBorderStyle(BorderStyle.all)
+            .withTitle("RESULT")
+            .withTitleAlignment(Alignment.center)
+            .build();
+
+        testBlock.render(this.layout, this.buffer);
+        resultBlock.render(this.layout, this.buffer);
+
+        const testArea = testBlock.innerArea(this.layout);
+        const testLayout = Layout(testArea, testArea.width, testArea.height);
+        foreach(i, test; this.tests[this.selectedTest..$])
+        {
+            const fg = 
+                (test.state == Test.State.notRan)
+                    ? AnsiColour.init
+                    : (test.state == Test.State.failure)
+                        ? AnsiColour(Ansi4BitColour.red)
+                        : AnsiColour(Ansi4BitColour.green);
+
+            TextWidgetBuilder()
+                .withBlockArea(Rect(2, cast(int)i, testArea.width, cast(int)i+1))
+                .withText(test.displayName)
+                .withStyle(i == 0 ? AnsiStyleSet.init.bg(AnsiColour(Ansi4BitColour.blue)).fg(fg) : AnsiStyleSet.init.fg(fg))
+                .build()
+                .render(testLayout, this.buffer);
+        }
+
+        const resultArea   = resultBlock.innerArea(this.layout);
+        const resultLayout = Layout(resultArea, 2, 1);
+        const buildArea    = resultLayout.blockRectToRealRect(Rect(0, 0, 1, 1));
+        const runArea      = resultLayout.blockRectToRealRect(Rect(1, 0, 2, 1));
+        const buildLayout  = Layout(buildArea, 1, 1);
+        const runLayout    = Layout(runArea, 1, 1);
+
+        auto buildBlock = BorderWidgetBuilder()
+            .withBlockArea(Rect(0, 0, 1, 1))
+            .withBorderStyle(BorderStyle.all)
+            .withTitle("Build")
+            .withTitleAlignment(Alignment.center)
+            .build();
+        buildBlock.render(buildLayout, this.buffer);
+
+        auto runBlock = BorderWidgetBuilder()
+            .withBlockArea(Rect(0, 0, 1, 1))
+            .withBorderStyle(BorderStyle.all)
+            .withTitle("Run")
+            .withTitleAlignment(Alignment.center)
+            .build();
+        runBlock.render(runLayout, this.buffer);
+
+        const buildOutArea      = buildBlock.innerArea(buildLayout);
+        const runOutArea        = runBlock.innerArea(runLayout);
+        const buildOutLayout    = Layout(buildOutArea, 1, buildOutArea.height);
+        const runOutLayout      = Layout(runOutArea, 1, runOutArea.height);
+
+        foreach(i, line; this.tests[this.selectedTest].buildOutput.lineSplitter.drop(this.buildOffset).enumerate)
+        {
+            TextWidgetBuilder()
+                .withBlockArea(Rect(0, cast(int)i, 1, cast(int)i+1))
+                .withText(line[min(this.buildXOffset, line.length)..$])
+                .build()
+                .render(buildOutLayout, this.buffer);
+        }
+
+        foreach(i, line; this.tests[this.selectedTest].runOutput.lineSplitter.drop(this.runOffset).enumerate)
+        {
+            TextWidgetBuilder()
+                .withBlockArea(Rect(0, cast(int)i, 1, cast(int)i+1))
+                .withText(line[min(this.buildXOffset, line.length)..$])
+                .build()
+                .render(runOutLayout, this.buffer);
+        }
+
+        ShortcutsWidgetBuilder!7()
+            .withBackground(AnsiColour(Ansi4BitColour.brightBlack))
+            .withKeyStyle(AnsiStyleSet.init.bg(AnsiColour(Ansi4BitColour.blue)))
+            .withDescriptionStyle(AnsiStyleSet.init.bg(AnsiColour(Ansi4BitColour.brightBlack)))
+            .withShortcut(0, "ESC", "Close UI")
+            .withShortcut(1, "↑↓", "Select test")
+            .withShortcut(2, "ENTER", "Run test")
+            .withShortcut(3, "BACKSPACE", "Run all tests")
+            .withShortcut(4, "INS DEL", "Move Build Output")
+            .withShortcut(5, "PGUP PGDN", "Move Run Output")
+            .withShortcut(6, "←→", "Offset Output")
+            .build()
+            .render(this.buffer);
+
+        this.buffer.refresh();
+    }
 }

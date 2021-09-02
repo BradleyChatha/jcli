@@ -96,6 +96,33 @@ final class TextBuffer
         }
     }
 
+    void setCells(
+        Rect area,
+        const scope char[] ch,
+        AnsiStyleSet style = AnsiStyleSet.init,
+        OnOOB oob = OnOOB.constrain
+    )
+    {
+        this.autoGrow(area.bottom);
+        auto rect   = oobRect(oob, Rect(0, 0, this._width, this._height), area);
+        const chLen = this.getCharLength(ch);
+
+        foreach(y; rect.top..rect.bottom)
+        {
+            const rowStart = rect.left + (y * this._width);
+            const rowEnd   = rect.right + (y * this._width);
+            auto  row      = this._cells[rowStart..rowEnd];
+            this.setRowDirtyIf(y, true);
+
+            foreach(i, ref cell; row)
+            {
+                cell.ch[0..chLen]   = ch[0..chLen];
+                cell.chLen          = chLen.to!ubyte;
+                cell.style          = style;
+            }
+        }
+    }
+
     void setString(
         Rect area,
         const scope char[] str,
@@ -121,7 +148,7 @@ final class TextBuffer
 
                 const oldCursor = cursor;
                 const ch        = decode(str, cursor);
-                lastWritten     = Vector(rowStart + i.to!int, y);
+                lastWritten     = Vector(rect.left + i.to!int, y);
 
                 if(ch == '\n')
                     break;
