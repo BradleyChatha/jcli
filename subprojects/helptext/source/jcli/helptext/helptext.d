@@ -9,7 +9,7 @@ struct CommandHelpText(alias CommandT_)
 
     private string _cached;
 
-    string generate(string appName = null, size_t width = 180)
+    string generate(string appName = null, uint width = 180)
     {
         if(this._cached)
             return this._cached;
@@ -56,20 +56,23 @@ struct CommandHelpText(alias CommandT_)
             CommandInfo.pattern.patterns.walkLength ? CommandInfo.pattern.patterns.front : "DEFAULT",
             positionals.map!(p => "<"~p.name~">").fold!((a,b) => a~" "~b)(""),
             named.map!(p => p.optional ? "["~p.name~"]" : p.name).fold!((a,b) => a~" "~b)("")
-        ), AnsiStyleSet.init.style(AnsiStyle.init.bold).nullable);
+        ), AnsiStyleSet.init.style(AnsiStyle.init.bold));
         help.addLine(null);
         help.addLine(null);
 
         if(CommandInfo.description)
             help.addHeaderWithText("Description:", CommandInfo.description);
 
-        help.addHeader("Positional Arguments:");
-        foreach(pos; positionals)
+        if(positionals.length)
         {
-            help.addArgument(
-                pos.name,
-                [HelpTextDescription(0, pos.description)]
-            );
+            help.addHeader("Positional Arguments:");
+            foreach(pos; positionals)
+            {
+                help.addArgument(
+                    pos.name,
+                    [HelpTextDescription(0, pos.description)]
+                );
+            }
         }
 
         Arg[][ArgGroup] argsByGroup;
@@ -146,5 +149,5 @@ unittest
     auto c = CommandHelpText!ComplexCommand();
     // I've learned its next to pointless to fully unittest help text, since it can change so subtly and so often
     // that manual validation is good enough.
-    //assert(false, c.generate());
+    assert(false, c.generate());
 }

@@ -1,34 +1,38 @@
 module jcli.text.buffer;
 
-import std, jansi;
+import std, jansi, jcli.text;
 
 struct TextBufferCell
 {
-    char[4] ch = [' ', ' ', ' ', ' ']; // Unicode supports a max of 4 bytes to represent a char.
+    char[4] ch = [' ', ' ', ' ', ' ']; // UTF8 supports a max of 4 bytes to represent a char.
     ubyte chLen = 1;
     AnsiStyleSet style;
 }
 
 static bool g_jcliTextUseColour = true;
 
+enum OnOOB
+{
+    constrain
+}
+
 final class TextBuffer
 {
-    enum AUTO_GROW = size_t.max;
-    enum ALL       = size_t.max-1;
-    alias OnRefreshFunc = void delegate(size_t row, const TextBufferCell[] rowCells);
+    enum AUTO_GROW = uint.max;
+    alias OnRefreshFunc = void delegate(uint row, const TextBufferCell[] rowCells);
 
     private
     {
         TextBufferCell[] _cells;
         OnRefreshFunc    _onRefresh;
         ulong[]          _dirtyRowFlags;
-        size_t           _width;
-        size_t           _height;
+        uint             _width;
+        uint             _height;
         bool             _autoGrowHeight;
     }
 
     @safe nothrow pure
-    this(size_t width, size_t height)
+    this(uint width, uint height)
     {
         assert(width > 0);
         assert(height > 0);
@@ -45,143 +49,92 @@ final class TextBuffer
         this._dirtyRowFlags.length = (this._height / 64) + 1;
     }
 
-    @safe pure
-    void setCell(size_t x, size_t y, const char[] ch, Nullable!AnsiStyleSet style = Nullable!AnsiStyleSet.init)
-    {
-        this.autoGrow(y);
-        enforce(x < this._width, "X is too high.");
-        enforce(y < this._height, "Y is too high.");
-        enforce(ch.length, "No character was given.");
-        this.setRowDirty(y);
-
-        size_t index = 0;
-        decode(ch, index);
-        enforce(index == ch.length, "Too many characters were given, only 1 was expected.");
-
-        scope cell = &this._cells[x+(this._width*y)];
-        cell.ch = ch[0..index];
-        cell.chLen = cast(ubyte)index;
-        
-        if(!style.isNull)
-            cell.style = style.get;
-    }
-
-    @safe pure
-    void setCellsSingleChar(
-        size_t x, 
-        size_t y, 
-        size_t width, 
-        size_t height, 
-        const char[] ch,
-        Nullable!AnsiStyleSet style = Nullable!AnsiStyleSet.init
+    void setCell(
+        Vector cell, 
+        const scope char[] ch, 
+        AnsiStyleSet style = AnsiStyleSet.init,
+        OnOOB oob = OnOOB.constrain
     )
     {
-        if(width == ALL) width = this._width - x;
-        if(height == ALL) height = this._height - y;
-        this.autoGrow(y + height);
-        enforceSubRect(
-            0, 0, this._width, this._height,
-            x, y, width, height
-        );
-        enforce(ch.length, "No character was given.");
+        this.autoGrow(cell.y);
+        const vect  = oobVector(oob, Vector(this._width, this._height), cell);
+        const index = vect.x + (vect.y * this._width);
         
-        size_t index = 0;
-        decode(ch, index);
-        enforce(index == ch.length, "Too many characters were given, only 1 was expected.");
+        const before            = this._cells[index];
+        scope ptr               = &this._cells[index];
+        ptr.chLen               = this.getCharLength(ch);
+        ptr.ch[0..ptr.chLen]    = ch[0..ptr.chLen];
+        ptr.style               = style;
 
-        foreach(i; 0..height)
+        this.setRowDirtyIf(vect.y, true);
+    }
+
+    void fillCells(
+        Rect area,
+        const scope char[] ch,
+        AnsiStyleSet style = AnsiStyleSet.init,
+        OnOOB oob = OnOOB.constrain
+    )
+    {
+        this.autoGrow(area.bottom);
+        const rect = oobRect(oob, Rect(0, 0, this._width, this._height), area);
+        const chLen = this.getCharLength(ch);
+
+        foreach(y; rect.top..rect.bottom)
         {
-            const rowy = y + i;
-            this.setRowDirty(rowy);
-
-            const rowStart = x + (this._width * rowy);
-            const rowEnd   = rowStart + width;
+            const rowStart = rect.left + (y * this._width);
+            const rowEnd   = rect.right + (y * this._width);
             auto  row      = this._cells[rowStart..rowEnd];
 
             foreach(ref cell; row)
             {
-                cell.ch = ch[0..index];
-                cell.chLen = cast(ubyte)index;
-                if(!style.isNull)
-                    cell.style = style.get;
+                cell.ch[0..chLen]   = ch[0..chLen];
+                cell.chLen          = chLen;
+                cell.style          = style;
+                this.setRowDirtyIf(y, true);
             }
         }
     }
 
-    @safe pure
-    void setCellsString(
-        size_t x, 
-        size_t y, 
-        size_t width, 
-        size_t height, 
-        const char[] ch,
-        out size_t stopX,
-        out size_t stopY, 
-        Nullable!AnsiStyleSet style = Nullable!AnsiStyleSet.init
+    void setString(
+        Rect area,
+        const scope char[] str,
+        out Vector lastWritten,
+        AnsiStyleSet style = AnsiStyleSet.init,
+        OnOOB oob = OnOOB.constrain
     )
     {
-        bool autoGrowHeight = false;
+        this.autoGrow(area.bottom);
+        auto rect = oobRect(oob, Rect(0, 0, this._width, this._height), area);
+        size_t cursor = 0;
 
-        if(width == ALL) width = this._width - x;
-        if(height == ALL) height = this._height - y;
-        if(height == AUTO_GROW) { height = 1; autoGrowHeight = true; }
-        this.autoGrow(y + height);
-        enforceSubRect(
-            0, 0, this._width, this._height,
-            x, y, width, height
-        );
-
-        stopX = x;
-        stopY = y;
-
-        size_t cursor;
-        for(auto i = 0; i < height; i++)
+        foreach(y; rect.top..rect.bottom)
         {
-            const rowy = y + i;
-            this.setRowDirty(rowy);
-
-            const rowStart = x + (this._width * rowy);
-            const rowEnd   = rowStart + width;
+            const rowStart = rect.left + (y * this._width);
+            const rowEnd   = rect.right + (y * this._width);
             auto  row      = this._cells[rowStart..rowEnd];
 
-            foreach(j, ref cell; row)
+            foreach(i, ref cell; row)
             {
-                NextChar:
-                if(cursor < ch.length)
-                {
-                    const cursorStart = cursor;
-                    auto chCopy = ch;
-                    decode(chCopy, cursor);
-                    const chSize = cursor - cursorStart;
+                if(cursor >= str.length)
+                    return;
 
-                    if(ch[cursorStart..cursor] == "\n")
-                    {
-                        cell.ch[0] = ' ';
-                        cell.chLen = 1;
-                        stopY = rowy + 1;
-                        stopX = rowStart + j;
-                        break;
-                    }
-                    
-                    if(j == 0 && ch[cursorStart..cursor] == " ")
-                        goto NextChar; // ewwwwwwwwww
+                const oldCursor = cursor;
+                const ch        = decode(str, cursor);
+                lastWritten     = Vector(rowStart + i.to!int, y);
 
-                    cell.ch[0..(cursor - cursorStart)] = ch[cursorStart..cursor];
-                    cell.chLen = cast(ubyte)chSize;
+                if(ch == '\n')
+                    break;
 
-                    stopY = rowy;
-                    stopX = rowStart + j;
-                }
-
-                if(!style.isNull)
-                    cell.style = style.get;
+                const chLen         = cursor - oldCursor;
+                cell.ch[0..chLen]   = str[oldCursor..cursor];
+                cell.chLen          = chLen.to!ubyte;
+                cell.style          = style;
+                this.setRowDirtyIf(y, true);
             }
 
-            if(autoGrowHeight && cursor < ch.length)
-            {
-                this.height = (rowy + 2);
-                height++;
-            }
+            if(this._autoGrowHeight && cursor < str.length)
+                this.autoGrow(++rect.bottom);
         }
     }
 
@@ -211,19 +164,19 @@ final class TextBuffer
     }
 
     @property @safe @nogc nothrow
-    size_t width() const
+    uint width() const
     {
         return this._width;
     }
 
     @property @safe @nogc nothrow
-    size_t height() const
+    uint height() const
     {
-        return this.height;
+        return this._height;
     }
 
     @property @safe pure
-    void height(size_t h)
+    void height(uint h)
     {
         enforce(h > 0, "Height must be greater than 0.");
         this._cells.length = h * this._width;
@@ -232,15 +185,22 @@ final class TextBuffer
         this._height = h;
     }
 
-    @safe pure
-    private void autoGrow(size_t y)
+    private ubyte getCharLength(const scope char[] ch)
     {
-        if(y >= this._height)
+        size_t index;
+        decode(ch, index);
+        return index.to!ubyte;
+    }
+
+    @safe pure
+    private void autoGrow(uint y)
+    {
+        if(y >= this._height && this._autoGrowHeight)
             this.height = y + 1;
     }
 
     @safe @nogc nothrow pure
-    private bool isRowDirty(size_t row)
+    private bool isRowDirty(uint row)
     {
         const byte_ = row / 64;
         const bit   = row % 64;
@@ -249,27 +209,39 @@ final class TextBuffer
     }
 
     @safe @nogc nothrow pure
-    private void setRowDirty(size_t row)
+    private void setRowDirtyIf(uint row, bool cond)
     {
         const byte_ = row / 64;
         const bit   = row % 64;
         const mask  = 1UL << bit;
-        this._dirtyRowFlags[byte_] |= mask;
+        this._dirtyRowFlags[byte_] |= mask * (cond ? 1 : 0);
     }
 }
 
-@safe pure
-private void enforceSubRect(
-    size_t px, size_t py, size_t pw, size_t ph,
-    size_t cx, size_t cy, size_t cw, size_t ch
-)
+@safe @nogc nothrow pure:
+
+Vector oobVector(OnOOB behaviour, const Vector bounds, Vector vector)
 {
-    enforce(cx >= px, "X is too low.");
-    enforce(cy >= py, "Y is too low.");
-    enforce(cx < pw, "X is too high.");
-    enforce(cy < ph, "Y is too high.");
-    enforce(cx + cw <= pw, "Width is too high.");
-    enforce(cy + ch <= ph, "Height is too high.");
-    enforce(cw > 0, "Width cannot be 0.");
-    enforce(ch > 0, "Height cannot be 0.");
+    final switch(behaviour) with(OnOOB)
+    {
+        case constrain:
+            if(vector.x < 0) vector.x = 0;
+            if(vector.y < 0) vector.y = 0;
+            if(vector.x > bounds.x) vector.x = bounds.x - 1;
+            if(vector.y > bounds.y) vector.y = bounds.y - 1;
+            return vector;
+    }
+}
+
+Rect oobRect(OnOOB behaviour, const Rect bounds, Rect rect)
+{
+    final switch(behaviour) with(OnOOB)
+    {
+        case constrain:
+            if(rect.left < bounds.left) rect.left = bounds.left;
+            if(rect.top < bounds.top) rect.top = bounds.top;
+            if(rect.right > bounds.right) rect.right = bounds.right;
+            if(rect.bottom > bounds.bottom) rect.bottom = bounds.bottom;
+            return rect;
+    }
 }

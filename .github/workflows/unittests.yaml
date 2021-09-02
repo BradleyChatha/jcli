@@ -25,5 +25,41 @@ jobs:
       - name: Build (Release)
         run: dub build -b release
 
-      - name: Test (Default)
+      - name: Test JCLI
+        run: dub test
+
+      - name: Test ArgBinder
+        working-directory: ./subprojects/argbinder
+        run: dub test
+
+      - name: Test ArgParser
+        working-directory: ./subprojects/argparser
+        run: dub test
+
+      - name: Test Autocomplete
+        working-directory: ./subprojects/autocomplete
+        run: dub test
+
+      - name: Test CommandParser
+        working-directory: ./subprojects/commandParser
+        run: dub test
+
+      - name: Test Core
+        working-directory: ./subprojects/core
+        run: dub test
+
+      - name: Test HelpText
+        working-directory: ./subprojects/helptext
+        run: dub test
+
+      - name: Test Introspect
+        working-directory: ./subprojects/introspect
+        run: dub test
+
+      - name: Test Resolver
+        working-directory: ./subprojects/resolver
+        run: dub test
+
+      - name: Test Text
+        working-directory: ./subprojects/text
         run: dub test

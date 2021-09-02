@@ -4,6 +4,11 @@ jcli_text_srcs = [
     'source/jcli/text/package.d',
     'source/jcli/text/buffer.d',
     'source/jcli/text/helptext.d',
+    'source/jcli/text/console.d',
+    'source/jcli/text/common.d',
+    'source/jcli/text/layout.d',
+    'source/jcli/text/widgets/package.d',
+    'source/jcli/text/widgets/border.d',
     'source/jansi.d'
 ]
 

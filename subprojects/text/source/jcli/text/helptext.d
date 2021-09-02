@@ -17,102 +17,100 @@ struct HelpText
     private
     {
         TextBuffer  _text;
-        size_t      _argNameWidth;
-        size_t      _argDescWidth;
-        size_t      _argGutterWidth;
-        size_t      _rowCursor;
+        uint        _argNameWidth;
+        uint        _argDescWidth;
+        uint        _argGutterWidth;
+        uint        _rowCursor;
         string      _cached;
     }
 
-    static HelpText make(size_t width)
+    static HelpText make(uint width)
     {
         HelpText t;
         t._text = new TextBuffer(width, TextBuffer.AUTO_GROW);
-        t._argNameWidth = cast(size_t)((cast(double)width) * ARG_NAME_PERCENT).round;
-        t._argDescWidth = cast(size_t)((cast(double)width) * ARG_DESC_PERCENT).round;
-        t._argGutterWidth = cast(size_t)((cast(double)width) * ARG_GUTTER_PERCENT).round;
+        t._argNameWidth = cast(uint)((cast(double)width) * ARG_NAME_PERCENT).round;
+        t._argDescWidth = cast(uint)((cast(double)width) * ARG_DESC_PERCENT).round;
+        t._argGutterWidth = cast(uint)((cast(double)width) * ARG_GUTTER_PERCENT).round;
         return t;
     }
 
     void addLine(string text)
     {
-        size_t _1;
-        this._text.setCellsString(
-            0, this._rowCursor, TextBuffer.ALL, 1,
+        Vector _1;
+        this._text.setString(
+            Rect(0, this._rowCursor, this._text.width, this._rowCursor+1),
             text,
-            _1, this._rowCursor
+            _1,
         );
-        this._rowCursor += 1;
     }
 
-    void addLineWithPrefix(string prefix, string text, Nullable!AnsiStyleSet prefixStyle = Nullable!AnsiStyleSet.init)
+    void addLineWithPrefix(string prefix, string text, AnsiStyleSet prefixStyle = AnsiStyleSet.init)
     {
-        size_t x;
-        this._text.setCellsString(
-            0, this._rowCursor, prefix.length, 1,
+        Vector lastChar;
+        this._text.setString(
+            Rect(0, this._rowCursor, prefix.length.to!int, this._rowCursor + 1),
             prefix,
-            x, this._rowCursor,
+            lastChar,
             prefixStyle
         );
-        this._text.setCellsString(
-            x + 1, this._rowCursor, TextBuffer.ALL, 1,
+        this._text.setString(
+            Rect(lastChar.x + 1, lastChar.y, this._text.width, this._rowCursor + 1),
             text,
-            x, this._rowCursor
+            lastChar
         );
+        this._rowCursor = lastChar.y + 2;
     }
 
     void addHeaderWithText(string header, string text)
     {
-        size_t _1;
-        this._text.setCellsString(
-            0, this._rowCursor, TextBuffer.ALL, 1, 
+        Vector lastChar;
+        this._text.setString(
+            Rect(0, this._rowCursor, this._text.width, this._rowCursor + 1),
             header,
-            _1, this._rowCursor,
-            AnsiStyleSet.init.style(AnsiStyle.init.bold).nullable
+            lastChar,
+            AnsiStyleSet.init.style(AnsiStyle.init.bold)
         );
-        this._rowCursor += 1;
-        this._text.setCellsString(
-            (this._text.width > 4) ? 4 : 0, this._rowCursor, TextBuffer.ALL, TextBuffer.AUTO_GROW, 
+        this._rowCursor++;
+        this._text.setString(
+            Rect(4, this._rowCursor, this._text.width, this._text.height),
             text,
-            _1, this._rowCursor,
+            lastChar
         );
-        this._rowCursor += 2;
+        this._rowCursor = lastChar.y + 2;
     }
 
     void addHeader(string header)
     {
-        size_t _1;
-        this._text.setCellsString(
-            0, this._rowCursor, TextBuffer.ALL, 1, 
+        Vector _1;
+        this._text.setString(
+            Rect(0, this._rowCursor, this._text.width, this._rowCursor + 1),
             header,
-            _1, this._rowCursor,
-            AnsiStyleSet.init.style(AnsiStyle.init.bold).nullable
+            _1,
+            AnsiStyleSet.init.style(AnsiStyle.init.bold)
         );
         this._rowCursor += 1;
     }
 
     void addArgument(string name, HelpTextDescription[] description)
     {
-        size_t _1;
-        size_t nameRow;
-        size_t descRow = this._rowCursor;
-        this._text.setCellsString(
-            4, this._rowCursor, this._argNameWidth, TextBuffer.AUTO_GROW,
+        Vector namePos;
+        this._text.setString(
+            Rect(4, this._rowCursor, this._argNameWidth, this._rowCursor + 1),
             name,
-            _1, nameRow
+            namePos
         );
-
+        
+        Vector descPos = Vector(0, this._rowCursor);
         foreach(desc; description)
         {
             const indent = desc.indent * 4;
-            this._text.setCellsString(
-                this._argNameWidth + this._argGutterWidth + indent, descRow, this._argDescWidth - indent, TextBuffer.AUTO_GROW,
+            this._text.setString(
+                Rect(this._argNameWidth + this._argGutterWidth + indent, descPos.y, this._argNameWidth + this._argGutterWidth + this._argDescWidth, descPos.y + 1),
                 desc.text,
-                _1, descRow
+                descPos
             );
-            descRow++;
         }
-        this._rowCursor = max(nameRow, descRow);
+        this._rowCursor = max(namePos.y + 1, descPos.y + 1);
     }
 
     string finish()

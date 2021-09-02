@@ -56,7 +56,7 @@ final class CommandLineInterface(Modules...)
                     help.addHeader("Available commands:");
                 else
                 {
-                    help.addLineWithPrefix(this._appName~": ", "Unknown command", AnsiStyleSet.init.fg(Ansi4BitColour.red).nullable);
+                    help.addLineWithPrefix(this._appName~": ", "Unknown command", AnsiStyleSet.init.fg(Ansi4BitColour.red));
                     help.addLine(null);
                     help.addHeader("Did you mean:");
                 }
