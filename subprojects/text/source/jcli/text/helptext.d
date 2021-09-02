@@ -42,6 +42,7 @@ struct HelpText
             text,
             _1,
         );
+        this._rowCursor++;
     }
 
     void addLineWithPrefix(string prefix, string text, AnsiStyleSet prefixStyle = AnsiStyleSet.init)
@@ -58,7 +59,7 @@ struct HelpText
             text,
             lastChar
         );
-        this._rowCursor = lastChar.y + 2;
+        this._rowCursor = lastChar.y + 1;
     }
 
     void addHeaderWithText(string header, string text)
