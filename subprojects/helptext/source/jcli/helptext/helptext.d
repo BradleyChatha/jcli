@@ -147,5 +147,5 @@ unittest
     auto c = CommandHelpText!ComplexCommand();
     // I've learned its next to pointless to fully unittest help text, since it can change so subtly and so often
     // that manual validation is good enough.
-    assert(false, c.generate());
+    //assert(false, c.generate());
 }
