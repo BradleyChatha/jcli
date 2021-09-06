@@ -17,3 +17,5 @@ jcli-test-*
 builddir
 build/
 *.lib
+examples/test
+*.a

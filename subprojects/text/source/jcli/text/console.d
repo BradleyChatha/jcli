@@ -3,6 +3,27 @@ module jcli.text.console;
 import std, jansi, jcli.text;
 
 version(Windows) import core.sys.windows.windows;
+version(Posix) import core.sys.posix.termios, core.sys.posix.unistd;
+
+enum ConsoleKey
+{
+    unknown,
+
+    a,  b,  c,  d,  e,  f,  g,
+    h,  i,  j,  k,  l,  m,  n,
+    o,  p,  q,  r,  s,  t,  u,
+    v,  w,  x,  y,  z,
+
+    printScreen, scrollLock, pause,
+    insert,      home,       pageUp,
+    pageDown,    del,        end,
+
+    up, down, left, right,
+
+    escape, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12,
+
+    enter, back
+}
 
 struct ConsoleEventUnknown {}
 struct ConsoleKeyEvent
@@ -21,11 +42,11 @@ struct ConsoleKeyEvent
 
     bool isDown;
     uint repeatCount;
-    uint keycode;
+    ConsoleKey key;
     uint scancode;
     union
     {
-        wchar charAsUnicode;
+        dchar charAsUnicode;
         char charAsAscii;
     }
     SpecialKey specialKeys;
@@ -45,6 +66,11 @@ final class Console
         DWORD _oldMode;
         UINT _oldOutputCP;
         UINT _oldInputCP;
+    }
+    version(Posix)
+    {
+        bool _attached;
+        termios _oldIos;
     }
 
     bool attach()
@@ -68,6 +94,22 @@ final class Console
             stdout.write("\033[?1049h"); // Use alternative buffer.
             return true;
         }
+        else version(Posix)
+        {
+            stdout.write("\033[?1049h");
+            tcgetattr(STDIN_FILENO, &_oldIos);
+            auto newIos = _oldIos;
+
+            newIos.c_lflag &= ~ECHO;
+            newIos.c_lflag &= ~ICANON;
+            newIos.c_cc[VMIN] = 0;
+            newIos.c_cc[VTIME] = 1;
+
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &newIos);
+
+            this._attached = true;
+            return true;
+        }
         else return false;
     }
 
@@ -85,11 +127,20 @@ final class Console
 
             stdout.write("\033[?1049l"); // Use main buffer.
         }
+        else version(Posix)
+        {
+            if(!Console.isAttached)
+                return;
+            this._attached = false;
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &_oldIos);
+            stdout.write("\033[?10149l");
+        }
     }
 
     bool isAttached()
     {
         version(Windows) return Console._stdin != INVALID_HANDLE_VALUE;
+        else version(Posix) return Console._attached;
         else return false;
     }
 
@@ -113,6 +164,20 @@ final class Console
                 handler(e);
             }
         }
+        else version(Posix)
+        {
+            import core.sys.posix.unistd : read;
+
+            char ch;
+            ssize_t bytesRead = read(STDIN_FILENO, &ch, 1);
+            while(bytesRead > 0 && Console.isAttached)
+            {
+                handler(ConsoleEvent(Console.translateKeyEvent(ch)));
+
+                if(Console.isAttached)
+                    bytesRead = read(STDIN_FILENO, &ch, 1);
+            }
+        }
     }
 
     void waitForInput()
@@ -133,8 +198,6 @@ final class Console
     {
         version(Windows)
         {
-            assert(Console.isAttached, "We're not attached to the console.");
-
             CONSOLE_SCREEN_BUFFER_INFO csbi;
             GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
 
@@ -142,6 +205,13 @@ final class Console
                 csbi.srWindow.Right - csbi.srWindow.Left + 1,
                 csbi.srWindow.Bottom - csbi.srWindow.Top + 1
             );
+        }
+        else version(Posix)
+        {
+            import core.sys.posix.sys.ioctl, core.sys.posix.unistd, core.sys.posix.stdio;
+            winsize w;
+            ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+            return Vector(w.ws_col, w.ws_row);
         }
         else return Vector(0, 0);
     }
@@ -178,26 +248,147 @@ final class Console
         return buffer;
     }
 
-    private version(Windows):
-
-    ConsoleEvent translateEvent(INPUT_RECORD event)
+    private version(Windows)
     {
-        switch(event.EventType)
+        ConsoleEvent translateEvent(INPUT_RECORD event)
         {
-            case KEY_EVENT:
-                const k = event.KeyEvent;
-                auto e = ConsoleKeyEvent(
-                    cast(bool)k.bKeyDown,
-                    k.wRepeatCount,
-                    k.wVirtualKeyCode,
-                    k.wVirtualScanCode,
-                );
-                e.specialKeys = cast(ConsoleKeyEvent.SpecialKey)k.dwControlKeyState;
-                e.charAsUnicode = k.UnicodeChar;
+            switch(event.EventType)
+            {
+                case KEY_EVENT:
+                    const k = event.KeyEvent;
+                    auto e = ConsoleKeyEvent(
+                        cast(bool)k.bKeyDown,
+                        k.wRepeatCount,
+                        Console.translateKey(k.wVirtualKeyCode),
+                        k.wVirtualScanCode,
+                    );
+                    e.specialKeys = cast(ConsoleKeyEvent.SpecialKey)k.dwControlKeyState;
+                    e.charAsUnicode = k.UnicodeChar.to!dchar;
 
-                return ConsoleEvent(e);
+                    return ConsoleEvent(e);
 
-            default: return ConsoleEvent(ConsoleEventUnknown());
+                default: return ConsoleEvent(ConsoleEventUnknown());
+            }
+        }
+
+        // https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
+        ConsoleKey translateKey(uint keycode)
+        {
+            switch(keycode) with(ConsoleKey)
+            {
+                case VK_SNAPSHOT: return ConsoleKey.printScreen;
+                case VK_SCROLL: return ConsoleKey.scrollLock;
+                case VK_PAUSE: return ConsoleKey.pause;
+                case VK_INSERT: return ConsoleKey.insert;
+                case VK_HOME: return ConsoleKey.home;
+                case VK_DELETE: return ConsoleKey.del;
+                case VK_END: return ConsoleKey.end;
+                case VK_NEXT: return ConsoleKey.pageDown;
+                case VK_PRIOR: return ConsoleKey.pageUp;
+
+                case VK_ESCAPE: return ConsoleKey.escape;
+                case VK_F1:..case VK_F12:
+                    return cast(ConsoleKey)(cast(uint)ConsoleKey.f1 + (keycode - VK_F1));
+
+                case VK_RETURN: return ConsoleKey.enter;
+                case VK_BACK: return ConsoleKey.back;
+
+                case VK_UP: return ConsoleKey.up;
+                case VK_DOWN: return ConsoleKey.down;
+                case VK_LEFT: return ConsoleKey.left;
+                case VK_RIGHT: return ConsoleKey.right;
+
+                // a-z
+                case 0x41:..case 0x5A:
+                    return cast(ConsoleKey)(cast(uint)ConsoleKey.a + (keycode - 0x41));
+
+                default: return unknown;
+            }
+        }
+    }
+
+    private version(Posix)
+    {
+        ConsoleKeyEvent translateKeyEvent(char ch)
+        {
+            ConsoleKeyEvent event;
+            event.key = Console.translateKey(ch, event.charAsUnicode);
+            event.isDown = true;
+            event.charAsAscii = ch;
+
+            return event;
+        }
+
+        ConsoleKey translateKey(char firstCh, out dchar utf)
+        {
+            import core.sys.posix.unistd : read;
+
+            // TODO: Unicode support.
+            switch(firstCh) with(ConsoleKey)
+            {
+                case 0x1A: return ConsoleKey.pause;
+                
+
+                case 0x0A: return ConsoleKey.enter;
+                case 0x7F: return ConsoleKey.back;
+
+                // a-z
+                case 0x41:..case 0x5A:
+                    utf = firstCh;
+                    return cast(ConsoleKey)(cast(uint)ConsoleKey.a + (firstCh - 0x41));
+
+                // F1 - F12
+                case 0x50:..case 0x7E:
+                    return cast(ConsoleKey)(cast(uint)ConsoleKey.f1 + (keycode - 0x50));
+
+
+                case '\033':
+                    char ch;
+                    auto bytesRead = read(STDIN_FILENO, &ch, 1);
+                    if(bytesRead == 0)
+                        return escape;
+                    else if(ch != '[')
+                        return unknown;
+
+                    bytesRead = read(STDIN_FILENO, &ch, 1);
+                    if(bytesRead == 0)
+                        return unknown;
+
+                    switch(ch)
+                    {
+                        case 'A': return ConsoleKey.up; 
+                        case 'B': return ConsoleKey.down; 
+                        case 'C': return ConsoleKey.right; 
+                        case 'D': return ConsoleKey.left;
+                        case 'H': return ConsoleKey.home;
+                        case 'F': return ConsoleKey.end;
+
+                        case '2':
+                            bytesRead = read(STDIN_FILENO, &ch, 1);
+                            if(bytesRead == 0 || ch != '~')
+                                return unknown;
+                            return ConsoleKey.insert;
+                        case '3':
+                            bytesRead = read(STDIN_FILENO, &ch, 1);
+                            if(bytesRead == 0 || ch != '~')
+                                return unknown;
+                            return ConsoleKey.del;
+                        case '5':
+                            bytesRead = read(STDIN_FILENO, &ch, 1);
+                            if(bytesRead == 0 || ch != '~')
+                                return unknown;
+                            return ConsoleKey.pageUp;
+                        case '6':
+                            bytesRead = read(STDIN_FILENO, &ch, 1);
+                            if(bytesRead == 0 || ch != '~')
+                                return unknown;
+                            return ConsoleKey.pageDown;
+
+                        default: return unknown;
+                    }
+
+                default: return unknown;
+            }
         }
     }
 }

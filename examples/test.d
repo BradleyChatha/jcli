@@ -401,32 +401,31 @@ final class UI
 
     private void handleKey(ConsoleKeyEvent key)
     {
-        import core.sys.windows.windows;
         if(!key.isDown)
             return;
 
         // If I weren't lazy I'd bring the shift and ctrl keys into play, but I'm lazy.
-        if(key.keycode == VK_ESCAPE)
+        if(key.key == ConsoleKey.escape)
             Console.detach();
-        else if(key.keycode == VK_UP && this.selectedTest != 0)
+        else if(key.key == ConsoleKey.up && this.selectedTest != 0)
             this.selectedTest--;
-        else if(key.keycode == VK_DOWN && this.selectedTest < TEST_CASES.length-1)
+        else if(key.key == ConsoleKey.down && this.selectedTest < TEST_CASES.length-1)
             this.selectedTest++;
-        else if(key.keycode == VK_RETURN)
+        else if(key.key == ConsoleKey.enter)
             this.runTest(this.selectedTest);
-        else if(key.keycode == VK_HOME && this.buildOffset != 0)
+        else if(key.key == ConsoleKey.home && this.buildOffset != 0)
             this.buildOffset--;
-        else if(key.keycode == VK_END)
+        else if(key.key == ConsoleKey.end)
             this.buildOffset++;
-        else if(key.keycode == VK_INSERT && this.runOffset != 0)
+        else if(key.key == ConsoleKey.insert && this.runOffset != 0)
             this.runOffset--;
-        else if(key.keycode == VK_DELETE)
+        else if(key.key == ConsoleKey.del)
             this.runOffset++;
-        else if(key.keycode == VK_RIGHT)
+        else if(key.key == ConsoleKey.right)
             this.buildXOffset++;
-        else if(key.keycode == VK_LEFT && this.buildXOffset != 0)
+        else if(key.key == ConsoleKey.left && this.buildXOffset != 0)
             this.buildXOffset--;
-        else if(key.keycode == VK_BACK)
+        else if(key.key == ConsoleKey.back)
         {
             foreach(i; 0..TEST_CASES.length)
                 this.runTest(i);
