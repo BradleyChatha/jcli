@@ -12,7 +12,7 @@
 JCLI is a library to aid in the creation of command line tooling, with an aim of being easy to use, while also allowing
 the individual parts of the library to be used on their own, aiding more dedicated users in creation of their own CLI core.
 
-As a firm believer of good documentation, JCLI is completely documented with in-depth explanations where needed. In-browser documentation can be found [here](https://jcli.dpldocs.info/jcli.html).
+As a firm believer of good documentation, JCLI is completely documented with in-depth explanations where needed. In-browser documentation can be found [here](https://jcli.dpldocs.info/jcli.html) (new code base doesn't have docs yet, will come soon (tm)).
 
 Tested on Windows and Ubuntu 18.04.
 
