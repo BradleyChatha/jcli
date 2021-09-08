@@ -22,7 +22,7 @@ enum ConsoleKey
 
     escape, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12,
 
-    enter, back
+    enter, back, tab
 }
 
 struct ConsoleEventUnknown {}
@@ -276,6 +276,7 @@ final class Console
         {
             switch(keycode) with(ConsoleKey)
             {
+                case VK_TAB: return ConsoleKey.tab;
                 case VK_SNAPSHOT: return ConsoleKey.printScreen;
                 case VK_SCROLL: return ConsoleKey.scrollLock;
                 case VK_PAUSE: return ConsoleKey.pause;
@@ -327,7 +328,7 @@ final class Console
             switch(firstCh) with(ConsoleKey)
             {
                 case 0x1A: return ConsoleKey.pause;
-                
+                case '\t': return ConsoleKey.tab;
 
                 case 0x0A: return ConsoleKey.enter;
                 case 0x7F: return ConsoleKey.back;
@@ -337,16 +338,13 @@ final class Console
                     utf = firstCh;
                     return cast(ConsoleKey)(cast(uint)ConsoleKey.a + (firstCh - 0x41));
 
-                // // F1 - F12
-                // case 0x50:..case 0x7E:
-                //     return cast(ConsoleKey)(cast(uint)ConsoleKey.f1 + (keycode - 0x50));
-
-
                 case '\033':
                     char ch;
                     auto bytesRead = read(STDIN_FILENO, &ch, 1);
                     if(bytesRead == 0)
                         return escape;
+                    else if(ch == 'O' && read(STDIN_FILENO, &ch, 1) != 0 && ch >= 0x50 && ch <= 0x7E)
+                        return cast(ConsoleKey)(cast(uint)ConsoleKey.f1 + (ch - 0x50));
                     else if(ch != '[')
                         return unknown;
 
@@ -362,7 +360,6 @@ final class Console
                         case 'D': return ConsoleKey.left;
                         case 'H': return ConsoleKey.home;
                         case 'F': return ConsoleKey.end;
-
                         case '2':
                             bytesRead = read(STDIN_FILENO, &ch, 1);
                             if(bytesRead == 0 || ch != '~')
@@ -383,6 +380,8 @@ final class Console
                             if(bytesRead == 0 || ch != '~')
                                 return unknown;
                             return ConsoleKey.pageDown;
+
+
 
                         default: return unknown;
                     }
