@@ -337,9 +337,9 @@ final class Console
                     utf = firstCh;
                     return cast(ConsoleKey)(cast(uint)ConsoleKey.a + (firstCh - 0x41));
 
-                // F1 - F12
-                case 0x50:..case 0x7E:
-                    return cast(ConsoleKey)(cast(uint)ConsoleKey.f1 + (keycode - 0x50));
+                // // F1 - F12
+                // case 0x50:..case 0x7E:
+                //     return cast(ConsoleKey)(cast(uint)ConsoleKey.f1 + (keycode - 0x50));
 
 
                 case '\033':
