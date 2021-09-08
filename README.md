@@ -5,7 +5,7 @@
 # Overview
 
 ![Tests](https://github.com/BradleyChatha/jcli/workflows/Test%20LDC%20x64/badge.svg)
-![Examples](https://github.com/BradleyChatha/jcli/workflows/Test%20Examples/badge.svg)
+![Build and Test](https://github.com/BradleyChatha/jcli/actions/workflows/unittests.yaml/badge.svg)
 
 ** As of v0.20.0 JCLI is using a fully rewritten code base, which has major breaking changes. **
 
@@ -65,10 +65,8 @@ Tested on Windows and Ubuntu 18.04.
         1. [Using a custom sink in CommandLineInterface](#using-a-custom-sink-in-commandlineinterface)
         1. [Argument configuration](#argument-configuration)
             1. [ArgConfig.caseInsensitive](#ArgConfigcaseinsensitive)
-            2. [ArgConfig.canRedefine](#ArgConfigcanredefine)
+            1. [ArgConfig.canRedefine](#ArgConfigcanredefine)
 1. [Using JCLI without Dub](#using-jcli-without-dub)
-1. [Using the amalgamation](#using-the-amalgamation)
-1. [Versions](#versions)
 1. [Contributing](#contributing)
 
 # Features
