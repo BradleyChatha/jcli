@@ -60,6 +60,7 @@ final class Console
 {
     static:
 
+    bool _useAlternateBuffer;
     version(Windows)
     {
         HANDLE _stdin = INVALID_HANDLE_VALUE;
@@ -73,8 +74,9 @@ final class Console
         termios _oldIos;
     }
 
-    bool attach()
+    bool attach(bool useAlternativeBuffer = true)
     {
+        _useAlternateBuffer = false;
         version(Windows)
         {
             Console._stdin = GetStdHandle(STD_INPUT_HANDLE);
@@ -91,12 +93,15 @@ final class Console
             this._oldOutputCP = GetConsoleOutputCP(); 
             SetConsoleOutputCP(CP_UTF8);
             SetConsoleCP(CP_UTF8);
-            stdout.write("\033[?1049h"); // Use alternative buffer.
+
+            if(_useAlternateBuffer)
+                stdout.write("\033[?1049h");
             return true;
         }
         else version(Posix)
         {
-            stdout.write("\033[?1049h");
+            if(_useAlternateBuffer)
+                stdout.write("\033[?1049h");
             tcgetattr(STDIN_FILENO, &_oldIos);
             auto newIos = _oldIos;
 
@@ -124,8 +129,6 @@ final class Console
             SetConsoleOutputCP(this._oldOutputCP);
             SetConsoleCP(this._oldInputCP);
             Console._stdin = INVALID_HANDLE_VALUE;
-
-            stdout.write("\033[?1049l"); // Use main buffer.
         }
         else version(Posix)
         {
@@ -133,8 +136,10 @@ final class Console
                 return;
             this._attached = false;
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &_oldIos);
-            stdout.write("\033[?10149l");
         }
+
+        if(_useAlternateBuffer)
+            stdout.write("\033[?1049l");
     }
 
     bool isAttached()
@@ -247,9 +252,7 @@ final class Console
         }
 
         builder.put(ANSI_COLOUR_RESET);
-        Console.hideCursor();
         stdout.write(builder.data);
-        Console.showCursor();
     }
 
     TextBuffer createTextBuffer()
