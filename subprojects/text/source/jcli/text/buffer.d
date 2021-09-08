@@ -80,6 +80,9 @@ final class TextBuffer
         const rect = oobRect(oob, Rect(0, 0, this._width, this._height), area);
         const chLen = this.getCharLength(ch);
 
+        if(rect.width == 0 || rect.height == 0)
+            return;
+
         foreach(y; rect.top..rect.bottom)
         {
             const rowStart = rect.left + (y * this._width);
@@ -106,6 +109,8 @@ final class TextBuffer
         this.autoGrow(area.bottom);
         auto rect   = oobRect(oob, Rect(0, 0, this._width, this._height), area);
         const chLen = this.getCharLength(ch);
+        if(rect.width == 0 || rect.height == 0)
+            return;
 
         foreach(y; rect.top..rect.bottom)
         {
@@ -134,6 +139,8 @@ final class TextBuffer
         this.autoGrow(area.bottom);
         auto rect = oobRect(oob, Rect(0, 0, this._width, this._height), area);
         size_t cursor = 0;
+        if(rect.width == 0 || rect.height == 0)
+            return;
 
         foreach(y; rect.top..rect.bottom)
         {
