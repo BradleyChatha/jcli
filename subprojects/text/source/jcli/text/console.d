@@ -194,6 +194,16 @@ final class Console
         stdout.writef("\033[%s;%sH", y, x);
     }
 
+    void hideCursor()
+    {
+        stdout.write("\033[?25l");
+    }
+
+    void showCursor()
+    {
+        stdout.write("\033[?25h");
+    }
+
     Vector screenSize()
     {
         version(Windows)
@@ -237,7 +247,9 @@ final class Console
         }
 
         builder.put(ANSI_COLOUR_RESET);
+        Console.hideCursor();
         stdout.write(builder.data);
+        Console.showCursor();
     }
 
     TextBuffer createTextBuffer()
