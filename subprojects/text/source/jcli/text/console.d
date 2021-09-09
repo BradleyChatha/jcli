@@ -3,7 +3,7 @@ module jcli.text.console;
 import std, jansi, jcli.text;
 
 version(Windows) import core.sys.windows.windows;
-version(Posix) import core.sys.posix.termios, core.sys.posix.unistd;
+version(Posix) import core.sys.posix.termios, core.sys.posix.unistd, core.sys.posix.signal;
 
 enum ConsoleKey
 {
@@ -26,6 +26,7 @@ enum ConsoleKey
 }
 
 struct ConsoleEventUnknown {}
+struct ConsoleEventInterrupt {}
 struct ConsoleKeyEvent
 {
     enum SpecialKey
@@ -51,8 +52,10 @@ struct ConsoleKeyEvent
     }
     SpecialKey specialKeys;
 }
+
 alias ConsoleEvent = SumType!(
     ConsoleKeyEvent,
+    ConsoleEventInterrupt,
     ConsoleEventUnknown
 );
 
@@ -60,15 +63,16 @@ final class Console
 {
     static:
 
-    bool _useAlternateBuffer;
-    version(Windows)
+    private bool _useAlternateBuffer;
+    private bool _wasControlC;
+    version(Windows) private
     {
         HANDLE _stdin = INVALID_HANDLE_VALUE;
         DWORD _oldMode;
         UINT _oldOutputCP;
         UINT _oldInputCP;
     }
-    version(Posix)
+    version(Posix) private
     {
         bool _attached;
         termios _oldIos;
@@ -94,6 +98,17 @@ final class Console
             SetConsoleOutputCP(CP_UTF8);
             SetConsoleCP(CP_UTF8);
 
+            SetConsoleCtrlHandler((ctrlType)
+            {
+                if(ctrlType == CTRL_C_EVENT)
+                {
+                    Console._wasControlC = true;
+                    return TRUE;
+                }
+
+                return FALSE;
+            }, TRUE);
+
             if(_useAlternateBuffer)
                 stdout.write("\033[?1049h");
             return true;
@@ -111,6 +126,7 @@ final class Console
             newIos.c_cc[VTIME] = 1;
 
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &newIos);
+            signal(SIGINT, (_){ Console._wasControlC = true; });
 
             this._attached = true;
             return true;
@@ -128,6 +144,7 @@ final class Console
             SetConsoleMode(Console._stdin, Console._oldMode);
             SetConsoleOutputCP(this._oldOutputCP);
             SetConsoleCP(this._oldInputCP);
+            SetConsoleCtrlHandler(null, FALSE);
             Console._stdin = INVALID_HANDLE_VALUE;
         }
         else version(Posix)
@@ -136,6 +153,7 @@ final class Console
                 return;
             this._attached = false;
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &_oldIos);
+            signal(SIGINT, SIG_DFL);
         }
 
         if(_useAlternateBuffer)
@@ -152,6 +170,12 @@ final class Console
     void processEvents(void delegate(ConsoleEvent) handler)
     {
         assert(handler !is null, "A null handler was provided.");
+
+        if(_wasControlC)
+        {
+            _wasControlC = false;
+            handler(ConsoleEvent(ConsoleEventInterrupt()));
+        }
 
         version(Windows)
         {
