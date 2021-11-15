@@ -23,19 +23,19 @@ abstract class ArgBinder(Modules...)
         {{
             const result = v.preValidate(str);
             if(!result.isOk)
-                return fail!void(result.error);
+                return fail!void(result.error, result.errorCode);
         }}
 
         auto result = BindWith(str);
         if(!result.isOk)
-            return fail!void(result.error);
+            return fail!void(result.error, result.errorCode);
         getArg!ArgIntrospectT(command) = result.value;
 
         static foreach(v; PostValidators)
         {{
             const res = v.postValidate(getArg!ArgIntrospectT(command));
             if(!res.isOk)
-                return fail!void(res.error);
+                return fail!void(res.error, res.errorCode);
         }}
 
         return ok();

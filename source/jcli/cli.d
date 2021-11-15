@@ -74,9 +74,17 @@ final class CommandLineInterface(Modules...)
                 }
 
                 try return this._default.onExecute(parserCopy);
+                catch(ResultException ex)
+                {
+                    writefln("%s: %s", this._appName.ansi.fg(Ansi4BitColour.red), ex.msg);
+                    debug writeln("[debug-only] JCLI has displayed this exception in full for your convenience.");
+                    debug writeln(ex);
+                    return ex.errorCode;
+                }
                 catch(Exception ex)
                 {
                     writefln("%s: %s", this._appName.ansi.fg(Ansi4BitColour.red), ex.msg);
+                    debug writeln("[debug-only] JCLI has displayed this exception in full for your convenience.");
                     debug writeln(ex);
                     return -1;
                 }
@@ -100,6 +108,13 @@ final class CommandLineInterface(Modules...)
         }
 
         try return command.fullMatchChain[$-1].userData.onExecute(parser);
+        catch(ResultException ex)
+        {
+            writefln("%s: %s", this._appName.ansi.fg(Ansi4BitColour.red), ex.msg);
+            debug writeln("[debug-only] JCLI has displayed this exception in full for your convenience.");
+            debug writeln(ex);
+            return ex.errorCode;
+        }
         catch(Exception ex)
         {
             writefln("%s: %s", this._appName.ansi.fg(Ansi4BitColour.red), ex.msg);
@@ -181,7 +196,7 @@ final class CommandLineInterface(Modules...)
         {
             auto comParser = CommandParser!(CommandT, ArgBinderInstance)();
             auto result = comParser.parse(parser);
-            enforce(result.isOk, result.error);
+            result.enforceOk();
 
             auto com = result.value;
             static if(is(typeof(com.onExecute()) == int))

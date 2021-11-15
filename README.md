@@ -556,6 +556,12 @@ First, we need to create the arg binder:
 import std.stdio : File;
 import jcli      : Result;
 
+// You can optionally attach an exit code to a result.
+enum FileErrorCodes
+{
+    notFound = 200;
+}
+
 @Binder
 ResultOf!File fileBinder(string arg)
 {
@@ -563,7 +569,7 @@ ResultOf!File fileBinder(string arg)
     
     return (arg.exists)
     ? ok(File(arg, "r"))
-    : fail!File("File does not exist: "~arg);
+    : fail!File("File does not exist: "~arg, FileErrorCodes.notFound); // Second arg is optional
 }
 ```
 

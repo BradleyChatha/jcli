@@ -8,6 +8,7 @@ struct ResultOf(alias T)
     private
     {
         string _error = "I've not been initialised.";
+        int _errorCode;
         static if(!IsVoid)
             T _value;
     }
@@ -32,10 +33,11 @@ struct ResultOf(alias T)
         }
     }
 
-    static This fail()(string error)
+    static This fail()(string error, int errorCode = -1)
     {
         This t;
         t._error = error;
+        t._errorCode = errorCode;
         return t;
     }
 
@@ -52,18 +54,30 @@ struct ResultOf(alias T)
         return this._error;
     }
 
+    int errorCode()()
+    {
+        assert(!this.isOk, "Cannot call .errorCode on an ok result.");
+        return this._errorCode;
+    }
+
     static if(!IsVoid)
     inout(T) value()() inout
     {
         assert(this.isOk, "Cannot call .value on a failed result. Please use .isOk to check.");
         return this._value;
     }
+
+    void enforceOk()()
+    {
+        if(!this.isOk)
+            throw new ResultException(this.error, this.errorCode);
+    }
 }
 ///
 unittest
 {
     auto ok     = ResultOf!int.ok(1);
-    auto fail   = ResultOf!int.fail("Bad");
+    auto fail   = ResultOf!int.fail("Bad", 200);
     auto init   = ResultOf!int.init;
     auto void_  = Result.ok();
 
@@ -72,6 +86,7 @@ unittest
 
     assert(!fail.isOk);
     assert(fail.error == "Bad");
+    assert(fail.errorCode == 200);
 
     assert(!init.isOk);
     assert(init.error);
@@ -91,7 +106,30 @@ auto ok()()
     return Result.ok();
 }
 
-auto fail(T)(string error)
+auto fail(T)(string error, int errorCode = -1)
 {
-    return ResultOf!T.fail(error);
+    return ResultOf!T.fail(error, errorCode);
+}
+
+class ResultException : Exception
+{
+    const(int) errorCode;
+
+    @nogc @safe pure nothrow this(string msg, string file = __FILE__, size_t line = __LINE__, Throwable nextInChain = null)
+    {
+        this.errorCode = -1;
+        super(msg, file, line, nextInChain);
+    }
+
+    @nogc @safe pure nothrow this(string msg, int errorCode, string file = __FILE__, size_t line = __LINE__, Throwable nextInChain = null)
+    {
+        this.errorCode = errorCode;
+        super(msg, file, line, nextInChain);
+    }
+
+    @nogc @safe pure nothrow this(string msg, Throwable nextInChain, string file = __FILE__, size_t line = __LINE__)
+    {
+        this.errorCode = -1;
+        super(msg, file, line, nextInChain);
+    }
 }

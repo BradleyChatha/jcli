@@ -132,6 +132,23 @@ auto TEST_CASES =
               .expectStatusToBe (0)
               .finish           (),
 
+    testCase().inFolder         ("./06-result-with-fail-code/")
+              .withParams       ("abc")
+              .expectStatusToBe (100)
+              .finish           (),
+    testCase().inFolder         ("./06-result-with-fail-code/")
+              .withParams       ("0")
+              .expectStatusToBe (102)
+              .finish           (),
+    testCase().inFolder         ("./06-result-with-fail-code/")
+              .withParams       ("3")
+              .expectStatusToBe (101)
+              .finish           (),
+    testCase().inFolder         ("./06-result-with-fail-code/")
+              .withParams       ("1")
+              .expectStatusToBe (0)
+              .finish           (),
+
     testCase().inFolder             ("./08-arg-binder-validation")
               .withParams           ("20 69")
               .expectStatusToBe     (0)

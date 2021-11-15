@@ -54,7 +54,7 @@ struct CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                 case i:
                                     auto result = ArgBinderInstance.bind!positional(arg.fullSlice, command);
                                     if(!result.isOk)
-                                        return fail!CommandT(result.error);
+                                        return fail!CommandT(result.error, result.errorCode);
                                     break Switch;
                             }
 
@@ -121,7 +121,7 @@ struct CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
 
                                     auto result = ArgBinderInstance.bind!named(parser.front.fullSlice, command);
                                     if(!result.isOk)
-                                        return fail!CommandT(result.error);
+                                        return fail!CommandT(result.error, result.errorCode);
                                 }
                                 else static if(named.action == ArgAction.count)
                                     getArg!named(command)++;
