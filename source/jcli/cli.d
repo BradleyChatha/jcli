@@ -50,7 +50,7 @@ final class CommandLineInterface(Modules...)
         {
             if(this._default == CommandInfo.init)
             {
-                HelpText help = HelpText.make(180);
+                HelpText help = HelpText.make(Console.screenSize.x);
                 
                 if(parserCopy.empty || parserCopy == ArgParser(["-h"]))
                     help.addHeader("Available commands:");

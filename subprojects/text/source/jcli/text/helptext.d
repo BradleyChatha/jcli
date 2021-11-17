@@ -106,7 +106,12 @@ struct HelpText
         {
             const indent = desc.indent * 4;
             this._text.setString(
-                Rect(this._argNameWidth + this._argGutterWidth + indent, descPos.y, this._argNameWidth + this._argGutterWidth + this._argDescWidth, descPos.y + 1),
+                Rect(
+                    this._argNameWidth + this._argGutterWidth + indent, 
+                    descPos.y, 
+                    this._argNameWidth + this._argGutterWidth + this._argDescWidth, 
+                    descPos.y + cast(uint)(cast(float)this._argDescWidth / cast(float)desc.text.length).ceil + 1
+                ),
                 desc.text,
                 descPos
             );

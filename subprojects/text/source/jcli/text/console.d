@@ -252,7 +252,7 @@ final class Console
             ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
             return Vector(w.ws_col, w.ws_row);
         }
-        else return Vector(0, 0);
+        else return Vector(80, 20);
     }
 
     void refreshHandler(uint row, const TextBufferCell[] rowCells)
