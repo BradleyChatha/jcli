@@ -45,30 +45,6 @@ Tested on Windows and Ubuntu 18.04.
 - [Using JCLI without Dub](#using-jcli-without-dub)
 - [Contributing](#contributing)
 
-    * Advanced usage:
-        1. [User Defined argument binding](#user-defined-argument-binding)
-        1. [User Defined argument validation](#user-defined-argument-validation)
-        1. [Per-Argument binding](#per-argument-binding)
-        1. [Dependency Injection](#dependency-injection)
-        1. [Calling a command from another command](#calling-a-command-from-another-command)
-        1. [Configuration](#configuration)
-        1. [Inheritance](#inheritance)
-        1. [Argument groups](#argument-groups)
-        1. [Bash Completion](#bash-completion)
-            1. [Using eval](#using-eval)
-            1. [Using bash-completion](#using-bash-completion)
-        1. [Argument parsing actions](#argument-parsing-actions)
-            1. [ArgAction.count](#ArgActioncount)
-        1. [Command Introspection](#command-introspection)
-        1. [Light-weight command parsing](#light-weight-command-parsing)
-        1. [Light-weight command help text](#light-weight-command-help-text)
-        1. [Using a custom sink in CommandLineInterface](#using-a-custom-sink-in-commandlineinterface)
-        1. [Argument configuration](#argument-configuration)
-            1. [ArgConfig.caseInsensitive](#ArgConfigcaseinsensitive)
-            1. [ArgConfig.canRedefine](#ArgConfigcanredefine)
-1. [Using JCLI without Dub](#using-jcli-without-dub)
-1. [Contributing](#contributing)
-
 # Features
 
 * Building:
