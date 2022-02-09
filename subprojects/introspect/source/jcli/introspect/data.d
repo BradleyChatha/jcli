@@ -1,6 +1,6 @@
 module jcli.introspect.data;
 
-import jcli.core, std;
+import jcli.core;
 
 enum ArgExistence
 {

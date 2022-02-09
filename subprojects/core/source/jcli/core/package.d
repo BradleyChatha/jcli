@@ -5,4 +5,4 @@ public import
     jcli.core.pattern,
     jcli.core.result;
 
-public import std : Nullable, nullable;
+public import std.typecons : Nullable, nullable;

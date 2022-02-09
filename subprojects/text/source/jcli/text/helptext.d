@@ -1,6 +1,6 @@
 module jcli.text.helptext;
 
-import jcli.text, std;
+import jcli.text;
 
 struct HelpTextDescription
 {
@@ -10,6 +10,7 @@ struct HelpTextDescription
 
 struct HelpText
 {
+
     enum ARG_NAME_PERCENT = 0.1;
     enum ARG_GUTTER_PERCENT = 0.05;
     enum ARG_DESC_PERCENT = 0.3;
@@ -26,6 +27,8 @@ struct HelpText
 
     static HelpText make(uint width)
     {
+        import std.math : round;
+
         HelpText t;
         t._text = new TextBuffer(width, TextBuffer.AUTO_GROW);
         t._argNameWidth = cast(uint)((cast(double)width) * ARG_NAME_PERCENT).round;
@@ -47,6 +50,8 @@ struct HelpText
 
     void addLineWithPrefix(string prefix, string text, AnsiStyleSet prefixStyle = AnsiStyleSet.init)
     {
+        import std.conv : to;
+
         Vector lastChar;
         this._text.setString(
             Rect(0, this._rowCursor, prefix.length.to!int, this._rowCursor + 1),
@@ -94,6 +99,9 @@ struct HelpText
 
     void addArgument(string name, HelpTextDescription[] description)
     {
+        import std.math : round, ceil;
+        import std.algorithm.comparison : max;
+        
         Vector namePos;
         this._text.setString(
             Rect(4, this._rowCursor, this._argNameWidth, this._rowCursor + 1),
@@ -124,6 +132,7 @@ struct HelpText
         if(this._cached)
             return this._cached;
 
+        import std.array : Appender;
         Appender!(char[]) output;
         this._text.onRefresh = (row, cells)
         {
@@ -146,6 +155,7 @@ struct HelpText
             output.put('\n');
         };
         this._text.refresh();
+        import std.exception : assumeUnique;
         this._cached = output.data.assumeUnique;
         return this._cached;
     }

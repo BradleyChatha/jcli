@@ -1,6 +1,10 @@
 module jcli.cli;
 
-import jcli, std;
+import jcli;
+
+import std.algorithm;
+import std.stdio : writefln, writeln;
+import std.array;
 
 final class CommandLineInterface(Modules...)
 {
@@ -30,6 +34,9 @@ final class CommandLineInterface(Modules...)
         this._resolver = new typeof(_resolver)();
         static foreach(mod; Modules)
             this.findCommands!mod;
+
+        import std.file : thisExePath;
+        import std.path : baseName;
         this._appName = thisExePath().baseName;
     }
 
@@ -123,14 +130,27 @@ final class CommandLineInterface(Modules...)
             return -1;
         }
     }
-
+    
     ResolveResult!CommandInfo resolveCommand(ref ArgParser parser, out string[] args)
     {
-        typeof(return) lastPartial;
+        // NOTE: Could just return a tuple if we should always allocate, like this:
+        // static struct Result
+        // {
+        //     string[] args;
+        //     ResolveResult!CommandInfo info;
+        // }
+        // Or even return the arguments as a range.
+        // The user can do .array themselves.
 
-        string[] command;
         scope(exit)
+            // TODO:
+            // The args should be ref, not out, and only allocate if necessary (like std.stdio.readln).
+            // In the test at the bottom the same array has been reused, which is misleading, because
+            // one would assume it reuses the same memory from the usage.
             args = parser.map!(r => r.fullSlice).array;
+
+        typeof(return) lastPartial;
+        string[] command;
 
         while(true)
         {
@@ -166,6 +186,8 @@ final class CommandLineInterface(Modules...)
         static foreach(member; __traits(allMembers, Module))
         {{
             alias Symbol = __traits(getMember, Module, member);
+            
+            import std.traits : hasUDA;
             static if(hasUDA!(Symbol, Command) || hasUDA!(Symbol, CommandDefault))
                 this.getCommand!Symbol;
         }}
@@ -178,6 +200,7 @@ final class CommandLineInterface(Modules...)
         info.onHelp = getOnHelp!CommandT();
         info.onExecute = getOnExecute!CommandT();
 
+        import std.traits : getUDAs, hasUDA;
         static if(hasUDA!(CommandT, Command))
         {
             info.pattern = getUDAs!(CommandT, Command)[0].pattern;
@@ -218,7 +241,7 @@ final class CommandLineInterface(Modules...)
     }
 }
 
-version(unittest)
+version(unittest):
 @Command("assert even|ae|a e", "Asserts that the given number is even.")
 private struct AssertEvenCommand
 {
@@ -238,7 +261,6 @@ private struct AssertEvenCommand
     }
 }
 
-version(unittest)
 @CommandDefault("echo")
 private struct EchoCommand
 {
@@ -256,22 +278,27 @@ private struct EchoCommand
 unittest
 {
     auto cli = new CommandLineInterface!(jcli.cli);
-    auto p = ArgParser(["a"]);
     string[] a;
-    auto r = cli.resolveCommand(p, a);
-    assert(r.kind == r.Kind.partial);
-    assert(r.fullMatchChain.length == 1);
-    assert(r.fullMatchChain[0].fullMatchString == "a");
-    assert(r.partialMatches.length == 2);
-    assert(r.partialMatches[0].fullMatchString == "assert");
-    assert(r.partialMatches[1].fullMatchString == "ae");
+
+    {
+        auto p = ArgParser(["a"]);
+        const r = cli.resolveCommand(p, a);
+        assert(r.kind == r.Kind.partial);
+        assert(r.fullMatchChain.length == 1);
+        assert(r.fullMatchChain[0].fullMatchString == "a");
+        assert(r.partialMatches.length == 2);
+        assert(r.partialMatches[0].fullMatchString == "assert");
+        assert(r.partialMatches[1].fullMatchString == "ae");
+    }
 
     foreach(args; [["ae", "2"], ["assert", "even", "2"], ["a", "e", "2"]])
     {
-        p = ArgParser(args);
-        r = cli.resolveCommand(p, a);
+        import std.conv : to;
+
+        auto p = ArgParser(args);
+        const r = cli.resolveCommand(p, a);
         assert(r.kind == r.Kind.full);
-        assert(r.fullMatchChain.length == args.length-1);
+        assert(r.fullMatchChain.length == args.length - 1);
         assert(r.fullMatchChain.map!(fm => fm.fullMatchString).equal(args[0..$-1]));
         assert(p.front.fullSlice == "2", p.to!string);
         assert(r.fullMatchChain[$-1].userData.onExecute(p) == 0);
@@ -279,16 +306,18 @@ unittest
 
     foreach(args; [["ae", "1", "--reverse"], ["a", "e", "-r", "1"]])
     {
-        p = ArgParser(args);
-        r = cli.resolveCommand(p, a);
+        auto p = ArgParser(args);
+        const r = cli.resolveCommand(p, a);
         assert(r.kind == r.Kind.full);
         assert(r.fullMatchChain[$-1].userData.onExecute(p) == 0);
     }
 
-    assert(cli.parseAndExecute(["assert", "even", "2"], false) == 0);
-    assert(cli.parseAndExecute(["assert", "even", "1", "-r"], false) == 0);
-    assert(cli.parseAndExecute(["assert", "even", "2", "-r"], false) == 128);
-    assert(cli.parseAndExecute(["assert", "even", "1"], false) == 128);
+    {
+        assert(cli.parseAndExecute(["assert", "even", "2"], false) == 0);
+        assert(cli.parseAndExecute(["assert", "even", "1", "-r"], false) == 0);
+        assert(cli.parseAndExecute(["assert", "even", "2", "-r"], false) == 128);
+        assert(cli.parseAndExecute(["assert", "even", "1"], false) == 128);
+    }
 
     // Commented out to stop it from writing output.
     // assert(cli.parseAndExecute(["assrt", "evn", "20"], false) == 69);

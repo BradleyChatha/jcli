@@ -1,6 +1,11 @@
 module jcli.text.buffer;
 
-import std, jansi, jcli.text;
+import jansi, jcli.text;
+
+import std.conv : to;
+import std.exception : enforce;
+import std.utf : decode;
+
 
 struct TextBufferCell
 {

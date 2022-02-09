@@ -1,6 +1,6 @@
 module jcli.helptext.helptext;
 
-import jcli.core, jcli.text, jcli.introspect, std;
+import jcli.core, jcli.text, jcli.introspect;
 
 struct CommandHelpText(alias CommandT_)
 {
@@ -11,13 +11,20 @@ struct CommandHelpText(alias CommandT_)
 
     string generate(string appName = null, uint width = 180)
     {
+        import std.range;
+        import std.algorithm;
+
         if(this._cached)
             return this._cached;
 
         HelpText help = HelpText.make(width);
 
         if(appName is null)
+        {
+            import std.file : thisExePath;
+            import std.path : baseName;
             appName = thisExePath().baseName;
+        }
 
         static struct Arg
         {
@@ -50,7 +57,8 @@ struct CommandHelpText(alias CommandT_)
         }
 
         named.multiSort!("a.optional != b.optional", "a.name < b.name");
-
+        
+        import std.format : format;
         help.addLineWithPrefix("Usage: ", "%s %s%s%s".format(
             appName,
             CommandInfo.pattern.patterns.walkLength ? CommandInfo.pattern.patterns.front : "DEFAULT",

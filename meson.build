@@ -34,7 +34,8 @@ jcli_test_exe = executable(
     'jcli_test_exe',
     'source/dummymain.d',
     dependencies: jcli_dep,
-    d_args: '-unittest'
+    d_unittest: true
+    # d_args: ['-main']
 )
 
 test('jcli', jcli_test_exe)

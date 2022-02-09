@@ -1,24 +1,24 @@
 module jcli.introspect.gather;
 
-import jcli.introspect, jcli.core, std;
+import jcli.introspect, jcli.core;
+import std.traits;
+import std.meta : AliasSeq;
+import std.range : walkLength;
 
-CommandInfo!CommandT commandInfoFor(alias CommandT)()
+CommandInfo!CommandT commandInfoFor(CommandT)()
 {
     typeof(return) ret;
 
-    // Find which command UDA they're using.
-    static if(
-        !__traits(compiles, oneOf!(CommandT, Command, CommandDefault))
-    )
-    {
-        static assert(false, "oneOf won't compile. That likely means you have both @Command and @CommandDefault attached.");
-    }
-    const CommandUda = oneOf!(CommandT, Command, CommandDefault);
+    static assert(
+        is(typeof(CommandUDAOf!CommandT)), 
+        "You must use one of @Command or @DefaultCommand, but not both.");
+
+    const CommandUda = CommandUDAOf!CommandT;
     static if(is(typeof(CommandUda) : CommandDefault))
         ret.isDefault = true;
     else
     {
-        static assert(CommandUda.pattern.patterns.walkLength > 0, "@Command must specify at least one pattern.");
+        static assert(CommandUda.pattern.patterns.length > 0, "@Command must specify at least one pattern.");
         ret.pattern = CommandUda.pattern;
     }
     ret.description = CommandUda.description;
@@ -29,18 +29,23 @@ CommandInfo!CommandT commandInfoFor(alias CommandT)()
     auto raw            = findArgs!(CommandT, ArgRaw);
     auto overflow       = findArgs!(CommandT, ArgOverflow);
 
-    if(ret.namedArgs.length == 0) ret.namedArgs = typeof(ret.namedArgs).init;
-    if(ret.positionalArgs.length == 0) ret.positionalArgs = typeof(ret.positionalArgs).init;
-    if(raw.length > 1) assert(false, "Only one symbol at most can be marked @ArgRaw");
-    if(raw.length == 1) ret.rawArg = raw[0];
-    if(overflow.length > 1) assert(false, "Only one symbol at most can be marked @ArgOverflow");
+    if(ret.namedArgs.length == 0)
+        ret.namedArgs = typeof(ret.namedArgs).init;
+    if(ret.positionalArgs.length == 0)
+        ret.positionalArgs = typeof(ret.positionalArgs).init;
+    if(raw.length > 1)
+        assert(false, "Only one symbol at most can be marked @ArgRaw");
+    if(raw.length == 1)
+        ret.rawArg = raw[0];
+    if(overflow.length > 1)
+        assert(false, "Only one symbol at most can be marked @ArgOverflow");
     if(overflow.length == 1) ret.overflowArg = overflow[0];
 
     return ret;
 }
 
 private auto findArgs(alias CommandT, alias UDA)()
-{
+{    
     ArgIntrospect!(UDA, CommandT)[] ret;
 
     alias SymbolsWithUda = getSymbolsByUDA!(CommandT, UDA);
@@ -115,26 +120,31 @@ private auto findArgs(alias CommandT, alias UDA)()
     return ret;
 }
 
-private auto oneOf(alias Symbol, Udas...)()
+template CommandUDAOf(Type)
 {
-    alias SymbolUdas = __traits(getAttributes, Symbol);
-    static foreach(uda; SymbolUdas)
-    {{
-        static if(__traits(compiles, typeof(uda)))
+    static foreach(uda; __traits(getAttributes, Symbol))
+    {
+        static if(is(Command == UDAInfo!uda.Type))
         {
-            alias UdaT = typeof(uda);
-            enum UdaRet = uda;
+            enum CommandUDAOf = UDAInfo!uda.Value;
         }
-        else
+        static if(is(CommandDefault == UDAInfo!uda.Type))
         {
-            alias UdaT = uda;
-            enum UdaRet = uda.init;
+            enum CommandUDAOf = UDAInfo!uda.Value;
         }
+    }
+}
 
-        static foreach(wanted; Udas)
-        {
-            static if(is(wanted == UdaT))
-                return UdaRet;
-        }
-    }}
+template UDAInfo(alias uda)
+{
+    static if(is(typeof(uda)))
+    {
+        alias Type = typeof(uda);
+        enum Value = uda;
+    }
+    else
+    {
+        alias Type = uda;
+        enum Value = uda.init;
+    }
 }

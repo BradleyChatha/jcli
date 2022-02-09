@@ -1,96 +1,158 @@
 module jcli.commandparser.parser;
 
-import jcli.argbinder, jcli.argparser, jcli.core, jcli.introspect, std;
+import jcli.argbinder, jcli.argparser, jcli.core, jcli.introspect;
+import std.conv : to;
 
-struct CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
+template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
 {
     alias CommandT          = CommandT_;
-    alias CommandInfo       = commandInfoFor!CommandT;
     alias ArgBinderInstance = ArgBinderInstance_;
+    immutable commandInfo = commandInfoFor!CommandT;
 
-    static ResultOf!CommandT parse()(string[] args)
+    static import std.stdio;
+    static struct ParseResult
     {
-        return parse(ArgParser(args));
+        bool success;
+        CommandT command;
     }
 
-    static ResultOf!CommandT parse()(ArgParser parser)
+    static ResultOf!CommandT parse(alias errorHandlerFormatFunction = std.stdio.writefln)(string[] args)
     {
-        CommandT command;
+        auto parser = ArgParser(args);
+        auto result = parse!(errorHandlerFormatFunction)(parser);
+        // All arguments must have been consumed.
+        if (!result.success && !parser.empty)
+        {
+            import std.range : walkLength;
+            errorHandlerFormatFunction("The command was given extra %d arguments.", parser.walkLength);
+            result.success = false;
+        }
+        return result;
+    }
 
-        enum MaxPositionals = CommandInfo.positionalArgs.length;
-        size_t positionCount;
-        Pattern[string] requiredNamed; // key is identifier
-        bool[string] namedFound; // key is identifier, value is dummy.
+    static ResultOf!CommandT parse(alias errorHandlerFormatFunction = std.stdio.writefln)(ref ArgParser parser)
+    {
+        import std.algorithm;
+        import std.format : format;
+        import std.exception : enforce;
+        import std.bitmanip : BitArray;
 
-        static foreach(arg; CommandInfo.namedArgs)
+        typeof(return) result;
+        result.success = true;
+        result.command = CommandT();
+
+        static size_t getNumberOfSizetsNecessaryToHoldBits(size_t numBits)
+        {
+            static size_t ceilDivide(size_t a, size_t b)
+            {
+                return (a + b - 1) / b;
+            }
+            enum numBytesToHoldBits = ceilDivide(numBits, 8);
+            enum numSizeTsToHoldBits = ceilDivide(numBytesToHoldBits, 8);
+            return numSizeTsToHoldBits;
+        }
+        size_t[getNumberOfSizetsNecessaryToHoldBits(commandInfo.namedArgs.length)] 
+            nameNotFoundBitArrayStorage;
+        BitArray nameNotFoundBitArray = BitArray(
+            cast(void) nameNotFoundBitArrayStorage, commandInfo.namedArgs.length);
+
+        static foreach(index, arg; commandInfo.namedArgs)
         {
             static if(!(arg.existence & ArgExistence.optional))
-                requiredNamed[arg.identifier] = arg.uda.pattern;
+                nameNotFoundBitArray[index] = true;
         }
 
+        size_t positionCount;
         while(!parser.empty)
         {
-            auto arg = parser.front;
-            scope(exit) parser.popFront();
+            string arg = parser.front;
+            scope(exit)
+                parser.popFront();
 
             if(arg.fullSlice == "--")
             {
-                static if(CommandInfo.rawArg != typeof(CommandInfo.rawArg).init)
+                static if(commandInfo.rawArg != typeof(commandInfo.rawArg).init)
                 {
                     parser.popFront();
-                    getArg!(CommandInfo.rawArg)(command) = parser;
+                    __traits(getMember, result.command, commandInfo.rawArg) = parser;
                 }
                 break;
             }
 
-            OuterSwitch: final switch(arg.kind) with(ArgParser.Result.Kind)
+            OuterSwitch: 
+            final switch(arg.kind)
+            with(ArgParser.Result.Kind)
             {
                 case rawText:
+                {
+                    Switch: switch(positionCount)
                     {
-                        Switch: switch(positionCount)
+                        static foreach(i, positional; commandInfo.positionalArgs)
                         {
-                            static foreach(i, positional; CommandInfo.positionalArgs)
+                            case i:
+                                auto result = ArgBinderInstance.bind!positional(arg.fullSlice, result.command);
+                                if(!result.isOk)
+                                    return fail!CommandT(result.error, result.errorCode);
+                                break Switch;
+                        }
+
+                        // I might be hitting a compiler bug, because without this, the "positionCount++" is sometimes,
+                        // not all the time, but sometimes unreachable
+                        // case 200302104:
+                        //     break;
+
+                        default:
+                        {
+                            static if(commandInfo.overflowArg == typeof(commandInfo.overflowArg).init)
                             {
-                                case i:
-                                    auto result = ArgBinderInstance.bind!positional(arg.fullSlice, command);
-                                    if(!result.isOk)
-                                        return fail!CommandT(result.error, result.errorCode);
-                                    break Switch;
+                                enum maxPositionals = commandInfo.positionalArgs.length;
+                                return fail!CommandT("Too many positional arguments near '%s'. Expected %d positional arguments.".format(arg.fullSlice, maxPositionals));
                             }
-
-                            // I might be hitting a compiler bug, because without this, the "positionCount++" is sometimes,
-                            // not all the time, but sometimes unreachable
-                            case 200302104:
-                                break;
-
-                            default:
-                                static if(CommandInfo.overflowArg == typeof(CommandInfo.overflowArg).init)
-                                    return fail!CommandT("Too many positional arguments near '%s'. Expected %s positional arguments.".format(arg.fullSlice, MaxPositionals));
-                                else
-                                {
-                                    getArg!(CommandInfo.overflowArg)(command) ~= arg.fullSlice;
-                                    break;
-                                }
+                            else
+                            {
+                                getArg!(commandInfo.overflowArg)(command) ~= arg.fullSlice;
+                                break Switch;
+                            }
                         }
                     }
+                    
                     positionCount++;
                     break;
+                }
 
                 case argument:
-                    static foreach(named; CommandInfo.namedArgs)
-                    {
-                        if(named.uda.pattern.match(arg.nameSlice, (named.config & ArgConfig.caseInsensitive) > 0).matched
-                        || (named.scheme == ArgParseScheme.repeatableName && named.uda.pattern.patterns.any!(p => p.length == 1 && arg.nameSlice.all!(c => c == p[0]))))
+                    static foreach(namedArgIndex, named; commandInfo.namedArgs)
+                    {{
+                        bool isEligible = (){
+                            enum caseInsensitive = (named.config & ArgConfig.caseInsensitive) > 0;
+                            {
+                                bool noMatches = named.uda.pattern.matches!caseInsensitive(arg.nameSlice).empty;
+                                if (!noMatches)
+                                    return true;
+                            }
+                            static if (ArgParseScheme.repeatableName)
+                            {
+                                bool allSame = arg.nameSlice.all(arg.nameSlice[0]);
+                                if (!allSame)
+                                    return false;
+                                bool noMatches = named.uda.pattern.matches!caseInsensitive(arg.nameSlice[0]).empty;
+                                return !noMatches;
+                            }
+                            else
+                            {
+                                return false;
+                            }
+                        }();
+
+                        if (isEligible)
                         {
-                            static if(!(named.existence & ArgExistence.optional))
-                                requiredNamed[named.identifier] = named.uda.pattern;
                             if((named.existence & ArgExistence.multiple) == 0)
                             {
                                 enforce((named.identifier in namedFound) is null,
                                     "Named argument %s cannot be specified multiple times.".format(named.identifier)
                                 );
                             }
-                            namedFound[named.identifier] = true;
+                            nameNotFoundBitArray[namedArgIndex] = false;
 
                             static if(named.scheme == ArgParseScheme.bool_)
                             {
@@ -107,7 +169,7 @@ struct CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                         value = copy.front.fullSlice.to!bool;
                                     }
                                 }
-                                getArg!named(command) = value;
+                                __traits(getMember, result.command, named) = value;
                             }
                             else static if(named.scheme == ArgParseScheme.normal)
                             {
@@ -124,44 +186,56 @@ struct CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                         return fail!CommandT(result.error, result.errorCode);
                                 }
                                 else static if(named.action == ArgAction.count)
-                                    getArg!named(command)++;
+                                {
+                                    __traits(getMember, result.command, named)++;
+                                }
                                 else static assert(false, "Update me please.");
                             }
                             else static if(named.scheme == ArgParseScheme.repeatableName)
                             {
                                 static assert(named.action == ArgAction.count, "ArgParseScheme.bool_ conflicts with anything that isn't ArgAction.count.");
-                                getArg!named(command) += arg.nameSlice.length;
+                                __traits(getMember, result.command, named) += arg.nameSlice.length;
                             }
                             break OuterSwitch;
                         }
-                    }
+                    }}
                     return fail!CommandT("Unknown argument: "~arg.fullSlice);
             }
         }
 
         enforce(
-            positionCount >= CommandInfo.positionalArgs.length,
+            positionCount >= commandInfo.positionalArgs.length,
             "Expected %s positional arguments but got %s instead. Missing the following required positional arguments:%s".format(
-                CommandInfo.positionalArgs.length, positionCount,
-                CommandInfo.positionalArgs[positionCount..$]
+                commandInfo.positionalArgs.length, positionCount,
+                commandInfo.positionalArgs[positionCount..$]
                            .map!(arg => arg.uda.name.length ? arg.uda.name : "NO_NAME")
                            .fold!((a,b) => a~" "~b)("")
             )
         );
 
-        Pattern[] notFound;
-        foreach(k, v; requiredNamed)
+        if (nameNotFoundBitArray.count > 0)
         {
-            if(!namedFound.byKey.any!(key => key == k))
-                notFound ~= v;
-        }
+            import std.array;
 
-        if(notFound.length)
-        {
-            return fail!CommandT(
-                "The following required named arguments were not found: "
-                ~notFound.fold!((a,b) => a.length ? a~", "~b.pattern : b.pattern)("")
-            );
+            // May want to return the whole thing here, but I think the first thing
+            // in the pattern should be the most descriptive anyway so should be encouraged.
+            string getPattern(size_t index)
+            {
+                return commandInfo.namedArgs[index].uda.pattern.patterns[0];
+            }
+
+            auto failMessageBuilder = appender!string("The following required named arguments were not found: ");
+            auto notFoundArgumentIndexes = nameNotFoundBitArray.bitsSet;
+            failMessageBuilder ~= getPattern(notFoundArgumentIndexes.front);
+            notFoundArgumentIndexes.popFront();
+
+            foreach (notFoundArgumentIndex; notFoundArgumentIndexes)
+            {
+                failMessageBuilder ~= ", ";
+                failMessageBuilder ~= getPattern(notFoundArgumentIndex);
+            }
+
+            return fail!CommandT(failMessageBuilder[]);
         }
         
         return ok(command);
@@ -175,7 +249,6 @@ unittest
     {
         @ArgPositional
         string s;
-
 
         @ArgNamed("abc")
         string a;
@@ -225,9 +298,10 @@ unittest
         "raw 2",
     ]);
     assert(result.isOk, result.error);
-    auto value = result.value;
-    auto withoutRaw = value;
-    withoutRaw.raw = ArgParser.init;
+
+    S withoutRaw = result.value;
+    // withoutRaw.raw = ArgParser.init;
+
     assert(withoutRaw == S(
         "abc",
         "1",
@@ -238,6 +312,7 @@ unittest
         "arg2",
         6,
         ["overflow1", "overflow2"],
-    ), value.to!string);
-    assert(value.raw.equal(ArgParser(["raw 1", "raw 2"])), value.raw.to!string);
+    ), result.value.to!string);
+    import std.algorithm : equal;
+    assert(result.value.raw.equal(ArgParser(["raw 1", "raw 2"])), result.value.raw.to!string);
 }

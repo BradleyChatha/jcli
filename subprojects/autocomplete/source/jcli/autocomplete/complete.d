@@ -1,6 +1,6 @@
 module jcli.autocomplete.complete;
 
-import jcli.core, jcli.introspect, jcli.argparser, std;
+import jcli.core, jcli.introspect, jcli.argparser;
 
 struct AutoComplete(alias CommandT)
 {
@@ -81,6 +81,8 @@ struct AutoComplete(alias CommandT)
                     isBool = named.scheme == ArgParseScheme.bool_;
 
                     alias Symbol = getArgSymbol!named;
+
+                    import std.traits : isInstanceOf;
                     static if(isInstanceOf!(Nullable, typeof(Symbol)))
                         alias SymbolT = typeof(typeof(Symbol)().get());
                     else
@@ -116,6 +118,7 @@ struct AutoComplete(alias CommandT)
                     ret ~= "<"~pos.uda.name~">";
             }
 
+            import std.algorithm;
             foreach(pattern; namedByPattern.byKey.filter!(k => !namedFound.canFind(k)))
             {
                 foreach(p; pattern.patterns.map!(p => p.length == 1 ? "-"~p : "--"~p))

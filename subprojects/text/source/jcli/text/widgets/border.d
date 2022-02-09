@@ -1,6 +1,6 @@
 module jcli.text.widgets.border;
 
-import std, jcli.text;
+import jcli.text;
 
 enum BorderStyle
 {

@@ -1,6 +1,10 @@
 module jcli.argbinder.binder;
 
-import jcli.introspect, jcli.core, std;
+import jcli.introspect, jcli.core;
+
+import std.algorithm;
+import std.meta;
+import std.traits;
 
 struct Binder {}
 struct BindWith(alias Func_){ alias Func = Func_; }
@@ -9,6 +13,7 @@ struct PostValidator {}
 
 abstract class ArgBinder(Modules...)
 {
+
     alias ToBinder(alias M) = getSymbolsByUDA!(M, Binder);
     alias Binders           = staticMap!(ToBinder, AliasSeq!(Modules, jcli.argbinder.binder));
 
@@ -92,6 +97,7 @@ unittest
 @Binder
 ResultOf!bool binderBool(string value)
 {
+    import std.conv : to, ConvException;
     try return ok(value.to!bool);
     catch(ConvException msg) return fail!bool(msg.msg);
 }

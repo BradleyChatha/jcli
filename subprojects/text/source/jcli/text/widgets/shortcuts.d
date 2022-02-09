@@ -1,6 +1,6 @@
 module jcli.text.widgets.shortcuts;
 
-import std, jcli.text;
+import jcli.text;
 
 struct ShortcutsWidget(uint count)
 {
