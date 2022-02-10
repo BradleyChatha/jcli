@@ -22,10 +22,17 @@ struct ArgToken
 
         /// The bit! Indicating whether it contains a value.
         valueBit = 32,
-        /// The right part of -a=b, -a b, --stuff b or --stuff=b.
-        namedArgumentValue = valueBit | 1,
+        /// The bit indicating the argument value may correspond to a named argument
+        _namedArgumentValueBit = 1,
+        /// The bit indicating the argument value may correspond to a positional argument
+        _positionalArgumentBit = 2,
+        /// The right part of -a=b, -a="b", --stuff=b or --stuff="b".
+        namedArgumentValue = valueBit | _namedArgumentValueBit,
+        /// --stuff value
+        namedArgumentValueOrPositionalArgument = valueBit | _namedArgumentValueBit | _positionalArgumentBit,
         /// Arguments that appear before any named arguments.
-        positionalArgument = valueBit | 2,
+        /// value --stuff not_this_one
+        positionalArgument = valueBit | _positionalArgumentBit,
         
         /// The bit! indicating that an error has occured.
         errorBit = 48,
@@ -91,6 +98,7 @@ struct ArgParser(TRange)
         bool _empty = false;
         ElementType _front = ElementType.init;
         size_t _positionWithinCurrentString = 0;
+        bool _hasParsedAnyNamedArguments = false;
     }
 
     @safe pure @nogc:
@@ -105,6 +113,7 @@ struct ArgParser(TRange)
         return _empty;
     }
 
+    /// NOTE: this property does not take into account the position within the string.
     inout(TRange) leftoverRange() inout nothrow pure @safe
     {
         return _range;
@@ -278,6 +287,8 @@ struct ArgParser(TRange)
             // For simplicity, let's say we only allow quoting with "" and not with ^^ or any other nonsense.
             if (isRHSOfEqual)
             {
+                assert(_hasParsedAnyNamedArguments);
+
                 // `--arg=`
                 if (_positionWithinCurrentString == currentSlice.length)
                 {
@@ -376,7 +387,7 @@ struct ArgParser(TRange)
             // ["--name", "value"].
             // We don't care whether it was quoted on not in the source, we just return the whole thing.
             {
-                const kind       = Kind.namedArgumentValue;
+                const kind       = Kind.namedArgumentValueOrPositionalArgument;
                 const fullSlice  = currentSlice;
                 const valueSlice = currentSlice;
                 _range.popFront();
@@ -386,7 +397,7 @@ struct ArgParser(TRange)
         // is not a named arg (technically these checks are not needed, but let's do it just in case).
         else if (
             // covers all special cases
-            previousKind < Kind.namedArgumentValue
+            previousKind < Kind.valueBit
         
             || (previousKind & (Kind.errorBit | Kind.valueBit)) > 0)
         {
@@ -394,6 +405,7 @@ struct ArgParser(TRange)
 
             if (getCurrentCharacter() == '-')
             {
+                _hasParsedAnyNamedArguments = true;
                 return parseArgumentName();
             }
 
@@ -403,7 +415,9 @@ struct ArgParser(TRange)
                 // or like this
                 // --arg "ba ba ba"
                 // We see it unqouted, so we just return the value
-                const kind       = Kind.positionalArgument;
+                const kind = _hasParsedAnyNamedArguments
+                    ? Kind.namedArgumentValueOrPositionalArgument
+                    : Kind.positionalArgument;
                 const fullSlice  = currentSlice;
                 const valueSlice = currentSlice;
                 _range.popFront();
@@ -437,14 +451,14 @@ unittest
         auto args = ["--hello", "world"];
         assert(equal(argParser(args), [
             ArgToken(Kind.fullNamedArgumentName, "--hello", "hello"),
-            ArgToken(Kind.namedArgumentValue, "world", "world"),
+            ArgToken(Kind.namedArgumentValueOrPositionalArgument, "world", "world"),
         ]));
     }
     {
         auto args = ["-hello", "world"];
         assert(equal(argParser(args), [
             ArgToken(Kind.shortNamedArgumentName, "-hello", "hello"),
-            ArgToken(Kind.namedArgumentValue, "world", "world"),
+            ArgToken(Kind.namedArgumentValueOrPositionalArgument, "world", "world"),
         ]));
     }
     {
@@ -539,10 +553,14 @@ unittest
         ]));
     }
     {
-        auto args = ["a", "--a", "a"];
+        auto args = ["a", "--a", "a", "-a=a"];
         assert(equal(argParser(args), [
             ArgToken(Kind.positionalArgument, "a", "a"),
+
             ArgToken(Kind.fullNamedArgumentName, "--a", "a"),
+            ArgToken(Kind.namedArgumentValueOrPositionalArgument, "a", "a"),
+            
+            ArgToken(Kind.shortNamedArgumentName, "-a", "a"),
             ArgToken(Kind.namedArgumentValue, "a", "a"),
         ]));
     }

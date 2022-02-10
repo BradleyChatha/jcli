@@ -11,13 +11,12 @@ struct BindWith(alias Func_){ alias Func = Func_; }
 struct PreValidator {}
 struct PostValidator {}
 
-abstract class ArgBinder(Modules...)
+template ArgBinder(Modules...)
 {
-
     alias ToBinder(alias M) = getSymbolsByUDA!(M, Binder);
     alias Binders           = staticMap!(ToBinder, AliasSeq!(Modules, jcli.argbinder.binder));
 
-    static Result bind(alias ArgIntrospectT)(string str, ref ArgIntrospectT.CommandT command)
+    Result bind(alias ArgIntrospectT)(string str, ref ArgIntrospectT.CommandT command)
     {
         alias ArgSymbol         = getArgSymbol!ArgIntrospectT;
         alias PreValidators     = getValidators!(ArgSymbol, PreValidator);

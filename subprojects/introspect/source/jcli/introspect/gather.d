@@ -15,7 +15,9 @@ CommandInfo!CommandT commandInfoFor(CommandT)()
 
     const CommandUda = CommandUDAOf!CommandT;
     static if(is(typeof(CommandUda) : CommandDefault))
+    {
         ret.isDefault = true;
+    }
     else
     {
         static assert(CommandUda.pattern.patterns.length > 0, "@Command must specify at least one pattern.");
@@ -23,24 +25,30 @@ CommandInfo!CommandT commandInfoFor(CommandT)()
     }
     ret.description = CommandUda.description;
 
-    // Find args.
-    ret.namedArgs       = findArgs!(CommandT, ArgNamed);
-    ret.positionalArgs  = findArgs!(CommandT, ArgPositional);
-    auto raw            = findArgs!(CommandT, ArgRaw);
-    auto overflow       = findArgs!(CommandT, ArgOverflow);
-
-    if(ret.namedArgs.length == 0)
-        ret.namedArgs = typeof(ret.namedArgs).init;
-    if(ret.positionalArgs.length == 0)
-        ret.positionalArgs = typeof(ret.positionalArgs).init;
-    if(raw.length > 1)
-        assert(false, "Only one symbol at most can be marked @ArgRaw");
-    if(raw.length == 1)
-        ret.rawArg = raw[0];
-    if(overflow.length > 1)
-        assert(false, "Only one symbol at most can be marked @ArgOverflow");
-    if(overflow.length == 1) ret.overflowArg = overflow[0];
-
+    {
+        auto namedArgs = findArgs!(CommandT, ArgNamed);
+        if (namedArgs.length > 0)
+            ret.namedArgs = namedArgs;
+    }
+    {
+        ret.positionalArgs  = findArgs!(CommandT, ArgPositional);
+        if(ret.positionalArgs.length == 0)
+            ret.positionalArgs = typeof(ret.positionalArgs).init;
+    }
+    {
+        auto raw = findArgs!(CommandT, ArgRaw);
+        if(raw.length > 1)
+            assert(false, "Only one symbol at most can be marked @ArgRaw");
+        if(raw.length == 1)
+            ret.rawArg = raw[0];
+    }
+    {
+        auto overflow = findArgs!(CommandT, ArgOverflow);
+        if(overflow.length > 1)
+            assert(false, "Only one symbol at most can be marked @ArgOverflow");
+        if(overflow.length == 1)
+            ret.overflowArg = overflow[0];
+    }
     return ret;
 }
 
