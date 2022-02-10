@@ -155,8 +155,48 @@ string getArgumentFlagsValidationMessage(ArgFlags flags)
     return null;
 }
 
+
+private bool isFlagCombinationSupported(ArgFlags a, ArgFlags b)
+{
+    import std.bitmanip : bitsSet;
+    import std.algorithm : map;
+
+    with(ArgFlags)
+    {
+        // See the table in the readme.
+        immutable ArgFlags[8] badMapping =
+        [
+            // _optionalBit
+            none,
+            // _multipleBit
+            _parseAsFlagBit,
+            // _parseAsFlagBit
+            _multipleBit | _countBit | _repeatableNameBit | _aggregateBit,
+            // _countBit
+            _parseAsFlagBit | _canRedefineBit | _aggregateBit,
+            // _caseInsensitiveBit
+            none,
+            // _canRedefineBit
+            _countBit | _repeatableNameBit | _aggregateBit,
+            // _repeatableNameBit
+            _parseAsFlagBit | _canRedefineBit | _aggregateBit,
+            // _aggregateBit
+            _parseAsFlagBit | _countBit | _canRedefineBit | _aggregateBit,
+        ];
+
+
+        foreach (bitIndexOfA; bitsSet(a))
+        {
+            if (badMapping[bitIndexOfA].hasEither(b))
+                return false;
+        }
+        return true;
+    }
+}
+
 ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
 {
+    import std.conv : to;
     ArgumentCommonInfo result;
     ArgFlags[] recordedFlags = [];
     
@@ -165,6 +205,7 @@ ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
         static if (is(typeof(uda) == ArgFlags))
         {
             recordedFlags ~= uda;
+            result.flags |= uda;
         }
         else static if (is(typeof(uda) == ArgGroup))
         {
@@ -173,9 +214,15 @@ ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
         }
     }
 
-    // TODO: validate flags
-    foreach (flag; flags)
-        result.flags |= flag;
+    foreach (flag0; recordedFlags)
+    foreach (flag1; recordedFlags[1 .. $])
+    {
+        assert(isFlagCombinationSupported(flag0, flag1),
+            "The flag combination " ~ flag0.to!string ~ " and " ~ flag1.to!string ~ "is not supported");
+    }
+
+    assert(isFlagCombinationSupported(result.flags, result.flags),
+        "Bad flag combination: " ~ result.flags.to!string);
 
     static if (is(typeof(group)))
         result.group = group;

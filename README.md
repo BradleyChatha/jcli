@@ -1334,6 +1334,46 @@ You can attach any values from the `ArgConfig` enum directly onto an argument, t
 
 As a reminder, to attach enum values onto something as a UDA, you must use the form `@(ArgConfig.xxx)`.
 
+
+The information below is useful for seeing which combinations of features are supported.
+
+Flags combinations supported:
+
+|                    | optionalBit | multipleBit | parseAsFlagBit   | countBit | caseInsensitiveBit | canRedefineBit | repeatableNameBit | aggregateBit |
+|--------------------|-------------|-------------|------------------|----------|--------------------|----------------|-------------------|--------------|
+| optionalBit        | o           | +           | +                | +        | +                  | +              | +                 | +            |
+| multipleBit        | +           | o           | -                | +        | +                  | +              | +                 | +            |
+| parseAsFlagBit     | +           | -           | o                | -        | + (for the name)   | +              | -                 | -            |
+| countBit           | +           | +           | -                | o        | +                  | -              | +                 | -            |
+| caseInsensitiveBit | +           | +           | + (for the name) | +        | o                  | +              | +                 | +            |
+| canRedefineBit     | +           | +           | +                | -        | +                  | o              | - (not yet)       | -            |
+| repeatableNameBit  | +           | +           | -                | +        | +                  | - (not yet)    | o                 | -            |
+| aggregateBit       | +           | +           | -                | -        | +                  | -              | -                 | o            |
+
+
+Flags that must be accompanied by one of the other flags:
+
+- `optionalBit` — none;
+- `multipleBit` — one of `countBit`, `canRedefineBit` or `aggregateBit`;
+- `parseAsFlagBit` — `optionalBit`;
+- `countBit` — either `mutipleBit`, `repeatableNameBit`, or both;
+- `caseInsensitiveBit` — none;
+- `canRedefineBit` — `multipleBit`;
+- `repeatableNameBit` — `countBit`.
+
+Supported orthogonal higher level flag combinatons (encouraged to use).
+"implied" written in a cell means the flag combination from the header implies the flag combination from the left:
+
+|                | canRedefine | optional | caseInsesitive | accumulate | aggregate | repeatableName | parseAsFlag |
+|----------------|-------------|----------|----------------|------------|-----------|----------------|-------------|
+| canRedefine    | o           | +        | +              | -          | -         | - (not yet)    | +           |
+| optional       | + implied   | o        | +              | +          | +         | +              | + implied   |
+| caseInsesitive | +           | +        | o              | +          | +         | +              | +           |
+| accumulate     | -           | +        | +              | o          | -         | + implied      | -           |
+| aggregate      | -           | +        | +              | -          | o         | -              | -           |
+| repeatableName | - (not yet) | +        | +              | +          | -         | o              | -           |
+
+
 ### ArgConfig.caseInsensitive
 
 By default, named arguments are case-sensitive, meaning `abc` is not the same as `abC`.
