@@ -41,6 +41,9 @@ private struct WriterThing
     }
 }
 
+// TODO: 
+// Why does this template even exist?
+// It should just be a normal templated function.
 template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
 {
     alias CommandT          = CommandT_;
@@ -51,6 +54,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
     static struct ParseResult
     {
         size_t errorCount;
+        // TODO: we should take the command as a ref
         CommandT command;
         bool success() { return errorCount > 0; }
     }
@@ -60,11 +64,11 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
         TErrorHandler
     )
     (
-        string[] args,
-        ref TErrorHandler errorHandlerFormatFunction = WriterThing()
+        scope string[] args,
+        ref scope TErrorHandler errorHandlerFormatFunction = WriterThing()
     )
     {
-        auto parser = argParser(args);
+        scope auto parser = argParser(args);
         auto result = parse!(errorHandlerFormatFunction)(parser);
         return result;
     }
@@ -78,8 +82,8 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
         TArgParser : ArgParser!T, T
     )
     (
-        ref TErrorHandler errorHandlerFormatFunction,
-        ref TArgParser argParser
+        ref scope TErrorHandler errorHandlerFormatFunction,
+        ref scope TArgParser argParser
     )
     {
         typeof(return) result;
@@ -504,6 +508,16 @@ version(unittest)
         import std.array;
         return InMemoryErrorOutput(appender!string);
     }
+
+    mixin template Things(Struct)
+    {
+        InMemoryErrorOutput output = createSink();
+        auto parse(scope string[] args)
+        {
+            output.clear();
+            return CommandParser!S.parse(args, output);
+        }
+    } 
 }
 
 
@@ -517,33 +531,30 @@ unittest
         string a;
     }
 
-    InMemoryErrorOutput output = createSink();
+    mixin Things!S;
+
     {
         // Ok
-        output.clear();
-        auto result = CommandParser!S.parse(["b"], output);
+        auto result = parse(["b"]);
         assert(result.isOk);
         assert(result.value.a == "b");
-        assert(output.errorCodes.length == 0);
+        assert(output.errorCodes[].length == 0);
     }
     {
-        output.clear();
-        auto result = CommandParser!S.parse(["-a", "b"], output);
+        auto result = parse(["-a", "b"]);
         assert(result.isError);
-        assert(output.errorCodes.canFind(ErrorCode.unknownNamedArgumentError));
+        assert(output.errorCodes[].canFind(ErrorCode.unknownNamedArgumentError));
     }
     {
-        output.clear();
-        auto result = CommandParser!S.parse(["a", "b"], output);
+        auto result = parse(["a", "b"]);
         assert(result.isError);
         assert(result.value.a == "a");
-        assert(output.errorCodes.canFind(ErrorCode.tooManyPositionalArgumentsError));
+        assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
     }
     {
-        output.clear();
-        auto result = CommandParser!S.parse([], output);
+        auto result = parse([]);
         assert(result.isError);
-        assert(output.errorCodes.canFind(ErrorCode.tooFewPositionalArgumentsError));
+        assert(output.errorCodes[].canFind(ErrorCode.tooFewPositionalArgumentsError));
     }
 }
 
@@ -552,35 +563,55 @@ unittest
 {
     static struct S
     {
-        @ArgNamed("a", "")
+        @ArgNamed
         string a;
     }
 
-    InMemoryErrorOutput output = createSink();
+    mixin Things!S;
+
     {
-        output.clear();
-        auto result = CommandParser!S.parse(["-a", "b"], output);
+        auto result = parse(["-a", "b"]);
         assert(result.isOk);
         assert(result.value.a == "b");
     }
     {
-        output.clear();
-        auto result = CommandParser!S.parse([], output);
+        auto result = parse([]);
         assert(result.isError);
-        assert(output.errorCodes.canFind(ErrorCode.missingNamedArgumentsError));
+        assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
     }
     {
-        output.clear();
-        auto result = CommandParser!S.parse(["-a"], output);
+        auto result = parse(["-a"]);
         assert(result.isError);
-        assert(output.errorCodes.canFind(ErrorCode.noValueForNamedArgumentError));
+        assert(output.errorCodes[].canFind(ErrorCode.noValueForNamedArgumentError));
     }
     {
-        output.clear();
-        auto result = CommandParser!S.parse(["a"], output);
+        auto result = parse(["a"]);
         assert(result.isError);
-        assert(output.errorCodes.canFind(ErrorCode.missingNamedArgumentsError));
+        assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
     }
+    {
+        auto result = parse(["-a", "b", "-a", "c"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
+    }
+    {
+        auto result = parse(["-b"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
+        assert(output.errorCodes[].canFind(ErrorCode.unknownNamedArgumentError));
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgNamed
+        string a = "Hello";
+    }
+    // TODO: 
+    // The named argument has a default value, so it should be optional.
+    // This equivalence should be tested elsewhere though.
 }
 
 
@@ -588,79 +619,167 @@ unittest
 {
     static struct S
     {
-        @ArgPositional
+        @ArgNamed
+        @(ArgFlags.count)
         string a;
     }
+    // TODO: static assert the parse function does not compile.
 }
-    @Command("ab")
+
+unittest
+{
     static struct S
     {
-        @ArgPositional
-        string s;
-
-        @ArgNamed("abc")
+        @ArgNamed
+        @(ArgFlags.optional)
         string a;
-
-        @ArgNamed("b")
-        @(ArgExistence.multiple)
-        string b;
-
-        @ArgNamed("c")
-        bool c;
-
-        @ArgNamed("d")
-        bool d;
-
-        @ArgNamed("e")
-        bool e;
-
-        @ArgPositional
-        string f;
-
-        @ArgNamed("v")
-        @(ArgAction.count)
-        int v;
-
-        @ArgOverflow
-        string[] overflow;
-
-        @ArgRaw
-        ArgParser raw;
     }
 
-    alias parser = CommandParser!S;
-    auto result = parser.parse([
-        "abc", 
-        "--abc=1", 
-        "-b", "2", 
-        "-b=3",
-        "-c",
-        "-d false",
-        "-e arg2",
-        "-vv",
-        "-vvvv",
-        "overflow1",
-        "overflow2",
-        "--",
-        "raw 1",
-        "raw 2",
-    ]);
-    assert(result.isOk, result.error);
+    mixin Things!S;
 
-    S withoutRaw = result.value;
-    // withoutRaw.raw = ArgParser.init;
+    {
+        auto result = parse(["-a", "b"]);
+        assert(result.isOk);
+        assert(result.value.a == "b");
+    }
+    {
+        auto result = parse([]);
+        assert(result.isOk);
+        assert(result.value.a == typeof(result.value.a).init);
+    }
+    {
+        auto result = parse(["-a"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.noValueForNamedArgumentError));
+    }
+    {
+        auto result = parse(["-a", "b", "-a", "c"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
+    }
+}
 
-    assert(withoutRaw == S(
-        "abc",
-        "1",
-        "3",
-        true,
-        false,
-        true,
-        "arg2",
-        6,
-        ["overflow1", "overflow2"],
-    ), result.value.to!string);
-    import std.algorithm : equal;
-    assert(result.value.raw.equal(ArgParser(["raw 1", "raw 2"])), result.value.raw.to!string);
+unittest
+{
+    static struct S
+    {
+        @ArgNamed
+        @(ArgFlags.aggregate)
+        string[] a;
+    }
+
+    mixin Things!S;
+
+    {
+        auto result = parse(["-a", "b"]);
+        assert(result.isOk);
+        assert(result.value.a == ["b"]);
+    }
+    {
+        auto result = parse([]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
+    }
+    {
+        auto result = parse(["-a"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.noValueForNamedArgumentError));
+    }
+    {
+        auto result = parse(["-a", "b", "-a", "c"]);
+        assert(result.isOk);
+        assert(result.value.a == ["b", "c"]);
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgNamed
+        @(ArgFlags.aggregate | ArgFlags.optional)
+        string a;
+    }
+
+    mixin Things!S;
+
+    {
+        auto result = parse(["-a", "b"]);
+        assert(result.isOk);
+        assert(result.value.a == ["b"]);
+    }
+    {
+        auto result = parse([]);
+        assert(result.isOk);
+        assert(result.value.a == []);
+    }
+    {
+        auto result = parse(["-a", "b", "-a", "c"]);
+        assert(result.isOk);
+        assert(result.value.a == ["b", "c"]);
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgNamed
+        @(ArgFlags.accumulate)
+        int a;
+    }
+
+    mixin Things!S;
+
+    {
+        auto result = parse(["-a"]);
+        assert(result.isOk);
+        assert(result.value.a == 1);
+    }
+    {
+        auto result = parse([]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
+    }
+    {
+        auto result = parse(["-a", "-a"]);
+        assert(result.isOk);
+        assert(result.value.a == 2);
+    }
+    {
+        // Here, "b" can be either a value to "-a" or a positional argument.
+        // Since "-a" does not expect a value, it should be treated as a positional argument.
+        auto result = parse(["-a", "b"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
+    }
+    {
+        // Here, "b" is unequivocally a named argument value, so it produces a different error.
+        auto result = parse(["-a=b"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.countArgumentGivenValueError));
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgNamed
+        @(ArgFlags.accumulate | ArgFlags.optional)
+        int a;
+    }
+
+    mixin Things!S;
+
+    {
+        auto result = parse([]);
+        assert(result.isError);
+        assert(result.value.a == 0);
+    }
+    {
+        auto result = parse(["-a", "-a"]);
+        assert(result.isOk);
+        assert(result.value.a == 2);
+    }
 }

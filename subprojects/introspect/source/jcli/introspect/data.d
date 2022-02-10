@@ -32,7 +32,7 @@ enum ArgFlags
     _repeatableNameBit = 1 << 6,
 
     /// Put all matched values in an array. 
-    _accumulateBit = 1 << 7,
+    _aggregateBit = 1 << 7,
 
     ///
     canRedefine = _canRedefineBit | _multipleBit,
@@ -45,12 +45,11 @@ enum ArgFlags
     caseInsesitive = _caseInsensitiveBit,
 
     /// Example: `-a -a` gives 2.
-    sum = _multipleBit | _countBit | _optionalBit,
+    accumulate = _multipleBit | _countBit,
 
     /// The type of the field must be an array of some sort.
     /// Example: `-a b -a c` gives an the array ["b", "c"]
-    /// Maybe call this `aggregate` and call the sum `accumulate`?
-    accumulate = _multipleBit | _optionalBit,
+    aggregate = _multipleBit | _aggregateBit,
 
     ///
     repeatableName = _repeatableNameBit | _countBit,
