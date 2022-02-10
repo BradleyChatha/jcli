@@ -564,7 +564,27 @@ unittest
             ArgToken(Kind.namedArgumentValue, "a", "a"),
         ]));
     }
-
+    {
+        auto args = ["--a", "Штука"];
+        assert(equal(argParser(args), [
+            ArgToken(Kind.fullNamedArgumentName, "a", "a"),
+            ArgToken(Kind.namedArgumentValueOrPositionalArgument, "Штука", "Штука"),
+        ]));
+    }
+    {
+        auto args = [`--a="Штука"`];
+        assert(equal(argParser(args), [
+            ArgToken(Kind.fullNamedArgumentName, "a", "a"),
+            ArgToken(Kind.namedArgumentValue, `"Штука"`, "Штука"),
+        ]));
+    }
+    {
+        auto args = ["--a", "物事"];
+        assert(equal(argParser(args), [
+            ArgToken(Kind.fullNamedArgumentName, "a", "a"),
+            ArgToken(Kind.namedArgumentValueOrPositionalArgument, "物事", "物事"),
+        ]));
+    }
     
     // // Copy and paste around for debugging.
 

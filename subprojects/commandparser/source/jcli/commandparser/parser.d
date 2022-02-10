@@ -4,7 +4,7 @@ import jcli.argbinder, jcli.argparser, jcli.core, jcli.introspect;
 import std.conv : to;
 
 /// This is needed mostly for testing purposes
-enum ParseCommandErrorCode
+enum CommandParsingErrorCode
 {
     /// Since we don't need to test the underlying argument parser, this is a placeholder.
     /// Ideally, we should mirror those errors here, or something like that.
@@ -30,7 +30,7 @@ enum ParseCommandErrorCode
     missingNamedArgumentsError,
 }
 
-private alias ErrorCode = ParseCommandErrorCode;
+private alias ErrorCode = CommandParsingErrorCode;
 
 private struct WriterThing
 {
@@ -69,7 +69,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
     )
     {
         scope auto parser = argParser(args);
-        auto result = parse!(errorHandlerFormatFunction)(parser);
+        const result = parse!(errorHandlerFormatFunction)(parser);
         return result;
     }
 
@@ -428,16 +428,31 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
             }
         }
 
-        if (currentPositionalArgIndex < commandInfo.positionalArgs.length)
+        if (currentPositionalArgIndex < commandInfo.requiredPositionalArgsCount)
         {
-            import std.algorithm : map;
-            import std.string : join;
-            enum string argList = commandInfo.positionalArgs.map!(a => a.identifier).join(", ");
+            enum string messageFormat =
+            (){
+                string ret = "Expected ";
+                if (commandInfo.positionalArgs.length == commandInfo.numRequiredPositionalArgs)
+                    ret ~= "exactly";
+                else
+                    ret ~= "at least";
+
+                ret ~= "% positional arguments but got only %. The command takes the following positional arguments: ";
+
+                {
+                    import std.algorithm : map;
+                    import std.string : join;
+                    enum string argList = commandInfo.positionalArgs.map!(a => a.identifier).join(", ");
+                    ret ~= argList;
+                }
+                return ret;
+            }();
+
             errorHandlerFormatFunction(
                 ErrorCode.tooFewPositionalArgumentsError,
-                "Expected % positional arguments but got only %. The command takes the following positional arguments: "
-                    ~ argList,
-                commandInfo.positionalArgs.length,
+                messageFormat,
+                commandInfo.requiredPositionalArgsCount,
                 currentPositionalArgIndex);
             errorCounter++;
         }
@@ -475,7 +490,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
             writeln(errorCounter, " errors have occured.");
         }
 
-        result.success = errorCounter == 0;    
+        result.errorCount = errorCounter;
         return result;
     }
 }
@@ -511,11 +526,12 @@ version(unittest)
 
     mixin template Things(Struct)
     {
+        import std.algorithm;
         InMemoryErrorOutput output = createSink();
         auto parse(scope string[] args)
         {
             output.clear();
-            return CommandParser!S.parse(args, output);
+            return CommandParser!Struct.parse(args, output);
         }
     } 
 }
@@ -523,8 +539,6 @@ version(unittest)
 
 unittest
 {
-    import std.algorithm;
-
     static struct S
     {
         @ArgPositional
@@ -535,24 +549,24 @@ unittest
 
     {
         // Ok
-        auto result = parse(["b"]);
+        const result = parse(["b"]);
         assert(result.isOk);
         assert(result.value.a == "b");
         assert(output.errorCodes[].length == 0);
     }
     {
-        auto result = parse(["-a", "b"]);
+        const result = parse(["-a", "b"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.unknownNamedArgumentError));
     }
     {
-        auto result = parse(["a", "b"]);
+        const result = parse(["a", "b"]);
         assert(result.isError);
         assert(result.value.a == "a");
         assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
     }
     {
-        auto result = parse([]);
+        const result = parse([]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.tooFewPositionalArgumentsError));
     }
@@ -570,32 +584,32 @@ unittest
     mixin Things!S;
 
     {
-        auto result = parse(["-a", "b"]);
+        const result = parse(["-a", "b"]);
         assert(result.isOk);
         assert(result.value.a == "b");
     }
     {
-        auto result = parse([]);
+        const result = parse([]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
     }
     {
-        auto result = parse(["-a"]);
+        const result = parse(["-a"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.noValueForNamedArgumentError));
     }
     {
-        auto result = parse(["a"]);
+        const result = parse(["a"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
     }
     {
-        auto result = parse(["-a", "b", "-a", "c"]);
+        const result = parse(["-a", "b", "-a", "c"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
     }
     {
-        auto result = parse(["-b"]);
+        const result = parse(["-b"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
         assert(output.errorCodes[].canFind(ErrorCode.unknownNamedArgumentError));
@@ -638,22 +652,22 @@ unittest
     mixin Things!S;
 
     {
-        auto result = parse(["-a", "b"]);
+        const result = parse(["-a", "b"]);
         assert(result.isOk);
         assert(result.value.a == "b");
     }
     {
-        auto result = parse([]);
+        const result = parse([]);
         assert(result.isOk);
         assert(result.value.a == typeof(result.value.a).init);
     }
     {
-        auto result = parse(["-a"]);
+        const result = parse(["-a"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.noValueForNamedArgumentError));
     }
     {
-        auto result = parse(["-a", "b", "-a", "c"]);
+        const result = parse(["-a", "b", "-a", "c"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
     }
@@ -671,22 +685,22 @@ unittest
     mixin Things!S;
 
     {
-        auto result = parse(["-a", "b"]);
+        const result = parse(["-a", "b"]);
         assert(result.isOk);
         assert(result.value.a == ["b"]);
     }
     {
-        auto result = parse([]);
+        const result = parse([]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
     }
     {
-        auto result = parse(["-a"]);
+        const result = parse(["-a"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.noValueForNamedArgumentError));
     }
     {
-        auto result = parse(["-a", "b", "-a", "c"]);
+        const result = parse(["-a", "b", "-a", "c"]);
         assert(result.isOk);
         assert(result.value.a == ["b", "c"]);
     }
@@ -698,23 +712,23 @@ unittest
     {
         @ArgNamed
         @(ArgFlags.aggregate | ArgFlags.optional)
-        string a;
+        string[] a;
     }
 
     mixin Things!S;
 
     {
-        auto result = parse(["-a", "b"]);
+        const result = parse(["-a", "b"]);
         assert(result.isOk);
         assert(result.value.a == ["b"]);
     }
     {
-        auto result = parse([]);
+        const result = parse([]);
         assert(result.isOk);
         assert(result.value.a == []);
     }
     {
-        auto result = parse(["-a", "b", "-a", "c"]);
+        const result = parse(["-a", "b", "-a", "c"]);
         assert(result.isOk);
         assert(result.value.a == ["b", "c"]);
     }
@@ -732,30 +746,30 @@ unittest
     mixin Things!S;
 
     {
-        auto result = parse(["-a"]);
+        const result = parse(["-a"]);
         assert(result.isOk);
         assert(result.value.a == 1);
     }
     {
-        auto result = parse([]);
+        const result = parse([]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
     }
     {
-        auto result = parse(["-a", "-a"]);
+        const result = parse(["-a", "-a"]);
         assert(result.isOk);
         assert(result.value.a == 2);
     }
     {
         // Here, "b" can be either a value to "-a" or a positional argument.
         // Since "-a" does not expect a value, it should be treated as a positional argument.
-        auto result = parse(["-a", "b"]);
+        const result = parse(["-a", "b"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
     }
     {
         // Here, "b" is unequivocally a named argument value, so it produces a different error.
-        auto result = parse(["-a=b"]);
+        const result = parse(["-a=b"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.countArgumentGivenValueError));
     }
@@ -773,13 +787,178 @@ unittest
     mixin Things!S;
 
     {
-        auto result = parse([]);
+        const result = parse([]);
         assert(result.isError);
         assert(result.value.a == 0);
     }
     {
-        auto result = parse(["-a", "-a"]);
+        const result = parse(["-a", "-a"]);
         assert(result.isOk);
         assert(result.value.a == 2);
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgNamed
+        @(ArgFlags.parseAsFlag)
+        bool a;
+    }
+
+    mixin Things!S;
+
+    {
+        const result = parse([]);
+        assert(result.isOk);
+        assert(result.value.a == false);
+    }
+    {
+        const result = parse(["-a", "true"]);
+        assert(result.isOk);
+        assert(result.value.a == true);
+    }
+    {
+        const result = parse(["-a", "false"]);
+        assert(result.isOk);
+        assert(result.value.a == false);
+    }
+    {
+        const result = parse(["-a", "stuff"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
+    }
+    {
+        const result = parse(["-a=stuff"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.booleanFlagInvalidValueError));
+    }
+    {
+        const result = parse(["-a", "-a"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgPositional
+        string a;
+        
+        // should be implied
+        // @(ArgFlags.optional)
+
+        @ArgPositional
+        string b = "Hello";
+    }
+
+    mixin Things!S;
+
+    {
+        const result = parse(["a"]);
+        assert(result.isOk);
+        assert(result.value.a == "a");
+        assert(result.value.b == "Hello");
+    }
+    {
+        const result = parse(["c", "d"]);
+        assert(result.isOk);
+        assert(result.value.a == "c");
+        assert(result.value.b == "d");
+    }
+    {
+        const result = parse([]);
+        assert(result.isError);
+        assert(output.errorCode[].canFind(ErrorCode.tooFewPositionalArgumentsError));
+    }
+    {
+        const result = parse(["a", "b", "c"]);
+        assert(result.isError);
+        assert(output.errorCode[].canFind(ErrorCode.tooManyPositionalArgumentsError));
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgPositional
+        string a;
+        
+        @ArgOverflow
+        string[] overflow;
+    }
+
+    mixin Things!S;
+
+    {
+        const result = parse(["a"]);
+        assert(result.isOk);
+        assert(result.value.a == "a");
+        assert(result.value.overflow == []);
+    }
+    {
+        const result = parse(["c", "d"]);
+        assert(result.isOk);
+        assert(result.value.a == "c");
+        assert(result.value.overflow == ["d"]);
+    }
+    {
+        const result = parse([]);
+        assert(result.isError);
+        assert(output.errorCode[].canFind(ErrorCode.tooFewPositionalArgumentsError));
+    }
+    {
+        const result = parse(["a", "b", "c"]);
+        assert(result.isOk);
+        assert(result.value.a == "a");
+        assert(result.value.overflow == ["b", "c"]);
+    }
+    {
+        const result = parse(["a", "b", "-c"]);
+        assert(result.isError);
+        assert(output.errorCode[].canFind(ErrorCode.unknownNamedArgumentError));
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgPositional
+        string a;
+        
+        @ArgRaw
+        string[] raw;
+    }
+
+    mixin Things!S;
+
+    {
+        const result = parse(["a"]);
+        assert(result.isOk);
+        assert(result.value.a == "a");
+        assert(result.value.raw == []);
+    }
+    {
+        const result = parse(["c", "d"]);
+        assert(result.isOk);
+        assert(result.value.raw == ["d"]);
+    }
+    {
+        const result = parse(["c", "- Stuff -"]);
+        assert(result.isOk);
+        assert(result.value.a == "c");
+        assert(result.value.raw == ["- Stuff -"]);
+    }
+    {
+        // Normally, non utf8 argument names are not supported, but here they are not parsed at all.
+        const result = parse(["c", "--Штука", "-物事"]);
+        assert(result.isOk);
+        assert(result.value.a == "c");
+        assert(result.value.raw == ["--Штука", "-物事"]);
     }
 }
