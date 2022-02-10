@@ -558,24 +558,28 @@ unittest
 
     InMemoryErrorOutput output = createSink();
     {
-        // Extra positional argument, 
         output.clear();
-        auto result = CommandParser!S.parse(["b"], output);
-        assert(result.isError);
+        auto result = CommandParser!S.parse(["-a", "b"], output);
+        assert(result.isOk);
         assert(result.value.a == "b");
     }
     {
-        // Unexpected option
         output.clear();
-        auto result = CommandParser!S.parse(["-a", "b"], output);
+        auto result = CommandParser!S.parse([], output);
         assert(result.isError);
+        assert(output.errorCodes.canFind(ErrorCode.missingNamedArgumentsError));
     }
     {
-        // Overflow
         output.clear();
-        auto result = CommandParser!S.parse(["a", "b"], output);
+        auto result = CommandParser!S.parse(["-a"], output);
         assert(result.isError);
-        assert(result.value.a == "a");
+        assert(output.errorCodes.canFind(ErrorCode.noValueForNamedArgumentError));
+    }
+    {
+        output.clear();
+        auto result = CommandParser!S.parse(["a"], output);
+        assert(result.isError);
+        assert(output.errorCodes.canFind(ErrorCode.missingNamedArgumentsError));
     }
 }
 
