@@ -34,7 +34,11 @@ private alias ErrorCode = CommandParsingErrorCode;
 
 private struct WriterThing
 {
-    void opCall(T...)(ErrorCode errorCode, T args)
+    bool shouldRecord(ErrorCode errorCode)
+    {
+        return true;
+    }
+    void format(T...)(ErrorCode errorCode, T args)
     {
         import std.stdio;
         writefln(args);
@@ -48,7 +52,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
 {
     alias CommandT          = CommandT_;
     alias ArgBinderInstance = ArgBinderInstance_;
-    immutable commandInfo   = commandInfoFor!CommandT;
+    alias CommandInfo       = CommandInfo!CommandT;
 
     static import std.stdio;
     static struct ParseResult
@@ -56,7 +60,8 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
         size_t errorCount;
         // TODO: we should take the command as a ref
         CommandT command;
-        bool success() { return errorCount > 0; }
+        bool isOk() { return errorCount == 0; }
+        bool isError() { return errorCount > 0; }
     }
 
     static ResultOf!CommandT parse
@@ -82,7 +87,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
         TArgParser : ArgParser!T, T
     )
     (
-        ref scope TErrorHandler errorHandlerFormatFunction,
+        ref scope TErrorHandler errorHandler,
         ref scope TArgParser argParser
     )
     {
@@ -129,6 +134,15 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
         size_t errorCounter = 0;
         alias Kind = ArgToken.Kind;
 
+        void recordError(T...)(ErrorCode code, auto ref T args)
+        {
+            if (errorHandler.shouldRecord(code))
+            {
+                errorHandler.format(code, args);
+                errorCounter++;
+            }
+        }
+
         OuterLoop: while (!argParser.empty)
         {
             string currentArgToken = argParser.front;
@@ -156,7 +170,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                 {
                     // for now just log and go next
                     // TODO: better errors
-                    errorHandlerFormatFunction(
+                    recordError(
                         ErrorCode.argumentParserError,
                         "An error has occured in the parser: %s",
                         currentArgToken.kind.stringof);
@@ -196,12 +210,11 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                             }
                             else
                             {
-                                errorHandlerFormatFunction(
+                                recordError(
                                     ErrorCode.tooManyPositionalArgumentsError,
                                     "Too many (%) positional arguments detected near %.",
                                     currentPositionalArgIndex,
                                     currentArgToken.fullSlice);
-                                errorCounter += 1;
                             }
                             break InnerSwitch;
                         }
@@ -213,13 +226,12 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                 auto result = ArgBinderInstance.bind!positional(result.command, arg.valueSlice);
                                 if (result.isError)
                                 {
-                                    errorHandlerFormatFunction(
+                                    recordError(
                                         ErrorCode.bindError,
                                         "An error occured while trying to bind the positional argument % at index %: "
                                             ~ "%; Error code %.",
                                         positional.identifier, positionalIndex,
                                         result.error, result.errorCode);
-                                    errorCounter += 1;
                                 }
                                 break InnerSwitch;
                             }
@@ -270,11 +282,10 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                             {
                                 if (namedArgHasBeenFoundBitArray[namedArgIndex])
                                 {
-                                    errorHandlerFormatFunction(
+                                    recordError(
                                         ErrorCode.duplicateNamedArgumentError,
                                         "Duplicate named argument %.",
                                         namedArgInfo.pattern.patterns[0]);
-                                    errorCounter += 1;
 
                                     // Skip its value too
                                     if (!argParser.empty
@@ -316,12 +327,11 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                 }
                                 else
                                 {
-                                    errorHandlerFormatFunction(
+                                    recordError(
                                         ErrorCode.booleanFlagInvalidValueError,
                                         "Invalid value `%` for a boolean flag argument `%` (Expected either `true` of `false`)",
                                         nextArgToken.valueSlice,
                                         namedArgInfo.pattern.patters[0]);
-                                    errorCounter += 1;
                                 }
 
                                 argParser.popFront();
@@ -348,12 +358,11 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                 auto nextArgToken = argParser.front;
                                 if (nextArgToken.kind == Kind.namedArgumentValue)
                                 {
-                                    errorHandlerFormatFunction(
+                                    recordError(
                                         ErrorCode.countArgumentGivenValueError,
                                         "The count argument % cannot be given a value, got %.",
                                         namedArgInfo.pattern.patterns[0],
                                         nextArgToken.valueSlice);
-                                    errorCounter += 1;
                                     argParser.popFront();
                                 }
                                 continue OuterLoop;
@@ -365,23 +374,21 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                 
                                 if (argParser.empty)
                                 {
-                                    errorHandlerFormatFunction(
+                                    recordError(
                                         ErrorCode.noValueForNamedArgumentError,
                                         "Expected a value for the argument %.",
                                         namedArgInfo.pattern.patterns[0]);
-                                    errorCounter++;
                                     break OuterLoop;
                                 }
 
                                 auto nextArgToken = argParser.front;
                                 if ((nextArgToken & Kind._namedArgumentValueBit) == 0)
                                 {
-                                    errorHandlerFormatFunction(
+                                    recordError(
                                         ErrorCode.noValueForNamedArgumentError,
                                         "Expected a value for the argument %, got %.",
                                         namedArgInfo.pattern.patterns[0],
                                         nextArgToken.valueSlice);
-                                    errorCounter++;
 
                                     // Don't skip it, because it might be the name of another option.
                                     // argParser.popFront();
@@ -394,13 +401,12 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                     auto result = ArgBinderInstance.bind!named(nextArgToken.valueSlice, command);
                                     if (result.isError)
                                     {
-                                        errorHandlerFormatFunction(
+                                        recordError(
                                             ErrorCode.bindError,
                                             "An error occured while trying to bind the named argument %: "
                                                 ~ "%; Error code %.",
                                             positional.identifier,
                                             result.error, result.errorCode);
-                                        errorCounter += 1;
                                     }
                                     argParser.popFront();
                                     continue OuterLoop;
@@ -410,11 +416,10 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                     }}
 
                     /// TODO: conditionally allow unknown arguments
-                    errorHandlerFormatFunction(
+                    recordError(
                         ErrorCode.unknownNamedArgumentError,
                         "Unknown named argument `%`.",
                         currentArgToken.fullSlice);
-                    errorCounter++;
 
                     if (argParser.empty)
                         break OuterLoop;
@@ -427,8 +432,14 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                 }
             }
         }
+        
+        import std.algorithm;
+        enum size_t requiredPositionalArgsCount = positionalArgs
+            .filter!(
+                a => a.argument.flags.doesNotHave(ArgFlags._optionalBit))
+            .walkLength;
 
-        if (currentPositionalArgIndex < commandInfo.requiredPositionalArgsCount)
+        if (currentPositionalArgIndex < requiredPositionalArgsCount)
         {
             enum string messageFormat =
             (){
@@ -449,15 +460,15 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                 return ret;
             }();
 
-            errorHandlerFormatFunction(
+            recordError(
                 ErrorCode.tooFewPositionalArgumentsError,
                 messageFormat,
-                commandInfo.requiredPositionalArgsCount,
+                requiredPositionalArgsCount,
                 currentPositionalArgIndex);
-            errorCounter++;
         }
 
-        if (requiredNamedArgHasNotBeenFoundBitArray.count > 0)
+        if (requiredNamedArgHasNotBeenFoundBitArray.count > 0
+            && errorHandler.shouldRecord(ErrorCode.duplicateNamedArgumentError))
         {
             import std.array;
 
@@ -479,7 +490,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                 failMessageBuilder ~= getPattern(notFoundArgumentIndex);
             }
 
-            errorHandlerFormatFunction(
+            errorHandler.format(
                 ErrorCode.duplicateNamedArgumentError,
                 failMessageBuilder[]);
             errorCounter++;
@@ -504,8 +515,13 @@ version(unittest)
         Appender!ErrorCode errorCodes;
         Appender!string result;
 
+        bool shouldRecord(ErrorCode errorCode)
+        {
+            return true;
+        }
+
         import std.format : formattedWrite;
-        void opCall(T...)(ErrorCode errorCode, T args)
+        void format(T...)(ErrorCode errorCode, T args)
         {
             errorCodes ~= errorCode;
             formattedWrite(result, args, "\n");

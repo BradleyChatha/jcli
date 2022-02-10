@@ -2,19 +2,37 @@ module jcli.core.udas;
 
 import jcli.core.pattern;
 
-struct Command
+package(jcli) mixin template BeingNamed()
 {
     Pattern pattern;
     string description;
+    string name() { return pattern[0]; }
 
-    this(string pattern, string description = "")
+    this(string stringPattern, string description = "")
+    {
+        this.pattern = Pattern.parse(stringPattern);
+        this.description = description;
+    }
+    
+    this(Pattern pattern, string description = "")
+    {
+        this.pattern = pattern;
+        this.description = description;
+    }
+
+    this(string[] pattern, string description = "")
     {
         this.pattern = Pattern(pattern);
         this.description = description;
     }
 }
 
-struct CommandDefault
+struct Command
+{
+    mixin BeingNamed;
+}
+
+struct CommandDefault()
 {
     string description;
 }
@@ -27,14 +45,7 @@ struct ArgPositional
 
 struct ArgNamed
 {
-    Pattern pattern;
-    string description;
-
-    this(string pattern, string description = "")
-    {
-        this.pattern = Pattern(pattern);
-        this.description = description;
-    }
+    mixin BeingNamed;
 }
 
 struct ArgGroup
@@ -43,5 +54,5 @@ struct ArgGroup
     string description;
 }
 
-struct ArgOverflow{}
-struct ArgRaw{}
+enum ArgOverflow;
+enum ArgRaw;

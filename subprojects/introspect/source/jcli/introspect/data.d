@@ -75,51 +75,270 @@ package (jcli)
     }
 }
 
-struct CommandInfo(CommandT_)
+struct CommandGeneralInfo
 {
-    alias CommandT = CommandT_;
-
-    Pattern pattern;
-    string  description;
-    bool    isDefault;
-
-    ArgIntrospect!(ArgPositional, CommandT)[]   positionalArgs;
-    ArgIntrospect!(ArgNamed, CommandT)[]        namedArgs;
-    ArgIntrospect!(ArgRaw, CommandT)            rawArg;
-    ArgIntrospect!(ArgOverflow, CommandT)       overflowArg;
+    Command uda;
+    string identifier;
+    bool isDefault;
 }
 
-struct ArgIntrospect(UDA_, CommandT_)
+struct ArgumentCommonInfo
 {
-    alias UDA = UDA_;
-    alias CommandT = CommandT_;
-
     string identifier;
-    UDA uda;
-    ArgConfig flags;
+    ArgFlags flags;
     ArgGroup group;
 }
 
-template getArgSymbol(alias ArgIntrospectT)
+struct NamedArgumentInfo
 {
-    mixin("alias getArgSymbol = ArgIntrospectT.CommandT."~ArgIntrospectT.identifier~";");
+    ArgNamed uda;
+    ArgumentCommonInfo argument;
 }
 
-///
-unittest
+struct PositionalArgumentInfo
 {
-    import jcli.introspect.gather;
+    ArgPositional uda;
+    ArgumentCommonInfo argument;
+}
 
-    @CommandDefault()
-    static struct T
+template CommandInfo(TCommand)
+{
+    static foreach (field; TCommand.tupleof)
+        static assert(countUDAsOf!(field, ArgNamed, ArgPositional, ArgOverflow, ArgRaw).length <= 1);
+
+    alias CommandT = TCommand;
+
+    immutable CommandGeneralInfo       general          = getCommandGeneralInfoOf!TCommand;
+    immutable NamedArgumentInfo[]      namedArgs        = [ argumentInfosOf!ArgNamed ];
+    immutable PositionalArgumentInfo[] positionalArgs   = [ argumentInfosOf!PositionalArgumentInfo ];
+
+    enum takesOverflowArgs = is(typeof(fieldWithUDAOf!ArgOverflow));
+    static if (takesOverflowArgs)
+        immutable ArgumentCommonInfo overflowArg = getCommonArgumentInfo!(fieldWithUDAOf!ArgOverflow);
+
+    enum takesRawArgs = is(typeof(fieldWithUDAOf!ArgRaw));
+    static if (takesRawArgs)
+        immutable ArgumentCommonInfo rawArg = getCommonArgumentInfo!(fieldWithUDAOf!ArgRaw);
+}
+
+/// TODO: maybe??
+string getArgumentFlagsValidationMessage(ArgFlags flags)
+{
+    string[] ret;
+    with (ArgFlags)
     {
-        @ArgPositional
-        int a;
+        immutable leftAlwaysPairsWithRight = [
+            [_parseAsFlagBit, _optionalBit],
+            [_canRedefineBit, _multipleBit],
+            [_repeatableNameBit, _countBit],
+            [_aggregateBit, _multipleBit],
+        ];
+
+        // immutable cannotGoWithEither = [
+        //     [_multipleBit, _parseAsFlagBit], // probably
+        //     [_countBit, _aggregateBit, 
+        //     _caseInsensitiveBit
+        //     _canRedefineBit
+        //     _repeatableNameBit
+        //     _aggregateBit
+
+        //     [_countBit, _parseAsFlagBit, _canRedefineBit, _aggregateBit],
+        //     [_aggregateBit, _parseAsFlagBit, _repeatableNameBit],
+        //     [_canRedefineBit, 
+        // ];
+
+        if (flags.has(aggregate) && flags.has(parseAsFlag))
+        {
+            ret ~= "`aggregate` cannot be used together with `parseAsFlag`";
+        }
+    }
+    return null;
+}
+
+ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
+{
+    ArgumentCommonInfo result;
+    ArgFlags[] recordedFlags = [];
+    
+    static foreach (uda; __traits(getAttributes, field))
+    {
+        static if (is(typeof(uda) == ArgFlags))
+        {
+            recordedFlags ~= uda;
+        }
+        else static if (is(typeof(uda) == ArgGroup))
+        {
+            static assert(!is(typeof(group)), "Only one Group attribute is allowed per field.");
+            ArgGroup group = uda;
+        }
     }
 
-    T t = T(360);
-    enum Info = commandInfoFor!T();
-    assert(getArg!(Info.positionalArgs[0])(t) == 360);
-    
-    static assert(__traits(identifier, getArgSymbol!(Info.positionalArgs[0])) == "a");
+    // TODO: validate flags
+    foreach (flag; flags)
+        result.flags |= flag;
+
+    static if (is(typeof(group)))
+        result.group = group;
+    result.identifier  = __traits(identifier, field);
+    return result;
 }
+
+UDAType getArgumentInfo(UDAType, alias field)() pure
+{
+    UDAType result;
+    result.argument = getCommonArgumentInfo!(UDAType, field)();
+
+    static foreach (uda; __traits(getAttributes, field))
+    {
+        static if (is(uda == UDAType) || is(typeof(uda) == UDAType))
+        {
+            static assert(!is(typeof(uda1)),
+                "Only one `" ~ __traits(identifier, UDAType) ~ "` attribute is allowed per field.");
+
+            static if (is(uda == UDAType))
+            {
+                auto uda1 = UDAType([__traits(identifier, field)], "");
+            }
+            else static if (is(typeof(uda) == UDAType))
+            {
+                auto uda1 = uda;
+            }
+        }
+    }
+    static assert(is(typeof(uda1)), "`" ~ UDAType.stringof ~ "` attribute not found.");
+    result.uda = uda1;
+    return result;
+}
+
+private template commandUDAOf(Type)
+{
+    static foreach (uda; __traits(getAttributes, Symbol))
+    {
+        static if (is(Command == UDAInfo!uda.Type))
+        {
+            enum commandUDAOf = UDAInfo!uda.value;
+        }
+        static if (is(CommandDefault == UDAInfo!uda.Type))
+        {
+            enum commandUDAOf = UDAInfo!uda.value;
+        }
+    }
+}
+
+CommandGeneralInfo getGeneralCommandInfoOf(TCommand)() pure
+{
+    CommandGeneralInfo result;
+    static foreach (uda; __traits(getAttributes, field))
+    {
+        static if (is(typeof(commandUDAOf!TCommand)))
+        {
+            static assert(!is(typeof(uda1)),
+                "Only one Command attribute is allowed per field.");
+
+            static if (is(uda == Command))
+            {
+                auto uda1 = Command([__traits(identifier, field)], "");
+            }
+            else static if (is(typeof(uda) == Command))
+            {
+                auto uda1 = uda;
+            }
+            else static if (is(uda == CommandDefault))
+            {
+                auto uda1 = CommandDefault();
+            }
+            else
+            {
+                auto uda1 = uda;
+            }
+        }
+    }
+    static assert(is(typeof(uda1)), "Command attribute not found.");
+    result.isDefault = is(typeof(uda1) == CommandDefault);
+    result.uda = uda1;
+    result.identifier = __traits(identifier, TCommand);
+}
+
+template fieldsWithUDAOf(T, UDAType)
+{
+    alias result = AliasSeq!();
+    static foreach (field; T.tupleof)
+    {
+        static foreach (uda; __traits(getAttributes, field))
+        {
+            static if (is(UDAInfo!uda.Type == UDAType))
+            {
+                result = AliasSeq!(result, field);
+            }
+        }
+    }
+    alias fieldsWithUDAOf = result;
+}
+
+template fieldWithUDAOf(T, UDAType)
+{
+    alias allFields = fieldsWithUDAOf!(T, UDAType);
+    static assert(allFields.length == 0);
+    alias fieldWithUDAOf = allFields[0];
+}
+
+template UDAInfo(alias uda)
+{
+    static if (is(typeof(uda)))
+    {
+        alias Type = typeof(uda);
+        enum hasDefaultValue = false;
+        enum value = uda;
+    }
+    else static if (is(typeof(uda.init)))
+    {
+        alias Type = uda;
+        enum hasDefaultValue = true;
+        enum value = uda.init;
+    }
+    else
+    {
+        // Even though calling enums a type is technically wrong.
+        alias Type = uda;
+    }
+}
+
+template countUDAsOf(alias something, UDATypes...)
+{
+    import std.meta : Alias;
+    alias countUDAsOf = Alias!(0);
+    static foreach (UDAType; UDATypes)
+    {
+        static foreach (uda; __traits(getAttributes, something))
+        {
+            static if (is(UDAInfo!uda.Type == UDAType))
+                countUDAsOf = Alias!(countUDAsOf + 1);
+        }
+    }
+}
+
+template hasExactlyOneOfUDAs(alias something, UDATypes...)
+{
+    enum hasExactlyOneOfUDAs = countUDAsOf!(something, UDATypes) == 1;
+}
+
+private template staticMap(alias Template, things...)
+{
+    import std.traits : AliasSeq;
+    alias staticMap = AliasSeq!();
+    static foreach (thing; things)
+        staticMap = AliasSeq!(staticMap, F!thing);
+}
+
+private template redirect(alias Template, Args...)
+{
+    template redirect(Args2...)
+    {
+        alias redirect = Template!(Args, Args2);
+    }
+}
+
+private alias argumentInfosOf(TCommand, UDAType) = staticMap!(
+    redirect!(getArgumentInfo, UDAType),
+    fieldsWithUDAOf!(TCommand, UDAType));
+

@@ -2,22 +2,38 @@ module jcli.core.pattern;
 
 struct Pattern
 {
-    string[] patterns;
+    import std.ascii;
+    string[] items;
+    alias items this;
     
-    @safe
-    static Pattern fromString(string pattern) pure 
+    this(string[] items) @safe pure nothrow
+    in
+    {
+        import std.algorithm;
+        assert(items.length > 0, "The pattern must contain at least one item.");
+        assert(items.all!(i => i.all!isASCII), "The pattern items must be ascii.");
+        assert(items.all!(i => i.length > 0), "The pattern must not contain empty items.");
+        assert(items.map!(i => i.length).maxIndex == 0, "The first item in the items list must be the longest");
+    }
+    do
+    {
+        this.items = items;
+    }
+    
+    static Pattern parse(string patternString) @safe pure 
     {
         import std.string : split;
-        return Pattern(pattern.split('|'));
+        
+        auto items = patternString.split('|');
+        return Pattern(items);
     }
 
     @safe @nogc
     auto matches(bool caseInsensitive)(string input) pure nothrow
     {
-        return patterns.filter!((p) {
-            import std.uni;
+        return items.filter!((p) {
             static if (caseInsensitive)
-                return (sicmp(pattern, input) == 0);
+                return (std.ascii(pattern, input) == 0);
             else
                 return p == input;
         });
@@ -39,19 +55,17 @@ struct Pattern
             assert(equal(p.matches!(caseInsensitive)("b"), []));
         }
     }
-
-    @safe @nogc
-    string firstMatch(bool caseInsensitive)(string input) nothrow pure
-    {
-        static struct Result
-        {
-            bool matched;
-            string pattern;
-        }
-        auto m = matches!caseInsensitive(input);
-        if (m.empty)
-            return Result(false, null);
-        return Result(true, m.front);
-    }
-    
+    // @safe @nogc
+    // string firstMatch(bool caseInsensitive)(string input) nothrow pure
+    // {
+    //     static struct Result
+    //     {
+    //         bool matched;
+    //         string pattern;
+    //     }
+    //     auto m = matches!caseInsensitive(input);
+    //     if (m.empty)
+    //         return Result(false, null);
+    //     return Result(true, m.front);
+    // }
 }
