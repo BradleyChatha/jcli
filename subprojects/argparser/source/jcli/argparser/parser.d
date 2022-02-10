@@ -64,13 +64,12 @@ struct ArgToken
 
     this(Kind kind, string fullSlice, string valueSlice) @safe pure @nogc nothrow
     {
-        _kind = kind;
+        this.kind = kind;
         this.fullSlice = fullSlice;
         this.valueSlice = valueSlice;
     }
 
-    // Kind kind;
-    int _kind;
+    Kind kind;
     string fullSlice;
 
     union
@@ -78,8 +77,6 @@ struct ArgToken
         string valueSlice;
         string nameSlice;
     }
-
-    ref Kind kind() return @nogc nothrow pure @trusted { return * cast(Kind*) &_kind; }
 }
 
 struct ArgParser(TRange)
@@ -198,25 +195,24 @@ struct ArgParser(TRange)
             {
                 potentialNamedArgumentKind = Kind.shortNamedArgumentName;
             }
-            int powt = cast(int) potentialNamedArgumentKind;
 
             // Two dashes without name following them mean the delimiter.
-            if (currentSlice.length < _positionWithinCurrentString)
+            if (_positionWithinCurrentString == currentSlice.length)
             {
                 const fullSlice  = getCurrentFullSlice();
-                const valueSlice = "";
+                const valueSlice = fullSlice;
                 popFrontAndReset();
                 return ElementType(Kind.twoDashesDelimiter, fullSlice, valueSlice);
             }
 
             // If there is a space, at that point it must have been split already.
             // See `Kind.error_spaceAfterDashes`.
-            if (getCurrentCharacter() != ' ')
+            if (getCurrentCharacter() == ' ')
             {
                 // "The arguments must be shell escaped prior to sending them to the parser.");
                 const kind       = Kind.error_spaceAfterDashes;
                 const fullSlice  = currentSlice[_positionWithinCurrentString .. $];
-                const valueSlice = "";
+                const valueSlice = fullSlice;
                 popFrontAndReset();
                 return ElementType(kind, fullSlice, valueSlice);
             }
@@ -226,7 +222,7 @@ struct ArgParser(TRange)
                 _positionWithinCurrentString++;
                 const kind       = Kind.error_threeOrMoreDashes;
                 const fullSlice  = getCurrentFullSlice();
-                const valueSlice = "";
+                const valueSlice = fullSlice;
                 popFrontAndReset();
                 return ElementType(kind, fullSlice, valueSlice);
             }
@@ -286,6 +282,7 @@ struct ArgParser(TRange)
                 if (_positionWithinCurrentString == currentSlice.length)
                 {
                     const kind       = Kind.error_noValueForNamedArgument;
+                    // We have the possibility to put more info here, if needed.
                     const fullSlice  = "";
                     const valueSlice = "";
                     popFrontAndReset();
@@ -322,13 +319,15 @@ struct ArgParser(TRange)
                         popFrontAndReset();
                         return ElementType(kind, fullSlice, valueSlice);
                     }
+
+                    indexOfQuote += valueStartIndex;
                     
                     // `--arg="..."...`
                     if (currentSlice.length != indexOfQuote + 1)
                     {
                         const kind       = Kind.error_inputAfterClosedQuote;
                         const fullSlice  = currentSlice[initialPosition .. $];
-                        const valueSlice = currentSlice[valueStartIndex .. indexOfQuote];
+                        const valueSlice = currentSlice[valueStartIndex .. $];
                         popFrontAndReset();
                         return ElementType(kind, fullSlice, valueSlice);
                     }
@@ -363,6 +362,7 @@ struct ArgParser(TRange)
                         return Kind.error_spaceAfterAssignment;
                     }();
 
+                    popFrontAndReset();
                     return ElementType(kind, fullSlice, valueSlice);
                 }
             }
@@ -372,7 +372,7 @@ struct ArgParser(TRange)
                 return parseArgumentName();
             }
 
-            // Otherwise the entire string are just an argument value like the "value" below.
+            // Otherwise the entire string is just an argument value like the "value" below.
             // ["--name", "value"].
             // We don't care whether it was quoted on not in the source, we just return the whole thing.
             {
@@ -425,8 +425,6 @@ ArgParser!TRange argParser(TRange)(TRange range)
 unittest
 {
     import std.algorithm : equal;
-    import std.stdio : writeln;
-    import std.array : array;
     alias Kind = ArgToken.Kind;
     {
         auto args = ["hello", "world"];
@@ -451,7 +449,6 @@ unittest
     }
     {
         auto args = ["-hello=world"];
-        writeln(argParser(args).array);
         assert(equal(argParser(args), [
             ArgToken(Kind.shortNamedArgumentName, "-hello", "hello"),
             ArgToken(Kind.namedArgumentValue, "world", "world"),
@@ -486,7 +483,7 @@ unittest
     {
         auto args = ["---"];
         assert(equal(argParser(args), [
-            ArgToken(Kind.error_threeOrMoreDashes, "---", ""),
+            ArgToken(Kind.error_threeOrMoreDashes, "---", "---"),
         ]));
     }
     {
@@ -506,28 +503,28 @@ unittest
         auto args = [`--arg="`];
         assert(equal(argParser(args), [
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
-            ArgToken(Kind.error_malformedQuotes, `"`, ""),
+            ArgToken(Kind.error_malformedQuotes, `"`, `"`),
         ]));
     }
     {
         auto args = [`--arg="" stuff`];
         assert(equal(argParser(args), [
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
-            ArgToken(Kind.error_inputAfterClosedQuote, `"" stuff`, ""),
+            ArgToken(Kind.error_inputAfterClosedQuote, `"" stuff`, `" stuff`),
         ]));
     }
     {
         auto args = [`--arg="stuff`];
         assert(equal(argParser(args), [
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
-            ArgToken(Kind.error_unclosedQuotes, `"stuff`, ""),
+            ArgToken(Kind.error_unclosedQuotes, `"stuff`, "stuff"),
         ]));
     }
     {
         auto args = [`--arg= `];
         assert(equal(argParser(args), [
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
-            ArgToken(Kind.error_spaceAfterAssignment, " ", ""),
+            ArgToken(Kind.error_spaceAfterAssignment, " ", " "),
         ]));
     }
     {
@@ -549,5 +546,30 @@ unittest
             ArgToken(Kind.namedArgumentValue, "a", "a"),
         ]));
     }
+
+    
+    // // Copy and paste around for debugging.
+
+    // import std.stdio : writeln;
+    // import std.array : array;
+    
+    // auto p = argParser(args);
+
+    // writeln(p.front);
+    // writeln(p.front.valueSlice);
+    // // writeln(p._range.front[p._positionWithinCurrentString]);
+    // writeln(p._positionWithinCurrentString);
+    
+    // p.popFront();
+    
+    // auto a = p.front();
+    // writeln(a);
+    // writeln(a.fullSlice);
+    // writeln(a.nameSlice);
+    // writeln(a.kind);
+    // writeln(p._positionWithinCurrentString);
+
+    // p.popFront();
+    // writeln(p.empty);
 }
 
