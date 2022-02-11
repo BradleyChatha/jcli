@@ -346,45 +346,55 @@ ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
 
         string messageIfAddedOptional = getArgumentFlagsValidationMessage(result.flags | _optionalBit);
 
-        static if (is(typeof(field) : Nullable!T, T))
+        if (is(typeof(field) : Nullable!T, T))
         {
             assert(messageIfAddedOptional is null,
                 "Nullable types must be optional.\n" ~ messageIfAddedOptional);
-            if (!result.flags.has(_optionalBit))
-            {
+
+            if (result.flags.doesNotHave(_optionalBit))
                 result.flags |= _optionalBit | _inferedOptionalityBit;
-            }
         }
-        else
+        else if (result.flags.has(_parseAsFlagBit))
         {
-            if (result.flag.doesNotHaveEither(_optionalBit | _requiredBit))
+            // TODO: maybe allow flags in the future??
+            assert(is(typeof(field) == bool),
+                "Fields marked `parseAsFlag` must be boolean.");
+            assert(field.init == false, 
+                "Fields marked `parseAsFlag` must have the default value false.");
+            
+
+            // NOTE: This one should always be covered by the flags validation instead.
+            assert(messageIfAddedOptional is null, "Should never be hit!!");
+            
+            if (result.flags.doesNotHave(_optionalBit))
+                result.flags |= _optionalBit | _inferedOptionalityBit;
+        }
+        else if (result.flag.doesNotHaveEither(_optionalBit | _requiredBit))
+        {
+            string messageIfAddedRequired = getArgumentFlagsValidationMessage(result.flags | _requiredBit);
+
+            if (messageIfAddedOptional is null
+                // TODO: 
+                // This rudimentary check fails e.g. for the following: 
+                // `struct A { int a = 0; }`
+                // Aka when the value is given, but is also the default.
+                && typeof(field).init != field.init)
             {
-                string messageIfAddedRequired = getArgumentFlagsValidationMessage(result.flags | _requiredBit);
-
-                if (messageIfAddedOptional is null
-                    // TODO: 
-                    // This rudimentary check fails e.g. for the following: 
-                    // `struct A { int a = 0; }`
-                    // Aka when the value is given, but is also the default.
-                    && typeof(field).init != field.init)
-                {
-                    result.flags |= _optionalBit;
-                    if (messageIfAddedRequired is null)
-                        result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
-                }
-                else
-                {
-                    assert(messageIfAddedRequired is null,
-                        "The type can be neither optional nor required. This check should have never been hit.\n"
-                        ~ "If we added required: " ~ messageIfAddedRequired ~ "\n"
-                        ~ "If we added optional: " ~ messageIfAddedOptional);
-
-                    result.flags |= _requiredBit;
-                    if (messageIfAddedOptional is null)
-                        result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
-                }
-                result.flags |= _inferedOptionalityBit;
+                result.flags |= _optionalBit;
+                if (messageIfAddedRequired is null)
+                    result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
             }
+
+            assert(messageIfAddedRequired is null,
+                "The type can be neither optional nor required. This check should have never been hit.\n"
+                ~ "If we added required: " ~ messageIfAddedRequired ~ "\n"
+                ~ "If we added optional: " ~ messageIfAddedOptional);
+
+            result.flags |= _requiredBit;
+            if (messageIfAddedOptional is null)
+                result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
+
+            result.flags |= _inferedOptionalityBit;
         }
     }
 
@@ -403,7 +413,7 @@ UDAType getArgumentInfo(UDAType, alias field)() pure
     {
         static if (is(uda == UDAType))
         {
-            auto uda1 = UDAType([__traits(identifier, field)], "");
+            auto uda1 = UDAType(__traits(identifier, field), "");
         }
         else static if (is(typeof(uda) == UDAType))
         {
