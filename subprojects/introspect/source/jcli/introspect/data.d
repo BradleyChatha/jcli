@@ -47,6 +47,52 @@ struct PositionalArgumentInfo
     mixin ArgumentGetters;
 }
 
+struct ArgIntrospect(BaseInfoType, alias fieldSymbol, string[] _fieldPathParts)
+{
+    BaseInfoType info;
+    alias info this;
+
+    immutable string[] fieldPathParts = _fieldPathParts;
+    alias CommandType = __traits(parent, fieldSymbol);
+    alias FieldType = typeof(fieldSymbol);
+
+    static assert(fieldPathParts.length > 0);
+}
+
+/// command.assignValueToArgument!argInfo(value)
+
+template assignValueToArgument(alias TArgIntrospect)
+{
+    void assignValueToArgument(
+        ref TArgIntrospect.TCommand command,
+        auto ref TArgIntrospect.FieldType value)
+    {
+        import core.lifetime: forward;
+        assign!(TArgIntrospect.fieldPathParts)(command, forward!value);
+    }
+}
+
+private template assign(string[] fieldPathParts)
+{
+    void assign(T, V)(ref T target, auto ref V value)
+    {
+        import core.lifetime: forward;
+
+        static if (fieldPathParts.length == 0)
+        {
+            target = forward!value;
+        }
+        else
+        {
+            .assign!(fieldPathParts[1 .. $])(
+                __traits(getMember, target, fieldPathParts[0]),
+                forward!value
+            );
+        }
+    }
+}
+
+
 template CommandInfo(TCommand)
 {
     alias CommandT = TCommand;
@@ -60,8 +106,8 @@ template CommandArgumentsInfo(TCommand)
         static assert(countUDAsOf!(field, ArgNamed, ArgPositional, ArgOverflow, ArgRaw).length <= 1);
 
     /// Includes the simple string usage, which gets converted to an ArgNamed uda.
-    immutable NamedArgumentInfo[]      named      = getNamedArgumentInfosOf!TCommand;
-    immutable PositionalArgumentInfo[] positional = [ argumentInfosOf!PositionalArgumentInfo ];
+    alias /* NamedArgumentInfo[] */      named      = getNamedArgumentInfosOf!TCommand;
+    alias /* PositionalArgumentInfo[] */ positional = [ argumentInfosOf!PositionalArgumentInfo ];
     
     import std.algorithm : count;
     immutable size_t numRequiredPositionalArguments = positional.count!(
@@ -704,6 +750,7 @@ void inferArgumentFlagsSpecificToNamedArguments(alias field)(ref ArgFlags flags)
         }
     }
 }
+
 
 NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)()
 {
