@@ -199,6 +199,15 @@ enum ArgConfig : ArgFlags
     /// Example: `--flag` would parse as `true`.
     parseAsFlag = ArgFlags._parseAsFlagBit | ArgFlags._optionalBit,
 }
+unittest
+{
+    static foreach (name; __traits(allMembers, ArgConfig))
+    {{
+        ArgConfig flags = __traits(getMember, ArgConfig, name);
+        string validation = getArgumentFlagsValidationMessage(flags);
+        assert(validation is null);
+    }}
+}
 
 package (jcli)
 {
@@ -217,6 +226,21 @@ package (jcli)
     bool doesNotHaveEither(ArgFlags a, ArgFlags b)
     {
         return (a & b) == 0;
+    }
+}
+
+unittest
+{
+    with (ArgFlags)
+    {
+        ArgFlags a = _aggregateBit | _caseInsensitiveBit;
+        ArgFlags b = _canRedefineBit;
+        assert(doesNotHave(a, b));  
+        assert(doesNotHave(a, b | _caseInsensitiveBit));  
+        assert(has(a, _caseInsensitiveBit));  
+        assert(hasEither(a, b | _caseInsensitiveBit));
+        assert(hasEither(a, _caseInsensitiveBit)); 
+        assert(doesNotHaveEither(a, b));
     }
 }
 
@@ -253,62 +277,25 @@ template CommandInfo(TCommand)
     alias arguments = CommandArgumentsInfo!TCommand;
 }
 
-
 template CommandArgumentsInfo(TCommand)
 {
     static foreach (field; TCommand.tupleof)
-        static assert(countUDAsOf!(field, string, ArgNamed, ArgPositional, ArgOverflow, ArgRaw).length <= 1);
+        static assert(countUDAsOf!(field, ArgNamed, ArgPositional, ArgOverflow, ArgRaw).length <= 1);
 
-    immutable NamedArgumentInfo[]      namedArgs        = [ argumentInfosOf!ArgNamed ];
-    immutable PositionalArgumentInfo[] positionalArgs   = [ argumentInfosOf!PositionalArgumentInfo ];
+    immutable NamedArgumentInfo[]      named      = [ argumentInfosOf!ArgNamed ];
+    immutable PositionalArgumentInfo[] positional = [ argumentInfosOf!PositionalArgumentInfo ];
 
-    enum takesOverflowArgs = is(typeof(fieldWithUDAOf!ArgOverflow));
-    static if (takesOverflowArgs)
-        immutable ArgumentCommonInfo overflowArg = getCommonArgumentInfo!(fieldWithUDAOf!ArgOverflow);
+    enum takesOverflow = is(typeof(fieldWithUDAOf!ArgOverflow));
+    static if (takesOverflow)
+        immutable ArgumentCommonInfo overflow = getCommonArgumentInfo!(fieldWithUDAOf!ArgOverflow);
 
-    enum takesRawArgs = is(typeof(fieldWithUDAOf!ArgRaw));
-    static if (takesRawArgs)
-        immutable ArgumentCommonInfo rawArg = getCommonArgumentInfo!(fieldWithUDAOf!ArgRaw);
+    enum takesRaw = is(typeof(fieldWithUDAOf!ArgRaw));
+    static if (takesRaw)
+        immutable ArgumentCommonInfo raw = getCommonArgumentInfo!(fieldWithUDAOf!ArgRaw);
 }
 
 
-private bool isFlagCombinationSupported(ArgFlags a, ArgFlags b)
-{
-    import std.bitmanip : bitsSet;
-    import std.algorithm : map;
-
-    with(ArgFlags)
-    {
-        // See the table in the readme.
-        immutable ArgFlags[8] badMapping =
-        [
-            // _optionalBit
-            none,
-            // _multipleBit
-            _parseAsFlagBit,
-            // _parseAsFlagBit
-            _multipleBit | _countBit | _repeatableNameBit | _aggregateBit,
-            // _countBit
-            _parseAsFlagBit | _canRedefineBit | _aggregateBit,
-            // _caseInsensitiveBit
-            none,
-            // _canRedefineBit
-            _countBit | _repeatableNameBit | _aggregateBit,
-            // _repeatableNameBit
-            _parseAsFlagBit | _canRedefineBit | _aggregateBit,
-            // _aggregateBit
-            _parseAsFlagBit | _countBit | _canRedefineBit | _aggregateBit,
-        ];
-
-
-        foreach (bitIndexOfA; bitsSet(a))
-        {
-            if (badMapping[bitIndexOfA].hasEither(b))
-                return false;
-        }
-        return true;
-    }
-}
+private:
 
 ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
 {
@@ -335,6 +322,7 @@ ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
         assert(validationMessage is null, validationMessage);
     }
 
+    import std.traits : hasUDA, getUDAs;
     static if (is(typeof(group)))
         result.group = group;
     result.identifier  = __traits(identifier, field);
@@ -348,22 +336,15 @@ UDAType getArgumentInfo(UDAType, alias field)() pure
 
     static foreach (uda; __traits(getAttributes, field))
     {
-        static if (is(uda == UDAType) || is(typeof(uda) == UDAType))
+        static if (is(uda == UDAType))
         {
-            static assert(!is(typeof(uda1)),
-                "Only one `" ~ __traits(identifier, UDAType) ~ "` attribute is allowed per field.");
-
-            static if (is(uda == UDAType))
-            {
-                auto uda1 = UDAType([__traits(identifier, field)], "");
-            }
-            else static if (is(typeof(uda) == UDAType))
-            {
-                auto uda1 = uda;
-            }
+            auto uda1 = UDAType([__traits(identifier, field)], "");
+        }
+        else static if (is(typeof(uda) == UDAType))
+        {
+            auto uda1 = uda;
         }
     }
-    static assert(is(typeof(uda1)), "`" ~ UDAType.stringof ~ "` attribute not found.");
     result.uda = uda1;
     return result;
 }
@@ -373,23 +354,14 @@ ArgNamed getSimpleArgumentInfo(alias field)() pure
     ArgNamed result;
     result.argument = getCommonArgumentInfo!(ArgNamed, field)();
 
-    string description =
-    (){
-        static foreach (uda; __traits(getAttributes, field))
-        {
-            static if (is(typeof(uda) == string))
-            {
-                return uda;
-            }
-        }
-        static assert(0);
-    }();
+    import std.traits : getUDAs;
+    string description = getUDAs!(field, string)[0];
 
     result.uda = ArgNamed(__traits(identifier, field), description);
     return result;
 }
 
-private template commandUDAOf(Type)
+template commandUDAOf(Type)
 {
     static foreach (uda; __traits(getAttributes, Symbol))
     {
@@ -440,15 +412,13 @@ CommandGeneralInfo getGeneralCommandInfoOf(TCommand)() pure
 
 template fieldsWithUDAOf(T, UDAType)
 {
+    import std.traits : hasUDA;
     alias result = AliasSeq!();
     static foreach (field; T.tupleof)
     {
-        static foreach (uda; __traits(getAttributes, field))
+        static if (hasUDA!(field, UDAType))
         {
-            static if (is(UDAInfo!uda.Type == UDAType))
-            {
-                result = AliasSeq!(result, field);
-            }
+            result = AliasSeq!(result, field);
         }
     }
     alias fieldsWithUDAOf = result;
@@ -504,7 +474,7 @@ template hasExactlyOneOfUDAs(alias something, UDATypes...)
     enum hasExactlyOneOfUDAs = countUDAsOf!(something, UDATypes) == 1;
 }
 
-private template staticMap(alias Template, things...)
+template staticMap(alias Template, things...)
 {
     import std.traits : AliasSeq;
     alias staticMap = AliasSeq!();
@@ -512,7 +482,7 @@ private template staticMap(alias Template, things...)
         staticMap = AliasSeq!(staticMap, F!thing);
 }
 
-private template redirect(alias Template, Args...)
+template redirect(alias Template, Args...)
 {
     template redirect(Args2...)
     {
@@ -520,7 +490,25 @@ private template redirect(alias Template, Args...)
     }
 }
 
-private alias argumentInfosOf(TCommand, UDAType) = staticMap!(
+alias argumentInfosOf(TCommand, UDAType) = staticMap!(
     redirect!(getArgumentInfo, UDAType),
     fieldsWithUDAOf!(TCommand, UDAType));
 
+
+NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)()
+{
+    import std.traits : hasUDA;
+    NamedArgumentInfo[] result;
+    static foreach (field; TCommand.tupleof)
+    {
+        static if (hasUDA!(field, ArgNamed))
+        {
+            result ~= getArgumentInfo!(ArgNamed, field);
+        }
+        else static if (!hasUDA!(field, ArgPositional) && hasUDA!(field, string))
+        {
+            result ~= getSimpleArgumentInfo!(field);
+        }
+    }
+    return result;
+}
