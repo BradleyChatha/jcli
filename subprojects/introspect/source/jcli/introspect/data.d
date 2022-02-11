@@ -365,10 +365,33 @@ unittest
             Nullable!string a;
         }
         alias Info = CommandArgumentsInfo!S;
-        static assert(a.flags.doesNotHave(ArgFlags._optionalBit));
+        alias a = Info.named[0];
+        static assert(a.flags.has(ArgFlags._optionalBit | ArgFlags._inferedOptionalityBit));
     }
-    
-    // TODO: nullables
+    {
+        struct S
+        {
+            @ArgPositional
+            Nullable!string a;
+            @ArgPositional
+            string b;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgPositional
+            string a;
+            @ArgPositional
+            Nullable!string b;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        alias a = Info.named[0];
+        static assert(a.flags.has(ArgFlags._requiredBit));
+        alias b = Info.named[1];
+        static assert(b.flags.has(ArgFlags._optionalBit));
+    }
 }
 
 private:
