@@ -372,6 +372,15 @@ unittest
         struct S
         {
             @ArgPositional
+            @(ArgFlags._requiredBit)
+            Nullable!string a;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgPositional
             Nullable!string a;
             @ArgPositional
             string b;
@@ -388,9 +397,9 @@ unittest
         }
         alias Info = CommandArgumentsInfo!S;
         alias a = Info.named[0];
-        static assert(a.flags.has(ArgFlags._requiredBit));
+        static assert(a.flags.has(ArgFlags._requiredBit | ArgFlags._inferedOptionalityBit));
         alias b = Info.named[1];
-        static assert(b.flags.has(ArgFlags._optionalBit));
+        static assert(b.flags.has(ArgFlags._optionalBit | ArgFlags._inferedOptionalityBit));
     }
 }
 
