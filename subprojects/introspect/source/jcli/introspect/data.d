@@ -1,248 +1,7 @@
 module jcli.introspect.data;
 
+import jcli.introspect.flags;
 import jcli.core;
-
-
-private
-{
-    /// Shows which other flags a feature is incompatible with.
-    /// The flags should only declare this regarding the flags after them. 
-    struct IncompatibleWithAnyOf
-    {
-        ArgFlags value;
-    }
-
-    /// Shows which other flags a feature is requred to be accompanied with.
-    struct RequiresOneOrMoreOf
-    {
-        ArgFlags value;
-    }
-
-    /// Shows which flags a feature requres exactly one of.
-    struct RequiresExactlyOneOf
-    {
-        ArgFlags value;
-    }
-
-    /// Shows which other flags a feature is requres with.
-    struct RequiresAllOf
-    {
-        ArgFlags value;
-    }
-}
-
-enum ArgFlags
-{
-    ///
-    none,
-
-    ///
-    _optionalBit = 1 << 0,
-
-    /// An argument with the same name may appear multiple times.
-    @RequiresExactlyOneOf(countBit | canRedefineBit | aggregateBit)
-    _multipleBit = 1 << 1,
-
-    ///
-    @IncompatibleWithAnyOf(_multipleBit)
-    @RequiresAllOf(_optionalBit)
-    _parseAsFlagBit = 1 << 2,
-
-    /// Implies that the field should get the number of occurences of the argument.
-    @RequiresOneOrMoreOf(_mutipleBit | _repeatableNameBit)
-    _countBit = 1 << 3,
-
-    /// The name of the argument is case insensitive.
-    /// Aka "--STUFF" will work in place of "--stuff".
-    _caseInsensitiveBit = 1 << 4,
-
-    /// If the argument appears multiple times, 
-    /// the last value provided will take effect.
-    @IncompatibleWithAnyOf(_countBit)
-    @RequiresAllOf(_multipleBit)
-    _canRedefineBit = 1 << 5,
-
-    /// When an argument name is specified multiple times, count how many there are.
-    /// Example: `-vvv` gives the count of 3.
-    @IncompatibleWithAnyOf(_parseAsFlagBit | _canRedefineBit)
-    @RequiresAllOf(_countBit)
-    _repeatableNameBit = 1 << 6,
-
-    /// Put all matched values in an array. 
-    @IncompatibleWithAnyOf(_parseAsFlagBit | _countBit | _canRedefineBit)
-    _aggregateBit = 1 << 7,
-}
-
-private
-{
-    enum argFlagCount =
-    (){
-        size_t counter = 0;
-        static foreach (field; __traits(allMembers, ArgFlags))
-        {
-            if (__traits(getMember, ArgFlags, field) > 0)
-            {
-                counter++;
-            }
-        }
-        return counter;
-    }();
-
-
-    ArgFlags[argFlagCount] getFlagsInfo(TUDA)()
-    {
-        ArgFlags[argFlagCount] result;
-
-        import std.bitmanip : bitsSet; 
-        static foreach (field; __traits(allMembers, ArgFlags))
-        {{
-            size_t index = __traits(getMember, ArgFlags, field).bitsSet.front;
-            static foreach (uda; __traits(getAttributes, field))
-            {
-                static if (is(typeof(uda) == TUDA))
-                {
-                    result[index] = uda.value;
-                }
-            }
-        }}
-
-        return result;
-    }
-
-    template _ArgFlagsInfo()
-    {
-        immutable ArgFlags[argFlagCount] incompatible        = getFlagsInfo!IncompatibleWithAnyOf;
-        immutable ArgFlags[argFlagCount] requiresAll         = getFlagsInfo!RequiresAllOf;
-        immutable ArgFlags[argFlagCount] requiresExactlyOne  = getFlagsInfo!RequiresExactlyOneOf;
-        immutable ArgFlags[argFlagCount] requiresOneOrMore   = getFlagsInfo!RequiresOneOrMoreOf;
-    }
-    alias ArgFlagsInfo = _ArgFlagsInfo!();
-
-
-    string getArgumentFlagsValidationMessage(ArgFlags flags)
-    {
-        import std.bitmanip : bitsSet;        
-        import std.conv : to;
-
-        foreach (size_t index; bitsSet(flags))
-        {
-            const currentFlag = 2 ^^ index;
-            {
-                const f = ArgFlagsInfo.incompatible[index];
-                if (flags.hasEither(f))
-                {
-                    return "The flag " ~ currentFlag.to!string ~ " is incompatible with " ~ f.to!string;
-                }
-            }
-            {
-                const f = ArgFlagsInfo.requiresAll[index];
-                if (flags.doesNotHave(f))
-                {
-                    return "The flag " ~ currentFlag.to!string ~ " requires all of " ~ f.to!string;
-                }
-            }
-            {
-                const f = ArgFlagsInfo.requiresOneOrMore[index];
-                if (f != 0 && flags.doesNotHaveEither(f))
-                {
-                    return "The flag " ~ currentFlag.to!string ~ " requires one or more of " ~ f.to!string;
-                }
-            }
-            {
-                const f = ArgFlagsInfo.requiresExactlyOne[index];
-                if (f != 0)
-                {
-                    auto matches = currentFlag & f;
-
-                    import std.range : walkLength;
-                    auto numMatches = bitsSet(matches).walkLength;
-
-                    if (numMatches != 1)
-                    {
-                        return "The flag " ~ currentFlag.to!string ~ " requires exactly one of " ~ f.to!string
-                            ~ ". Were matched all of the following: " ~ matches.to!string;
-                    }
-                }
-            }
-        }
-
-        return null;
-    }
-}
-
-enum ArgConfig : ArgFlags
-{
-    ///
-    none,
-
-    ///
-    canRedefine = ArgFlags._canRedefineBit | ArgFlags._multipleBit,
-
-    /// If not given a value, will have its default value and not trigger an error.
-    /// Missing (even named) arguments trigger an error by default.
-    optional = ArgFlags._optionalBit,
-
-    ///
-    caseInsesitive = ArgFlags._caseInsensitiveBit,
-
-    /// Example: `-a -a` gives 2.
-    accumulate = ArgFlags._multipleBit | ArgFlags._countBit,
-
-    /// The type of the field must be an array of some sort.
-    /// Example: `-a b -a c` gives an the array ["b", "c"]
-    aggregate = ArgFlags._multipleBit | ArgFlags._aggregateBit,
-
-    ///
-    repeatableName = ArgFlags._repeatableNameBit | ArgFlags._countBit,
-
-    /// Allow an argument name to appear without a value.
-    /// Example: `--flag` would parse as `true`.
-    parseAsFlag = ArgFlags._parseAsFlagBit | ArgFlags._optionalBit,
-}
-unittest
-{
-    static foreach (name; __traits(allMembers, ArgConfig))
-    {{
-        ArgConfig flags = __traits(getMember, ArgConfig, name);
-        string validation = getArgumentFlagsValidationMessage(flags);
-        assert(validation is null);
-    }}
-}
-
-package (jcli)
-{
-    bool doesNotHave(ArgFlags a, ArgFlags b)
-    {
-        return (a & b) != b;
-    }
-    bool has(ArgFlags a, ArgFlags b)
-    {
-        return (a & b) == b;
-    }
-    bool hasEither(ArgFlags a, ArgFlags b)
-    {
-        return (a & b) != 0;
-    }
-    bool doesNotHaveEither(ArgFlags a, ArgFlags b)
-    {
-        return (a & b) == 0;
-    }
-}
-
-unittest
-{
-    with (ArgFlags)
-    {
-        ArgFlags a = _aggregateBit | _caseInsensitiveBit;
-        ArgFlags b = _canRedefineBit;
-        assert(doesNotHave(a, b));  
-        assert(doesNotHave(a, b | _caseInsensitiveBit));  
-        assert(has(a, _caseInsensitiveBit));  
-        assert(hasEither(a, b | _caseInsensitiveBit));
-        assert(hasEither(a, _caseInsensitiveBit)); 
-        assert(doesNotHaveEither(a, b));
-    }
-}
 
 struct CommandGeneralInfo
 {
@@ -258,23 +17,41 @@ struct ArgumentCommonInfo
     ArgGroup group;
 }
 
+/// Reason: accessing with multiple dots is annoying and prevents easy refactoring.
+mixin template ArgumentGetters()
+{
+    @safe nothrow @nogc pure const
+    {
+        string description() { return uda.description; }
+        string name() { return uda.name; }
+        string identifier() { return argument.identifier; }
+        ArgFlags flags() { return argument.flags; }
+        ArgGroup group() { return argument.group; }
+    }
+}
+
 struct NamedArgumentInfo
 {
     ArgNamed uda;
     ArgumentCommonInfo argument;
+
+    mixin ArgumentGetters;
+    inout(Pattern) pattern() @safe nothrow @nogc inout { return uda.pattern; }
 }
 
 struct PositionalArgumentInfo
 {
     ArgPositional uda;
     ArgumentCommonInfo argument;
+
+    mixin ArgumentGetters;
 }
 
 template CommandInfo(TCommand)
 {
     alias CommandT = TCommand;
-    immutable CommandInfo general = getCommandGeneralInfoOf!TCommand;
-    alias arguments = CommandArgumentsInfo!TCommand;
+    immutable CommandInfo general = getGeneralCommandInfoOf!TCommand;
+    alias Arguments = CommandArgumentsInfo!TCommand;
 }
 
 template CommandArgumentsInfo(TCommand)
@@ -282,8 +59,44 @@ template CommandArgumentsInfo(TCommand)
     static foreach (field; TCommand.tupleof)
         static assert(countUDAsOf!(field, ArgNamed, ArgPositional, ArgOverflow, ArgRaw).length <= 1);
 
-    immutable NamedArgumentInfo[]      named      = [ argumentInfosOf!ArgNamed ];
+    /// Includes the simple string usage, which gets converted to a ArgNamed uda.
+    immutable NamedArgumentInfo[]      named      = getNamedArgumentInfosOf!TCommand;
     immutable PositionalArgumentInfo[] positional = [ argumentInfosOf!PositionalArgumentInfo ];
+    
+    import std.algorithm : count;
+    immutable size_t numRequiredPositionalArguments = positional.count!(
+        p => p.argument.flags.doesNotHave(ArgFlags._optionalBit));
+
+    // Optionality checks
+    static assert(
+    (){
+        import std.algorithm;
+
+        alias isNotOptional = p => p.argument.flags.doesNotHave(ArgFlags._optionalBit);
+
+        const notOptionalAfterOptional = positional
+            // after one that isn't optional,
+            .find!(p => p.argument.flags.has(ArgFlags._optionalBit))
+            // there are no optionals.
+            .find!(isNotOptional);
+
+        if (!notOptionalAfterOptional.empty)
+        {
+            string message = "Found the following non-optional positional arguments after an optional argument: ";
+            
+            message ~= notOptionalAfterOptional
+                .filter!isNotOptional
+                .map!(p => p.argument.identifier)
+                .join(", ");
+
+            // TODO: Having a default value should imply optionality only after this check.
+            message ~= ". They must either have a default value and or be marked with the optional attribute.";
+
+            assert(false, message);
+            return false;
+        }
+        return true;
+    }());
 
     enum takesOverflow = is(typeof(fieldWithUDAOf!ArgOverflow));
     static if (takesOverflow)
@@ -294,6 +107,241 @@ template CommandArgumentsInfo(TCommand)
         immutable ArgumentCommonInfo raw = getCommonArgumentInfo!(fieldWithUDAOf!ArgRaw);
 }
 
+unittest
+{
+    {
+        struct S
+        {
+            @ArgNamed
+            @ArgNamed
+            string a;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgNamed
+            @ArgPositional
+            string a;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgPositional
+            @ArgPositional
+            string a;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgOverflow
+            @ArgOverflow
+            string[] a;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgOverflow
+            @ArgRaw
+            string[] a;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgOverflow
+            string[] a;
+
+            @ArgRaw
+            string[] b;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(Info.takesOverflow);
+        static assert(Info.overflow.identifier == "a");
+        static assert(Info.takesRaw);
+        static assert(Info.raw.identifier == "b");
+        static assert(Info.named.length == 0);
+        static assert(Info.positional.length == 0);
+    }
+    {
+        struct S
+        {
+            @ArgPositional
+            string a;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(!Info.takesOverflow);
+        static assert(!Info.takesRaw);
+        static assert(Info.positional.length == 1);
+        enum positional = Info.positional[0];
+        static assert(positional.identifier == "a");
+        static assert(positional.name == "a");
+    }
+    {
+        struct S
+        {
+            @ArgNamed
+            string a;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(!Info.takesOverflow);
+        static assert(!Info.takesRaw);
+        static assert(Info.named.length == 1);
+        enum named = Info.named[0];
+        static assert(named.identifier == "a");
+        static assert(named.name == "a");
+    }
+    {
+        struct S
+        {
+            @("b")
+            string a;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(!Info.takesOverflow);
+        static assert(!Info.takesRaw);
+        static assert(Info.named.length == 1);
+        enum named = Info.named[0];
+        static assert(named.identifier == "a");
+        static assert(named.name == "a");
+        static assert(named.description == "b");
+    }
+    {
+        struct S
+        {
+            @("b")
+            @ArgNamed
+            string a;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(Info.named.length == 1);
+        enum named = Info.named[0];
+        static assert(named.identifier == "a");
+        static assert(named.name == "a");
+
+        // The description is not applied here, because 
+        // ArgNamed takes precedence over the string.
+        // static assert(named.uda.description == "b");
+    }
+    {
+        struct S
+        {
+            @("b")
+            string a = "c";
+        }
+        alias Info = CommandArgumentsInfo!S;
+        Info.named[0].argument.flags.has(ArgFlags._optionalBit);
+    }
+    {
+        struct S
+        {
+            @ArgNamed
+            string a = "c";
+        }
+        alias Info = CommandArgumentsInfo!S;
+        Info.named[0].argument.flags.has(ArgFlags._optionalBit);
+    }
+    {
+        struct S
+        {
+            @ArgPositional
+            @(ArgConfig.optional)
+            string a;
+
+            @ArgPositional
+            string b;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgPositional
+            string a = "c";
+
+            @ArgPositional
+            string b;
+        }
+        // For now does not compile, but it should
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgPositional
+            string a;
+
+            @ArgPositional
+            string b;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(Info.positional.length == 2);
+        {
+            enum a = Info.positional[0];
+            static assert(a.identifier == "a");
+            static assert(a.name == "a");
+            static assert(a.flags.doesNotHave(ArgFlags._optionalBit));
+        }
+        {
+            enum b = Info.positional[0];
+            static assert(b.identifier == "b");
+            static assert(b.name == "b");
+            static assert(b.flags.doesNotHave(ArgFlags._optionalBit));
+        }
+    }
+    {
+        struct S
+        {
+            @ArgPositional
+            string a;
+
+            @ArgPositional
+            string b = "c";
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(Info.positional.length == 2);
+        {
+            enum a = Info.positional[0];
+            static assert(a.identifier == "a");
+            static assert(a.name == "a");
+            static assert(a.flags.doesNotHave(ArgFlags._optionalBit));
+        }
+        {
+            enum b = Info.positional[1];
+            static assert(b.argument.identifier == "b");
+            static assert(b.uda.name == "b");
+            static assert(b.argument.flags.has(ArgFlags._optionalBit));
+        }
+    }
+    {
+        struct S
+        {
+            @ArgPositional
+            @(ArgConfig.parseAsFlag)
+            bool a;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgNamed
+            @(ArgConfig.parseAsFlag)
+            bool a;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(Info.named[0].flags.has(ArgFlags._parseAsFlagBit));
+    }
+    // TODO: nullables
+}
 
 private:
 
@@ -305,7 +353,7 @@ ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
     
     static foreach (uda; __traits(getAttributes, field))
     {
-        static if (is(typeof(uda) == ArgFlags))
+        static if (is(typeof(uda) : ArgFlags))
         {
             // recordedFlags ~= uda;
             result.flags |= uda;

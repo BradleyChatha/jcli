@@ -52,7 +52,8 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
 {
     alias CommandT          = CommandT_;
     alias ArgBinderInstance = ArgBinderInstance_;
-    alias CommandInfo       = CommandInfo!CommandT;
+    alias CommandInfo       = jcli.introspect.CommandInfo!CommandT;
+    alias ArgumentInfo      = CommandInfo.Arguments;
 
     static import std.stdio;
     static struct ParseResult
@@ -94,7 +95,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
         typeof(return) result;
         result.command = CommandT();
 
-        static if (commandInfo.namedArgs.length > 0)
+        static if (ArgumentInfo.named.length > 0)
         {
             import std.bitmanip : BitArray;
             static size_t getNumberOfSizetsNecessaryToHoldBits(size_t numBits)
@@ -107,21 +108,21 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                 size_t numSizeTsToHoldBits = ceilDivide(numBytesToHoldBits, 8);
                 return numSizeTsToHoldBits;
             }
-            enum lengthOfBitArrayStorage = getNumberOfSizetsNecessaryToHoldBits(commandInfo.namedArgs.length);
+            enum lengthOfBitArrayStorage = getNumberOfSizetsNecessaryToHoldBits(ArgumentInfo.named.length);
             static assert(lengthOfBitArrayStorage > 0);
 
             // Is 0 if a required argument has been found, otherwise 1.
             // For non-required arguments this is always 0.
             size_t[lengthOfBitArrayStorage] requiredNamedArgHasNotBeenFoundBitArrayStorage;
             BitArray requiredNamedArgHasNotBeenFoundBitArray = BitArray(
-                cast(void) requiredNamedArgHasNotBeenFoundBitArrayStorage, commandInfo.namedArgs.length);
+                cast(void) requiredNamedArgHasNotBeenFoundBitArrayStorage, ArgumentInfo.named.length);
 
             // Is 1 if an argument has been found at least once, otherwise 0.
             size_t[lengthOfBitArrayStorage] namedArgHasBeenFoundBitArrayStorage;
             BitArray namedArgHasBeenFoundBitArray = BitArray(
-                cast(void) namedArgHasBeenFoundBitArrayStorage, commandInfo.namedArgs.length);
+                cast(void) namedArgHasBeenFoundBitArrayStorage, ArgumentInfo.named.length);
             
-            static foreach (index, arg; commandInfo.namedArgs)
+            static foreach (index, arg; ArgumentInfo.named)
             {
                 static if (!arg.flags.has(ArgFlags._optionalBit))
                 {
@@ -180,10 +181,10 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                 case Kind.twoDashesDelimiter:
                 {
                     argParser.popFront();
-                    if (commandInfo.takesRawArguments)
+                    if (ArgumentInfo.takesRaw)
                     {
                         auto rawArgumentStrings = argParser.leftoverRange();
-                        __traits(getMember, result.command, commandInfo.rawArgName) = rawArgumentStrings;
+                        __traits(getMember, result.command, ArgumentInfo.raw.identifier) = rawArgumentStrings;
                     }
                     argParser = typeof(argParser).init;
                     break OuterLoop;
@@ -203,9 +204,9 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                     {
                         default:
                         {
-                            if (commandInfo.takesOverflowArgs)
+                            if (ArgumentInfo.takesOverflow)
                             {
-                                __traits(getMember, result.command, commandInfo.overflowArgName)
+                                __traits(getMember, result.command, ArgumentInfo.overflow.identifier)
                                     ~= currentArgToken.fullSlice;
                             }
                             else
@@ -218,7 +219,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                             }
                             break InnerSwitch;
                         }
-                        static foreach (positionalIndex, positional; commandInfo.positionalArgs)
+                        static foreach (positionalIndex, positional; ArgumentInfo.positional)
                         {
                             case i:
                             {
@@ -247,14 +248,17 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                 case Kind.shortNamedArgumentName:
                 {
                     // Check if any of the arguments matched the name
-                    static foreach (namedArgIndex, namedArgInfo; commandInfo.namedArgs)
+                    static foreach (namedArgIndex, namedArgInfo; ArgumentInfo.named)
                     {{
                         bool isMatch =
                         (){
                             import std.algorithm;
                             enum caseInsensitive = namedArgInfo.flags.has(ArgFlags._caseInsensitiveBit);
                             {
-                                bool noMatches = namedArgInfo.pattern.matches!caseInsensitive(arg.nameSlice).empty;
+                                bool noMatches = namedArgInfo
+                                    .pattern
+                                    .matches!caseInsensitive(arg.nameSlice)
+                                    .empty;
                                 if (!noMatches)
                                     return true;
                             }
@@ -263,7 +267,10 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                 bool allSame = arg.valueSlice.all(arg.valueSlice[0]);
                                 if (!allSame)
                                     return false;
-                                bool noMatches = namedArgInfo.pattern.matches!caseInsensitive(arg.nameSlice[0]).empty;
+                                bool noMatches = namedArgInfo
+                                    .pattern
+                                    .matches!caseInsensitive(arg.nameSlice[0])
+                                    .empty;
                                 return !noMatches;
                             }
                             else
@@ -285,7 +292,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                     recordError(
                                         ErrorCode.duplicateNamedArgumentError,
                                         "Duplicate named argument %.",
-                                        namedArgInfo.pattern.patterns[0]);
+                                        namedArgInfo.name);
 
                                     // Skip its value too
                                     if (!argParser.empty
@@ -331,18 +338,18 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                         ErrorCode.booleanFlagInvalidValueError,
                                         "Invalid value `%` for a boolean flag argument `%` (Expected either `true` of `false`)",
                                         nextArgToken.valueSlice,
-                                        namedArgInfo.pattern.patters[0]);
+                                        namedArgInfo.name);
                                 }
 
                                 argParser.popFront();
                                 continue OuterSwitch;
                             }
 
-                            else static if (namedArgInfo.flags.has(ArgFlags._countBit))
+                            else static if (namedArgInfo.argument.flags.has(ArgFlags._countBit))
                             {
                                 alias TypeOfField = typeof(__traits(getMember, result.command, namedArgInfo.identifier));
                                 static assert(__traits(isArithmetic, TypeOfField));
-                                static if (namedArgInfo.flags.has(ArgFlags._canRedefineBit))
+                                static if (namedArgInfo.argument.flags.has(ArgFlags._canRedefineBit))
                                 {
                                     const valueToAdd = cast(TypeOfField) currentArgToken.valueSlice.length;
                                 }
@@ -361,7 +368,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                     recordError(
                                         ErrorCode.countArgumentGivenValueError,
                                         "The count argument % cannot be given a value, got %.",
-                                        namedArgInfo.pattern.patterns[0],
+                                        namedArgInfo.name,
                                         nextArgToken.valueSlice);
                                     argParser.popFront();
                                 }
@@ -377,7 +384,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                     recordError(
                                         ErrorCode.noValueForNamedArgumentError,
                                         "Expected a value for the argument %.",
-                                        namedArgInfo.pattern.patterns[0]);
+                                        namedArgInfo.name);
                                     break OuterLoop;
                                 }
 
@@ -387,7 +394,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                     recordError(
                                         ErrorCode.noValueForNamedArgumentError,
                                         "Expected a value for the argument %, got %.",
-                                        namedArgInfo.pattern.patterns[0],
+                                        namedArgInfo.name,
                                         nextArgToken.valueSlice);
 
                                     // Don't skip it, because it might be the name of another option.

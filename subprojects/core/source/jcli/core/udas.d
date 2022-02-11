@@ -6,7 +6,7 @@ package(jcli) mixin template BeingNamed()
 {
     Pattern pattern;
     string description;
-    string name() { return pattern[0]; }
+    string name() @safe nothrow @nogc pure const { return pattern[0]; }
 
     this(string stringPattern, string description = "")
     {
