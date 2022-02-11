@@ -123,8 +123,25 @@ enum ArgFlags
     _inferedOptionalityBit = 1 << 9,
 
     /// Meets the requirements of having their optionality being changed.
+    /// This bit is kind of pointless so I will probably remove it.
     @RequiresAllOf(_inferedOptionalityBit)
     _mayChangeOptionalityWithoutBreakingThingsBit = 1 << 10,
+
+    /// Whether is positional. 
+    /// On the user side, it is usually provided via UDAs.
+    @IncompatibleWithAnyOf(
+        _multipleBit
+        | _parseAsFlagBit
+        | _countBit
+        | _canRedefineBit
+        | _repeatableNameBit
+        | _aggregateBit)
+    _positionalArgumentBit = 1 << 11,
+
+    /// Whether is positional. 
+    /// On the user side, it is usually provided via UDAs.
+    @IncompatibleWithAnyOf(_positionalBit)
+    _namedArgumentBit = 1 << 12,
 }
 
 bool areArgumentFlagsValid(ArgFlags flags)
@@ -223,17 +240,12 @@ private template _ArgFlagsInfo()
     immutable ArgFlags[argFlagCount] requiresExactlyOne  = getFlagsInfo!RequiresExactlyOneOf;
     immutable ArgFlags[argFlagCount] requiresOneOrMore   = getFlagsInfo!RequiresOneOrMoreOf;
 
-    enum argFlagCount =
+    enum argFlagCount = 
     (){
-        size_t counter = 0;
-        static foreach (enumMember; __traits(allMembers, ArgFlags))
-        {
-            if (__traits(getMember, ArgFlags, enumMember) > 0)
-            {
-                counter++;
-            }
-        }
-        return counter;
+        import std.bitmanip : bitsSet;
+        import std.algorithm;
+        import std.range;
+        return ArgFlags.max.bitsSet.array[$ - 1] + 1;
     }();
 
     ArgFlags[argFlagCount] getFlagsInfo(TUDA)()

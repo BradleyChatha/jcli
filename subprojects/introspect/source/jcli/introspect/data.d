@@ -309,15 +309,59 @@ unittest
         alias Info = CommandArgumentsInfo!S;
         static assert(Info.named[0].flags.has(ArgFlags._parseAsFlagBit));
     }
+    {
+        struct S
+        {
+            @ArgNamed
+            @(ArgConfig.parseAsFlag)
+            bool a = true;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        // NOTE: 
+        // The previous version inferred that flag.
+        // I think, inferring it could lead to bugs so I say you should specify it explicitly.
+        struct S
+        {
+            @ArgNamed
+            bool a;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(Info.named[0].flags.doesNotHate(ArgFlags._parseAsFlagBit));
+    }
+    {
+        // NOTE: 
+        // The previous version inferred that flag.
+        // I think, inferring it could lead to bugs so I say you should specify it explicitly.
+        struct S
+        {
+            @ArgPositional
+            bool a;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(Info.named[0].flags.doesNotHate(ArgFlags._parseAsFlagBit));
+    }
+    {
+        struct S
+        {
+            @ArgNamed
+            @(ArgConfig._optionalBit | ArgFlags._requiredBit)
+            string a;
+        }
+        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    
     // TODO: nullables
 }
 
 private:
 
-ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
+ArgumentCommonInfo getCommonArgumentInfo(alias field)(ArgFlags initialFlags) pure
 {
     import std.conv : to;
     ArgumentCommonInfo result;
+    result.flags = initialFlags;
     // ArgFlags[] recordedFlags = [];
     
     static foreach (uda; __traits(getAttributes, field))
@@ -344,33 +388,10 @@ ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
         auto validationMessage = getArgumentFlagsValidationMessage(result.flags);
         assert(validationMessage is null, validationMessage);
 
-        string messageIfAddedOptional = getArgumentFlagsValidationMessage(result.flags | _optionalBit);
-
-        if (is(typeof(field) : Nullable!T, T))
+        // Note: These two checks are common for both named arguments and positional arguments. 
+        if (result.flag.doesNotHaveEither(_optionalBit | _requiredBit))
         {
-            assert(messageIfAddedOptional is null,
-                "Nullable types must be optional.\n" ~ messageIfAddedOptional);
-
-            if (result.flags.doesNotHave(_optionalBit))
-                result.flags |= _optionalBit | _inferedOptionalityBit;
-        }
-        else if (result.flags.has(_parseAsFlagBit))
-        {
-            // TODO: maybe allow flags in the future??
-            assert(is(typeof(field) == bool),
-                "Fields marked `parseAsFlag` must be boolean.");
-            assert(field.init == false, 
-                "Fields marked `parseAsFlag` must have the default value false.");
-            
-
-            // NOTE: This one should always be covered by the flags validation instead.
-            assert(messageIfAddedOptional is null, "Should never be hit!!");
-            
-            if (result.flags.doesNotHave(_optionalBit))
-                result.flags |= _optionalBit | _inferedOptionalityBit;
-        }
-        else if (result.flag.doesNotHaveEither(_optionalBit | _requiredBit))
-        {
+            string messageIfAddedOptional = getArgumentFlagsValidationMessage(result.flags | _optionalBit);
             string messageIfAddedRequired = getArgumentFlagsValidationMessage(result.flags | _requiredBit);
 
             if (messageIfAddedOptional is null
@@ -384,16 +405,17 @@ ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
                 if (messageIfAddedRequired is null)
                     result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
             }
+            else
+            {
+                assert(messageIfAddedRequired is null,
+                    "The type can be neither optional nor required. This check should have never been hit.\n"
+                    ~ "If we added required: " ~ messageIfAddedRequired ~ "\n"
+                    ~ "If we added optional: " ~ messageIfAddedOptional);
 
-            assert(messageIfAddedRequired is null,
-                "The type can be neither optional nor required. This check should have never been hit.\n"
-                ~ "If we added required: " ~ messageIfAddedRequired ~ "\n"
-                ~ "If we added optional: " ~ messageIfAddedOptional);
-
-            result.flags |= _requiredBit;
-            if (messageIfAddedOptional is null)
-                result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
-
+                result.flags |= _requiredBit;
+                if (messageIfAddedOptional is null)
+                    result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
+            }
             result.flags |= _inferedOptionalityBit;
         }
     }
@@ -404,30 +426,25 @@ ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
     return result;
 }
 
-UDAType getArgumentInfo(UDAType, alias field)() pure
+template getArgumentInfo(UDAType, alias field)
 {
-    UDAType result;
-    result.argument = getCommonArgumentInfo!(UDAType, field)();
-
     static foreach (uda; __traits(getAttributes, field))
     {
         static if (is(uda == UDAType))
         {
-            auto uda1 = UDAType(__traits(identifier, field), "");
+            auto getArgumentInfo() { return UDAType(__traits(identifier, field), ""); }
         }
         else static if (is(typeof(uda) == UDAType))
         {
-            auto uda1 = uda;
+            auto getArgumentInfo() { return uda; }
         }
     }
-    result.uda = uda1;
-    return result;
 }
 
 ArgNamed getSimpleArgumentInfo(alias field)() pure
 {
     ArgNamed result;
-    result.argument = getCommonArgumentInfo!(ArgNamed, field)();
+    result.argument = getCommonArgumentInfo!field(ArgFlags._namedArgumentBit);
 
     import std.traits : getUDAs;
     string description = getUDAs!(field, string)[0];
@@ -456,30 +473,27 @@ CommandGeneralInfo getGeneralCommandInfoOf(TCommand)() pure
     CommandGeneralInfo result;
     static foreach (uda; __traits(getAttributes, field))
     {
-        static if (is(typeof(commandUDAOf!TCommand)))
-        {
-            static assert(!is(typeof(uda1)),
-                "Only one Command attribute is allowed per field.");
+        // static assert(!is(typeof(uda1)),
+        //     "Only one Command attribute is allowed per field.");
 
-            static if (is(uda == Command))
-            {
-                auto uda1 = Command([__traits(identifier, field)], "");
-            }
-            else static if (is(typeof(uda) == Command))
-            {
-                auto uda1 = uda;
-            }
-            else static if (is(uda == CommandDefault))
-            {
-                auto uda1 = CommandDefault();
-            }
-            else
-            {
-                auto uda1 = uda;
-            }
+        static if (is(uda == Command))
+        {
+            auto uda1 = Command([__traits(identifier, field)], "");
+        }
+        else static if (is(typeof(uda) == Command))
+        {
+            auto uda1 = uda;
+        }
+        else static if (is(uda == CommandDefault))
+        {
+            auto uda1 = CommandDefault();
+        }
+        else
+        {
+            auto uda1 = uda;
         }
     }
-    static assert(is(typeof(uda1)), "Command attribute not found.");
+    // static assert(is(typeof(uda1)), "Command attribute not found.");
     result.isDefault = is(typeof(uda1) == CommandDefault);
     result.uda = uda1;
     result.identifier = __traits(identifier, TCommand);
@@ -544,39 +558,21 @@ template countUDAsOf(alias something, UDATypes...)
     }();
 }
 
-template hasExactlyOneOfUDAs(alias something, UDATypes...)
-{
-    enum hasExactlyOneOfUDAs = countUDAsOf!(something, UDATypes) == 1;
-}
-
-template staticMap(alias Template, things...)
-{
-    import std.traits : AliasSeq;
-    alias staticMap = AliasSeq!();
-    static foreach (thing; things)
-        staticMap = AliasSeq!(staticMap, F!thing);
-}
-
-template redirect(alias Template, Args...)
-{
-    template redirect(Args2...)
-    {
-        alias redirect = Template!(Args, Args2);
-    }
-}
-
-alias argumentInfosOf(TCommand, UDAType) = staticMap!(
-    redirect!(getArgumentInfo, UDAType),
-    fieldsWithUDAOf!(TCommand, UDAType));
-
 
 PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)()
 {
     import std.algorithm;
     import std.range;
 
-    // I feel like this is a bit of a hack, maybe should refactor.
-    PositionalArgumentInfo[] result = argumentInfosOf!(TCommand, ArgPositional);
+    // Since this is a static foreach, it will be easy to include type info here.
+    PositionalArgumentInfo[] result;
+    static foreach (field; fieldsWithUDAOf!(TCommand, ArgPositional))
+    {{
+        auto t = PositionalArgumentInfo(
+            getArgumentInfo!(ArgPositional, field),
+            getCommonArgumentInfo!field(ArgFlags._positionalArgumentBit));
+        result ~= t;
+    }}
 
     alias isOptional = p => p.flags.has(ArgFlags._optionalBit);
     alias isRequired = p => p.flags.has(ArgFlags._requiredBit);
@@ -630,21 +626,53 @@ PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)()
     // }
 }
 
+void processArgumentFlagsSpecificToNamedArguments(alias field)(ref ArgFlags flags)
+{
+    with (ArgFlags)
+    {
+        static if (is(typeof(field) : Nullable!T, T))
+        {
+            assert(messageIfAddedOptional is null,
+                "Nullable types must be optional.\n" ~ messageIfAddedOptional);
+
+            if (flags.doesNotHave(_optionalBit))
+                flags |= _optionalBit | _inferedOptionalityBit;
+        }
+        else if (flags.has(_parseAsFlagBit)) // @suppress(dscanner.suspicious.static_if_else)
+        {
+            // TODO: maybe allow flags in the future??
+            assert(is(typeof(field) == bool),
+                "Fields marked `parseAsFlag` must be boolean.");
+            assert(field.init == false, 
+                "Fields marked `parseAsFlag` must have the default value false.");
+
+            // NOTE: This one should always be covered by the flags validation instead.
+            assert(messageIfAddedOptional is null, "Should never be hit!!");
+            
+            if (flags.doesNotHave(_optionalBit))
+                flags |= _optionalBit | _inferedOptionalityBit;
+        }
+    }
+}
 
 NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)()
 {
     import std.traits : hasUDA;
     NamedArgumentInfo[] result;
     static foreach (field; TCommand.tupleof)
-    {
+    {{
         static if (hasUDA!(field, ArgNamed))
         {
-            result ~= getArgumentInfo!(ArgNamed, field);
+            auto arg = getArgumentInfo!field(ArgFlags._namedArgumentBit);
+            processArgumentFlagsSpecificToNamedArguments!(field)(arg.flags);
+            result ~= arg;
         }
         else static if (!hasUDA!(field, ArgPositional) && hasUDA!(field, string))
         {
-            result ~= getSimpleArgumentInfo!(field);
+            auto arg = getSimpleArgumentInfo!field(ArgFlags._namedArgumentBit);
+            processArgumentFlagsSpecificToNamedArguments!field(arg.flags);
+            result ~= arg;
         }
-    }
+    }}
     return result;
 }
