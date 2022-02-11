@@ -65,7 +65,7 @@ template CommandArgumentsInfo(TCommand)
     
     import std.algorithm : count;
     immutable size_t numRequiredPositionalArguments = positional.count!(
-        p => p.argument.flags.doesNotHave(ArgFlags._optionalBit));
+        p => p.flags.has(ArgFlags._requiredBit));
 
     enum takesOverflow = is(typeof(fieldWithUDAOf!ArgOverflow));
     static if (takesOverflow)
@@ -285,9 +285,9 @@ unittest
         }
         {
             enum b = Info.positional[1];
-            static assert(b.argument.identifier == "b");
-            static assert(b.uda.name == "b");
-            static assert(b.argument.flags.has(ArgFlags._optionalBit));
+            static assert(b.identifier == "b");
+            static assert(b.name == "b");
+            static assert(b.flags.has(ArgFlags._optionalBit));
         }
     }
     {
@@ -328,19 +328,16 @@ unittest
             bool a;
         }
         alias Info = CommandArgumentsInfo!S;
-        static assert(Info.named[0].flags.doesNotHate(ArgFlags._parseAsFlagBit));
+        static assert(Info.named[0].flags.doesNotHave(ArgFlags._parseAsFlagBit));
     }
     {
-        // NOTE: 
-        // The previous version inferred that flag.
-        // I think, inferring it could lead to bugs so I say you should specify it explicitly.
         struct S
         {
             @ArgPositional
             bool a;
         }
         alias Info = CommandArgumentsInfo!S;
-        static assert(Info.named[0].flags.doesNotHate(ArgFlags._parseAsFlagBit));
+        static assert(Info.named[0].flags.doesNotHave(ArgFlags._parseAsFlagBit));
     }
     {
         struct S
@@ -350,6 +347,25 @@ unittest
             string a;
         }
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
+    }
+    {
+        struct S
+        {
+            @ArgNamed
+            Nullable!string a;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        alias a = Info.named[0];
+        static assert(a.flags.has(ArgFlags._optionalBit | ArgFlags._inferedOptionalityBit));
+    }
+    {
+        struct S
+        {
+            @ArgPositional
+            Nullable!string a;
+        }
+        alias Info = CommandArgumentsInfo!S;
+        static assert(a.flags.doesNotHave(ArgFlags._optionalBit));
     }
     
     // TODO: nullables
@@ -388,10 +404,19 @@ ArgumentCommonInfo getCommonArgumentInfo(alias field)(ArgFlags initialFlags) pur
         auto validationMessage = getArgumentFlagsValidationMessage(result.flags);
         assert(validationMessage is null, validationMessage);
 
-        // Note: These two checks are common for both named arguments and positional arguments. 
-        if (result.flag.doesNotHaveEither(_optionalBit | _requiredBit))
+        string messageIfAddedOptional = getArgumentFlagsValidationMessage(result.flags | _optionalBit);
+
+        static if (is(typeof(field) : Nullable!T, T))
         {
-            string messageIfAddedOptional = getArgumentFlagsValidationMessage(result.flags | _optionalBit);
+            assert(messageIfAddedOptional is null,
+                "Nullable types must be optional.\n" ~ messageIfAddedOptional);
+
+            if (flags.doesNotHave(_optionalBit))
+                flags |= _optionalBit | _inferedOptionalityBit;
+        }
+        // Note: These two checks are common for both named arguments and positional arguments. 
+        else if (result.flag.doesNotHaveEither(_optionalBit | _requiredBit)) // @suppress(dscanner.suspicious.static_if_else)
+        {
             string messageIfAddedRequired = getArgumentFlagsValidationMessage(result.flags | _requiredBit);
 
             if (messageIfAddedOptional is null
@@ -399,6 +424,7 @@ ArgumentCommonInfo getCommonArgumentInfo(alias field)(ArgFlags initialFlags) pur
                 // This rudimentary check fails e.g. for the following: 
                 // `struct A { int a = 0; }`
                 // Aka when the value is given, but is also the default.
+                // Guys from the D server say it's probably impossible to do currently.
                 && typeof(field).init != field.init)
             {
                 result.flags |= _optionalBit;
@@ -626,19 +652,11 @@ PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)()
     // }
 }
 
-void processArgumentFlagsSpecificToNamedArguments(alias field)(ref ArgFlags flags)
+void inferArgumentFlagsSpecificToNamedArguments(alias field)(ref ArgFlags flags)
 {
     with (ArgFlags)
     {
-        static if (is(typeof(field) : Nullable!T, T))
-        {
-            assert(messageIfAddedOptional is null,
-                "Nullable types must be optional.\n" ~ messageIfAddedOptional);
-
-            if (flags.doesNotHave(_optionalBit))
-                flags |= _optionalBit | _inferedOptionalityBit;
-        }
-        else if (flags.has(_parseAsFlagBit)) // @suppress(dscanner.suspicious.static_if_else)
+        if (flags.has(_parseAsFlagBit))
         {
             // TODO: maybe allow flags in the future??
             assert(is(typeof(field) == bool),
@@ -664,13 +682,13 @@ NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)()
         static if (hasUDA!(field, ArgNamed))
         {
             auto arg = getArgumentInfo!field(ArgFlags._namedArgumentBit);
-            processArgumentFlagsSpecificToNamedArguments!(field)(arg.flags);
+            inferArgumentFlagsSpecificToNamedArguments!field(arg.flags);
             result ~= arg;
         }
         else static if (!hasUDA!(field, ArgPositional) && hasUDA!(field, string))
         {
             auto arg = getSimpleArgumentInfo!field(ArgFlags._namedArgumentBit);
-            processArgumentFlagsSpecificToNamedArguments!field(arg.flags);
+            inferArgumentFlagsSpecificToNamedArguments!field(arg.flags);
             result ~= arg;
         }
     }}
