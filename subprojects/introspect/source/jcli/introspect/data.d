@@ -13,6 +13,7 @@ struct CommandGeneralInfo
 struct ArgumentCommonInfo
 {
     string identifier;
+    string[] fieldPathParts;
     ArgFlags flags;
     ArgGroup group;
 }
@@ -47,51 +48,40 @@ struct PositionalArgumentInfo
     mixin ArgumentGetters;
 }
 
-struct ArgIntrospect(BaseInfoType, alias fieldSymbol, string[] _fieldPathParts)
+private template FieldType(TCommand, string fieldPath)
 {
-    BaseInfoType info;
-    alias info this;
-
-    immutable string[] fieldPathParts = _fieldPathParts;
-    alias CommandType = __traits(parent, fieldSymbol);
-    alias FieldType = typeof(fieldSymbol);
-
-    static assert(fieldPathParts.length > 0);
+    mixin("alias FieldType = typeof(TCommand." ~ fieldPath ~ ");");
 }
 
-/// command.assignValueToArgument!argInfo(value)
-
-template assignValueToArgument(alias TArgIntrospect)
+/// command.assign!argInfo(value)
+private void assign
+(
+    string fieldPath,
+    TCommand, 
+    TField
+)
+(
+    ref TCommand command,
+    auto ref TField value
+)
+    if (is(TField : FieldType!(TCommand, fieldPath)))
 {
-    void assignValueToArgument(
-        ref TArgIntrospect.TCommand command,
-        auto ref TArgIntrospect.FieldType value)
+    import core.lifetime: forward;
+    mixin("command." ~ fieldPath ~ " = forward!value;");
+}
+
+template assign(ArgumentCommonInfo info)
+{
+    import core.lifetime: forward;
+    import std.string : join;
+
+    enum fieldPath = info.fieldPathParts.join(".");
+    
+    void assign(TCommand, F)(ref TCommand command, auto ref F value)
     {
-        import core.lifetime: forward;
-        assign!(TArgIntrospect.fieldPathParts)(command, forward!value);
+        .assign!(fieldPath, TCommand, F)(command, value);
     }
 }
-
-private template assign(string[] fieldPathParts)
-{
-    void assign(T, V)(ref T target, auto ref V value)
-    {
-        import core.lifetime: forward;
-
-        static if (fieldPathParts.length == 0)
-        {
-            target = forward!value;
-        }
-        else
-        {
-            .assign!(fieldPathParts[1 .. $])(
-                __traits(getMember, target, fieldPathParts[0]),
-                forward!value
-            );
-        }
-    }
-}
-
 
 template CommandInfo(TCommand)
 {
@@ -106,8 +96,8 @@ template CommandArgumentsInfo(TCommand)
         static assert(countUDAsOf!(field, ArgNamed, ArgPositional, ArgOverflow, ArgRaw).length <= 1);
 
     /// Includes the simple string usage, which gets converted to an ArgNamed uda.
-    alias /* NamedArgumentInfo[] */      named      = getNamedArgumentInfosOf!TCommand;
-    alias /* PositionalArgumentInfo[] */ positional = [ argumentInfosOf!PositionalArgumentInfo ];
+    immutable NamedArgumentInfo[]      named      = getNamedArgumentInfosOf!TCommand;
+    immutable PositionalArgumentInfo[] positional = [ argumentInfosOf!PositionalArgumentInfo ];
     
     import std.algorithm : count;
     immutable size_t numRequiredPositionalArguments = positional.count!(
