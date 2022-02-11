@@ -644,19 +644,6 @@ unittest
     static struct S
     {
         @ArgNamed
-        string a = "Hello";
-    }
-    // TODO: 
-    // The named argument has a default value, so it should be optional.
-    // This equivalence should be tested elsewhere though.
-}
-
-
-unittest
-{
-    static struct S
-    {
-        @ArgNamed
         @(ArgFlags.count)
         string a;
     }

@@ -12,6 +12,9 @@ enum ArgConfig : ArgFlags
     /// Missing (even named) arguments trigger an error by default.
     optional = ArgFlags._optionalBit,
 
+    /// The opposite of optional.
+    required = ArgFlags._requiredBit,
+
     /// The name of the argument is case insensitive.
     /// Aka "--STUFF" will work in place of "--stuff".
     caseInsesitive = ArgFlags._caseInsensitiveBit,
@@ -110,8 +113,25 @@ enum ArgFlags
     /// Put all matched values in an array. 
     @IncompatibleWithAnyOf(_parseAsFlagBit | _countBit | _canRedefineBit)
     _aggregateBit = 1 << 7,
+
+    /// The opposite of optional. Can usually be inferred.
+    @IncompatibleWithAnyOf(_optionalBit | _parseAsFlagBit)
+    _requiredBit = 1 << 8,
+
+    /// Whether the required bit or optional bit was given explicitly by the user
+    /// or inferred by the system.
+    _inferedOptionalityBit = 1 << 9,
+
+    /// Meets the requirements of having their optionality being changed.
+    @RequiresAllOf(_inferedOptionalityBit)
+    _mayChangeOptionalityWithoutBreakingThingsBit = 1 << 10,
 }
 
+bool areArgumentFlagsValid(ArgFlags flags)
+{
+    // for not just call into get message, but this can be optimized a little bit later.
+    return getArgumentFlagsValidationMessage(flags) is null;
+}
 
 string getArgumentFlagsValidationMessage(ArgFlags flags)
 {

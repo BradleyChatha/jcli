@@ -67,37 +67,6 @@ template CommandArgumentsInfo(TCommand)
     immutable size_t numRequiredPositionalArguments = positional.count!(
         p => p.argument.flags.doesNotHave(ArgFlags._optionalBit));
 
-    // Optionality checks
-    static assert(
-    (){
-        import std.algorithm;
-
-        alias isNotOptional = p => p.argument.flags.doesNotHave(ArgFlags._optionalBit);
-
-        const notOptionalAfterOptional = positional
-            // after one that isn't optional,
-            .find!(p => p.argument.flags.has(ArgFlags._optionalBit))
-            // there are no optionals.
-            .find!(isNotOptional);
-
-        if (!notOptionalAfterOptional.empty)
-        {
-            string message = "Found the following non-optional positional arguments after an optional argument: ";
-            
-            message ~= notOptionalAfterOptional
-                .filter!isNotOptional
-                .map!(p => p.argument.identifier)
-                .join(", ");
-
-            // TODO: Having a default value should imply optionality only after this check.
-            message ~= ". They must either have a default value and or be marked with the optional attribute.";
-
-            assert(false, message);
-            return false;
-        }
-        return true;
-    }());
-
     enum takesOverflow = is(typeof(fieldWithUDAOf!ArgOverflow));
     static if (takesOverflow)
         immutable ArgumentCommonInfo overflow = getCommonArgumentInfo!(fieldWithUDAOf!ArgOverflow);
@@ -356,6 +325,10 @@ ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
         static if (is(typeof(uda) : ArgFlags))
         {
             // recordedFlags ~= uda;
+            static assert(uda.doesNotHaveEither(
+                ArgFlags._inferedOptionalityBit, ArgFlags._mayChangeOptionalityWithoutBreakingThingsBit),
+                "Specifying the `_inferedOptionalityBit` or `_mayChangeOptionalityWithoutBreakingThingsBit`"
+                ~ " in user code is not allowed. The optionality will be inferred automatically by default, if possible.");
             result.flags |= uda;
         }
         else static if (is(typeof(uda) == ArgGroup))
@@ -365,15 +338,59 @@ ArgumentCommonInfo getCommonArgumentInfo(T, alias field)() pure
         }
     }
 
+    // Validate all flags and try to infer optionality.
+    with (ArgFlags)
     {
         auto validationMessage = getArgumentFlagsValidationMessage(result.flags);
         assert(validationMessage is null, validationMessage);
+
+        string messageIfAddedOptional = getArgumentFlagsValidationMessage(result.flags | _optionalBit);
+
+        static if (is(typeof(field) : Nullable!T, T))
+        {
+            assert(messageIfAddedOptional is null,
+                "Nullable types must be optional.\n" ~ messageIfAddedOptional);
+            if (!result.flags.has(_optionalBit))
+            {
+                result.flags |= _optionalBit | _inferedOptionalityBit;
+            }
+        }
+        else
+        {
+            if (result.flag.doesNotHaveEither(_optionalBit | _requiredBit))
+            {
+                string messageIfAddedRequired = getArgumentFlagsValidationMessage(result.flags | _requiredBit);
+
+                if (messageIfAddedOptional is null
+                    // TODO: 
+                    // This rudimentary check fails e.g. for the following: 
+                    // `struct A { int a = 0; }`
+                    // Aka when the value is given, but is also the default.
+                    && typeof(field).init != field.init)
+                {
+                    result.flags |= _optionalBit;
+                    if (messageIfAddedRequired is null)
+                        result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
+                }
+                else
+                {
+                    assert(messageIfAddedRequired is null,
+                        "The type can be neither optional nor required. This check should have never been hit.\n"
+                        ~ "If we added required: " ~ messageIfAddedRequired ~ "\n"
+                        ~ "If we added optional: " ~ messageIfAddedOptional);
+
+                    result.flags |= _requiredBit;
+                    if (messageIfAddedOptional is null)
+                        result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
+                }
+                result.flags |= _inferedOptionalityBit;
+            }
+        }
     }
 
-    import std.traits : hasUDA, getUDAs;
     static if (is(typeof(group)))
         result.group = group;
-    result.identifier  = __traits(identifier, field);
+    result.identifier = __traits(identifier, field);
     return result;
 }
 
@@ -541,6 +558,67 @@ template redirect(alias Template, Args...)
 alias argumentInfosOf(TCommand, UDAType) = staticMap!(
     redirect!(getArgumentInfo, UDAType),
     fieldsWithUDAOf!(TCommand, UDAType));
+
+
+PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)()
+{
+    import std.algorithm;
+    import std.range;
+
+    // I feel like this is a bit of a hack, maybe should refactor.
+    PositionalArgumentInfo[] result = argumentInfosOf!(TCommand, ArgPositional);
+
+    alias isOptional = p => p.flags.has(ArgFlags._optionalBit);
+    alias isRequired = p => p.flags.has(ArgFlags._requiredBit);
+
+    // If there is an optional positional argument in between required ones,
+    // we change it to positional, if possible. 
+    
+    int indexOfLastRequired = -1;
+    foreach (index, ref p; result)
+    {
+        if (isRequired(p))
+            indexOfLastRequired = cast(int) index;
+    }
+    if (indexOfLastRequired == -1)
+        return result;
+
+    result
+        .take(indexOfLastRequired)
+        .filter!(isOptional)
+        .each!((ref p)
+        {
+            assert(p.has(ArgFlags._mayChangeOptionalityWithoutBreakingThingsBit), 
+                "The positional argument " ~ p.identifer 
+                ~ " cannot be optional, because it is in between two positionals.");
+            p.flags &= ~ArgFlags._mayChangeOptionalityWithoutBreakingThingsBit;
+            p.flags &= ~ArgFlags._optionalBit;
+            p.flags |= ArgFlags._requiredBit;
+        });
+
+    return result;
+
+    // const notOptionalAfterOptional = positional
+    //     // after one that isn't optional,
+    //     .find!(p => p.flags.has(ArgFlags._optionalBit))
+    //     // there are no optionals.
+    //     .find!(isNotOptional);
+
+    // if (!notOptionalAfterOptional.empty)
+    // {
+    //     string message = "Found the following non-optional positional arguments after an optional argument: ";
+        
+    //     message ~= notOptionalAfterOptional
+    //         .filter!isNotOptional
+    //         .map!(p => p.argument.identifier)
+    //         .join(", ");
+
+    //     // TODO: Having a default value should imply optionality only after this check.
+    //     message ~= ". They must either have a default value and or be marked with the optional attribute.";
+
+    //     assert(false, message);
+    // }
+}
 
 
 NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)()
