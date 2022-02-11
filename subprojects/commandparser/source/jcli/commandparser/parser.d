@@ -237,7 +237,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                 break InnerSwitch;
                             }
                         }
-                    }
+                    } // InnerSwitch
 
                     currentPositionalArgIndex++;
                     continue OuterLoop;
@@ -420,7 +420,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                 }
                             }
                         }
-                    }}
+                    }} // static foreach
 
                     /// TODO: conditionally allow unknown arguments
                     recordError(
@@ -437,21 +437,15 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                         continue OuterLoop;
                     }
                 }
-            }
-        }
-        
-        import std.algorithm;
-        enum size_t requiredPositionalArgsCount = positionalArgs
-            .filter!(
-                a => a.argument.flags.doesNotHave(ArgFlags._optionalBit))
-            .walkLength;
+            } // TokenKindSwitch
+        } // OuterLoop
 
-        if (currentPositionalArgIndex < requiredPositionalArgsCount)
+        if (currentPositionalArgIndex < ArgumentInfo.numRequiredPositionalArguments)
         {
             enum string messageFormat =
             (){
                 string ret = "Expected ";
-                if (commandInfo.positionalArgs.length == commandInfo.numRequiredPositionalArgs)
+                if (commandInfo.positionalArgs.length == ArgumentInfo.numRequiredPositionalArguments)
                     ret ~= "exactly";
                 else
                     ret ~= "at least";
@@ -470,7 +464,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
             recordError(
                 ErrorCode.tooFewPositionalArgumentsError,
                 messageFormat,
-                requiredPositionalArgsCount,
+                ArgumentInfo.numRequiredPositionalArguments,
                 currentPositionalArgIndex);
         }
 

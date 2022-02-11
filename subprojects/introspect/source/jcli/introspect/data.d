@@ -59,7 +59,7 @@ template CommandArgumentsInfo(TCommand)
     static foreach (field; TCommand.tupleof)
         static assert(countUDAsOf!(field, ArgNamed, ArgPositional, ArgOverflow, ArgRaw).length <= 1);
 
-    /// Includes the simple string usage, which gets converted to a ArgNamed uda.
+    /// Includes the simple string usage, which gets converted to an ArgNamed uda.
     immutable NamedArgumentInfo[]      named      = getNamedArgumentInfosOf!TCommand;
     immutable PositionalArgumentInfo[] positional = [ argumentInfosOf!PositionalArgumentInfo ];
     
@@ -531,8 +531,8 @@ CommandGeneralInfo getGeneralCommandInfoOf(TCommand)() pure
     CommandGeneralInfo result;
     static foreach (uda; __traits(getAttributes, field))
     {
-        // static assert(!is(typeof(uda1)),
-        //     "Only one Command attribute is allowed per field.");
+        static assert(!is(typeof(uda1)),
+            "Only one Command attribute is allowed per field.");
 
         static if (is(uda == Command))
         {
@@ -551,7 +551,7 @@ CommandGeneralInfo getGeneralCommandInfoOf(TCommand)() pure
             auto uda1 = uda;
         }
     }
-    // static assert(is(typeof(uda1)), "Command attribute not found.");
+    static assert(is(typeof(uda1)), "Command attribute not found.");
     result.isDefault = is(typeof(uda1) == CommandDefault);
     result.uda = uda1;
     result.identifier = __traits(identifier, TCommand);

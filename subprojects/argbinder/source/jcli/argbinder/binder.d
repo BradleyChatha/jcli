@@ -90,17 +90,10 @@ unittest
     S s;
     assert(ArgBinder!().bind!Param("256", s).isOk);
     assert(s.num == 256);
-    assert(!ArgBinder!().bind!Param("two five six", s).isOk);
+    assert(ArgBinder!().bind!Param("two five six", s).isError);
 }
 
-@Binder
-ResultOf!bool binderBool(string value)
-{
-    import std.conv : to, ConvException;
-    try return ok(value.to!bool);
-    catch(ConvException msg) return fail!bool(msg.msg);
-}
-
+// It's not clear what they are, these validators
 private template getValidators(alias ArgSymbol, alias Validator)
 {
     alias Udas                  = __traits(getAttributes, ArgSymbol);
@@ -108,6 +101,7 @@ private template getValidators(alias ArgSymbol, alias Validator)
     alias getValidators         = Filter!(isValidator, Udas);
 }
 
+/// Binders must be functions returning ResultOf
 private template getBindWith(alias ArgSymbol, Binders...)
 {
     alias Udas                  = __traits(getAttributes, ArgSymbol);

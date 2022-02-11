@@ -134,6 +134,7 @@ unittest
         string output;
 
         @ArgNamed("test-flag", "Test flag, please ignore.")
+        @(ArgConfig.parseAsFlag)
         bool flag;
 
         @ArgGroup("Debug", "Arguments related to debugging.")
