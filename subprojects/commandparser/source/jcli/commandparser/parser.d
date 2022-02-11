@@ -778,7 +778,7 @@ unittest
         assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
     }
     {
-        // Here, "b" is unequivocally a named argument value, so it produces a different error.
+        // Here, "b" is without a doubt a named argument value, so it produces a different error.
         const result = parse(["-a=b"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.countArgumentGivenValueError));
