@@ -4,133 +4,116 @@ import jcli.introspect, jcli.core;
 
 import std.algorithm;
 import std.meta;
+import std.conv : to;
 import std.traits;
 
-struct Binder {}
-struct BindWith(alias Func_){ alias Func = Func_; }
-struct PreValidator {}
-struct PostValidator {}
-
-template ArgBinder(Modules...)
+enum Binder;
+template UseConverter(alias _ConverterFunction)
+{ 
+    alias ConverterFunction = _ConverterFunction;
+}
+template PreValidate(_ValidationFunctions...)
 {
-    alias ToBinder(alias M) = getSymbolsByUDA!(M, Binder);
-    alias Binders           = staticMap!(ToBinder, AliasSeq!(Modules, jcli.argbinder.binder));
+    alias ValidationFunctions = _ValidationFunction;
+}
+template PostValidate(_ValidationFunctions...)
+{
+    alias ValidationFunctions = _ValidationFunction;
+}
 
-    Result bind(alias ArgIntrospectT)(string str, ref ArgIntrospectT.CommandT command)
+template bindArgument(Binders...)
+{
+    Result bindArgument(ArgumentCommonInfo argumentInfo, TCommand)(string stringValue, ref TCommand command)
     {
-        alias ArgSymbol         = getArgSymbol!ArgIntrospectT;
-        alias PreValidators     = getValidators!(ArgSymbol, PreValidator);
-        alias PostValidators    = getValidators!(ArgSymbol, PostValidator);
-        alias BindWith          = getBindWith!(ArgSymbol, Binders);
+        alias BinderInfo = GetArgumentBinderInfo!(argumentInfo, TCommand, Binders);
 
-        static foreach(v; PreValidators)
+        static foreach (v; BinderInfo.preValidators)
         {{
-            const result = v.preValidate(str);
-            if(!result.isOk)
+            const result = v(stringValue);
+            if (!result.isOk)
                 return fail!void(result.error, result.errorCode);
         }}
 
-        auto result = BindWith(str);
-        if(!result.isOk)
+        auto result = BinderInfo.convertionFunction(stringValue);
+        if (!result.isOk)
             return fail!void(result.error, result.errorCode);
-        getArg!ArgIntrospectT(command) = result.value;
 
-        static foreach(v; PostValidators)
+        static foreach (v; BinderInfo.postValidators)
         {{
-            const res = v.postValidate(getArg!ArgIntrospectT(command));
-            if(!res.isOk)
-                return fail!void(res.error, res.errorCode);
+            const result = v(result.value);
+            if (!result.isOk)
+                return fail!void(result.error, result.errorCode);
         }}
+
+        static if (argumentInfo.flags.has(ArgFlags._aggregateBit))
+            command.getArgumentFieldRef!argumentInfo ~= result.value;
+        else
+            command.getArgumentFieldRef!argumentInfo = result.value;
 
         return ok();
     }
 }
 
-@Binder
-ResultOf!string binderString(string value)
+template bindArgumentAcrossModules(Modules...)
 {
-    return ok(value);
-}
-///
-unittest
-{
-    @CommandDefault
-    static struct S
-    {
-        @ArgPositional
-        string str;
-    }
-
-    alias Info = commandInfoFor!S;
-    enum Param = Info.positionalArgs[0];
-    S s;
-    assert(ArgBinder!().bind!Param("hello", s).isOk);
-    assert(s.str == "hello");
+    alias ToBinder(alias M)         = getSymbolsByUDA!(M, Binder);
+    alias Binders                   = staticMap!(ToBinder, AliasSeq!(Modules, jcli.argbinder.binder));
+    alias bindArgumentAcrossModules = bindArgument!(Binders);
 }
 
-@Binder
-ResultOf!T binderTo(T)(string value)
-if(__traits(compiles, to!T(value)))
+template GetArgumentBinderInfo(ArgumentCommonInfo argumentCommonInfo, TCommand, Binders...)
 {
-    try return ok(value.to!T);
-    catch(ConvException msg) return fail!T(msg.msg);
-}
-///
-unittest
-{
-    @CommandDefault
-    static struct S
-    {
-        @ArgPositional
-        int num;
-    }
-
-    alias Info = commandInfoFor!S;
-    enum Param = Info.positionalArgs[0];
-    S s;
-    assert(ArgBinder!().bind!Param("256", s).isOk);
-    assert(s.num == 256);
-    assert(ArgBinder!().bind!Param("two five six", s).isError);
+    alias argumentFieldSymbol = getArgumentFieldSymbol!argumentCommonInfo;
+    alias preValidators       = getValidators!(ArgumentFieldSymbol, PreValidator);
+    alias postValidators      = getValidators!(ArgumentFieldSymbol, PostValidator);
+    alias convertionFunction  = getConversionFunction!(ArgumentFieldSymbol, Binders);
 }
 
-// It's not clear what they are, these validators
-private template getValidators(alias ArgSymbol, alias Validator)
+// This function should be used to convert the string 
+// to the given value when all other options have failed.
+ResultOf!T universalFallbackConverter(T)(string value)
+    if (__traits(compiles, to!T))
 {
-    alias Udas                  = __traits(getAttributes, ArgSymbol);
-    enum isValidator(alias Uda) = __traits(compiles, typeof(Uda)) && hasUDA!(typeof(Uda), Validator);
-    alias getValidators         = Filter!(isValidator, Udas);
+    try 
+        return ok(to!T(value));
+    catch (ConvException exc)
+        return fail!T(exc.msg); 
+}
+
+private:
+
+template getValidators(alias ArgSymbol, alias ValidatorUDAType)
+{
+    alias result = AliasSeq!();
+    static foreach (alias ValidatorUDA; getUDAs!(ArgSymbol, ValidatorUDAType))
+        result = AliasSeq!(result, ValidatorUDA.ValidationFunctions);
+    alias getValidators = result;
 }
 
 /// Binders must be functions returning ResultOf
-private template getBindWith(alias ArgSymbol, Binders...)
+template getConversionFunction(alias ArgSymbol, Binders...)
 {
-    alias Udas                  = __traits(getAttributes, ArgSymbol);
-    enum isBindWith(alias Uda)  = isInstanceOf!(BindWith, Uda);
-    alias Found                 = Filter!(isBindWith, Udas);
+    import std.traits;
+    alias ArgumentType = typeof(ArgSymbol);
+    alias FoundExplicitConverters = getUDAs!(ArgSymbol, UseConverter);
 
-    static if(isInstanceOf!(Nullable, typeof(ArgSymbol)))
-        alias ArgT = typeof(ArgSymbol.get());
-    else
-        alias ArgT = typeof(ArgSymbol);
-
-    static assert(Found.length <= 1, "Only one @BindWith may exist.");
-    static if(Found.length == 0)
+    static assert(FoundExplicitBinders.length <= 1, "Only one @UseConverter may exist.");
+    static if(FoundExplicitBinders.length == 0)
     {
-        enum isValidBinder(alias Binder) = 
-            __traits(compiles, { ArgT a = Binder!(ArgT)("").value; })
-            || __traits(compiles, { ArgT a = Binder("").value; });
-        alias ValidBinders = Filter!(isValidBinder, Binders);
+        alias ConverterFunction = FoundExplicitConverters[0].ConverterFunction;
 
-        static if(ValidBinders.length)
-        {
-            static if(__traits(compiles, Instantiate!(ValidBinders[0], ArgT)))
-                alias getBindWith = Instantiate!(ValidBinders[0], ArgT);
-            else
-                alias getBindWith = ValidBinders[0];
-        }
+        enum isValidConversionFunction(alias f) = 
+            __traits(compiles, { ArgumentType a = f!(ArgT)("").value; })
+            || __traits(compiles, { ArgumentType a = f("").value; });
+        alias ValidConversionFunctions = Filter!(isValidConversionFunction, Binders);
+
+        static if (ValidConversionFunctions.length == 0)
+            alias getConversionFunction = universalFallbackConverter!ArgT;
+        else static if(__traits(compiles, Instantiate!(ValidConversionFunctions[0], ArgT)))
+            alias getConversionFunction = Instantiate!(ValidConversionFunctions[0], ArgT);
         else
-            static assert(false, "No binders available for symbol "~__traits(identifier, ArgSymbol)~" of type "~ArgT.stringof);
+            alias getConversionFunction = ValidConversionFunctions[0];
     }
     else
-        alias getBindWith = Found[0].Func;
+        alias getConversionFunction = FoundExplicitBinders[0].Func;
 }

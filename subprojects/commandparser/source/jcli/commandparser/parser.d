@@ -34,6 +34,8 @@ private alias ErrorCode = CommandParsingErrorCode;
 
 private struct WriterThing
 {
+    const:
+
     bool shouldRecord(ErrorCode errorCode)
     {
         return true;
@@ -48,52 +50,58 @@ private struct WriterThing
 // TODO: 
 // Why does this template even exist?
 // It should just be a normal templated function.
-template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
+template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
 {
-    alias CommandT          = CommandT_;
-    alias ArgBinderInstance = ArgBinderInstance_;
-    alias CommandInfo       = jcli.introspect.CommandInfo!CommandT;
-    alias ArgumentInfo      = CommandInfo.Arguments;
+    alias CommandT     = CommandT_;
+    alias bindArgument = _bindArgument;
+    alias ArgumentInfo = jcli.introspect.CommandArgumentsInfo!CommandT;
 
     static import std.stdio;
     static struct ParseResult
     {
         size_t errorCount;
-        // TODO: we should take the command as a ref
-        CommandT command;
+        // TODO: we should take the command as a ref?
+        CommandT value;
+        
+        @safe nothrow @nogc pure const:
         bool isOk() { return errorCount == 0; }
         bool isError() { return errorCount > 0; }
     }
 
-    static ResultOf!CommandT parse
+    static ParseResult parse(scope string[] args)
+    {
+        static WriterThing dummy = WriterThing();
+        return parse(args, dummy);
+    }
+
+    static ParseResult parse
     (
         TErrorHandler
     )
     (
         scope string[] args,
-        ref scope TErrorHandler errorHandlerFormatFunction = WriterThing()
+        ref scope TErrorHandler errorHandlerFormatFunction
     )
     {
-        scope auto parser = argParser(args);
-        const result = parse!(errorHandlerFormatFunction)(parser);
+        scope auto parser = argTokenizer(args);
+        const result = parse(errorHandlerFormatFunction, parser);
         return result;
     }
 
-    static ResultOf!CommandT parse
+    static ParseResult parse
     (
         // TODO:
-        // perhaps this should be a delegate?
-        // but then it will have to take a var arg array, which is fine.
+        // Perhaps this should be a delegate?
+        // But then it will have to take a var arg array, which is fine.
         TErrorHandler,
-        TArgParser : ArgParser!T, T
+        TArgTokenizer : ArgTokenizer!T, T
     )
     (
         ref scope TErrorHandler errorHandler,
-        ref scope TArgParser argParser
+        ref scope TArgTokenizer tokenizer
     )
     {
-        typeof(return) result;
-        result.command = CommandT();
+        auto command = CommandT();
 
         static if (ArgumentInfo.named.length > 0)
         {
@@ -124,7 +132,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
             
             static foreach (index, arg; ArgumentInfo.named)
             {
-                static if (!arg.flags.has(ArgFlags._optionalBit))
+                static if (arg.flags.has(ArgFlags._requiredBit))
                 {
                     requiredNamedArgHasNotBeenFoundBitArray[index] = true;
                 }
@@ -144,10 +152,10 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
             }
         }
 
-        OuterLoop: while (!argParser.empty)
+        OuterLoop: while (!tokenizer.empty)
         {
-            string currentArgToken = argParser.front;
-            argParser.popFront();
+            const currentArgToken = tokenizer.front;
+            tokenizer.popFront();
 
             // Cannot be final, since there are flags.
             switch (currentArgToken.kind)
@@ -180,19 +188,20 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
 
                 case Kind.twoDashesDelimiter:
                 {
-                    argParser.popFront();
-                    if (ArgumentInfo.takesRaw)
+                    tokenizer.popFront();
+                    static if (ArgumentInfo.takesRaw)
                     {
-                        auto rawArgumentStrings = argParser.leftoverRange();
-                        result.command.getArgumentFieldRef!(ArgumentInfo.raw) = rawArgumentStrings;
+                        auto rawArgumentStrings = tokenizer.leftoverRange();
+                        command.getArgumentFieldRef!(ArgumentInfo.raw) = rawArgumentStrings;
                     }
-                    argParser = typeof(argParser).init;
+                    // To the outside it looks like we have consumed all arguments.
+                    tokenizer = typeof(tokenizer).init;
                     break OuterLoop;
                 }
 
                 case Kind.namedArgumentValue:
                 {
-                    assert(false, "This one should be handled in the named argument section.");
+                    assert(false, "This one should have been handled in the named argument section.");
                 }
 
                 // (currentArgToken.kind & (Kind._positionalArgumentBit | Kind.valueBit))
@@ -204,9 +213,9 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                     {
                         default:
                         {
-                            if (ArgumentInfo.takesOverflow)
+                            static if (ArgumentInfo.takesOverflow)
                             {
-                                result.command.getArgumentFieldRef!(ArgumentInfo.overflow)
+                                command.getArgumentFieldRef!(ArgumentInfo.overflow)
                                     ~= currentArgToken.fullSlice;
                             }
                             else
@@ -223,8 +232,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                         {
                             case i:
                             {
-                                // auto result = bindPositionalArg!positional(result.command, arg.valueSlice);
-                                auto result = ArgBinderInstance.bind!positional(result.command, arg.valueSlice);
+                                auto result = bindArgument!(positional.argument)(command, arg.valueSlice);
                                 if (result.isError)
                                 {
                                     recordError(
@@ -262,10 +270,10 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                         namedArgInfo.name);
 
                                     // Skip its value too
-                                    if (!argParser.empty
-                                        && argParser.front.kind == Kind.namedArgumentValue)
+                                    if (!tokenizer.empty
+                                        && tokenizer.front.kind == Kind.namedArgumentValue)
                                     {
-                                        argParser.popFront();
+                                        tokenizer.popFront();
                                     }
                                     continue OuterSwitch;
                                 }
@@ -277,27 +285,27 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
 
                             static if (namedArgInfo.flags.has(ArgFlags._parseAsFlagBit))
                             {
-                                if (argParser.empty)
+                                if (tokenizer.empty)
                                 {
-                                    result.command.getArgumentFieldRef!namedArgInfo = true;
+                                    command.getArgumentFieldRef!namedArgInfo = true;
                                     break OuterSwitch;
                                 }
 
-                                auto nextArgToken = argParser.front;
+                                auto nextArgToken = tokenizer.front;
                                 if ((nextArgToken.kind & Kind._namedArgumentValueBit) == 0)
                                 {
-                                    result.command.getArgumentFieldRef!namedArgInfo = true;
+                                    command.getArgumentFieldRef!namedArgInfo = true;
                                     continue OuterSwitch;
                                 }
 
                                 // TODO: Shouldn't we consider the case sensitivity here??
                                 if (nextArgToken.valueSlice == "true")
                                 {
-                                    result.command.getArgumentFieldRef!namedArgInfo = true;
+                                    command.getArgumentFieldRef!namedArgInfo = true;
                                 }
                                 else if (nextArgToken.valueSlice == "false")
                                 {
-                                    result.command.getArgumentFieldRef!namedArgInfo = false;
+                                    command.getArgumentFieldRef!namedArgInfo = false;
                                 }
                                 else
                                 {
@@ -308,13 +316,13 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                         namedArgInfo.name);
                                 }
 
-                                argParser.popFront();
+                                tokenizer.popFront();
                                 continue OuterSwitch;
                             }
 
                             else static if (namedArgInfo.argument.flags.has(ArgFlags._countBit))
                             {
-                                alias TypeOfField = typeof(result.command.getArgumentFieldRef!namedArgInfo);
+                                alias TypeOfField = typeof(command.getArgumentFieldRef!namedArgInfo);
                                 static assert(__traits(isArithmetic, TypeOfField));
                                 
                                 static if (namedArgInfo.argument.flags.has(ArgFlags._canRedefineBit))
@@ -325,12 +333,12 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                 {
                                     const valueToAdd = cast(TypeOfField) 1;
                                 }
-                                result.command.getArgumentFieldRef!namedArgInfo += valueToAdd;
+                                command.getArgumentFieldRef!namedArgInfo += valueToAdd;
 
-                                if (argParser.empty)
+                                if (tokenizer.empty)
                                     break OuterLoop;
 
-                                auto nextArgToken = argParser.front;
+                                auto nextArgToken = tokenizer.front;
                                 if (nextArgToken.kind == Kind.namedArgumentValue)
                                 {
                                     recordError(
@@ -338,7 +346,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                         "The count argument % cannot be given a value, got %.",
                                         namedArgInfo.name,
                                         nextArgToken.valueSlice);
-                                    argParser.popFront();
+                                    tokenizer.popFront();
                                 }
                                 continue OuterLoop;
                             }
@@ -347,7 +355,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                             {
                                 static assert(namedArgInfo.flags.doesNotHave(ArgFlags._parseAsFlagBit));
                                 
-                                if (argParser.empty)
+                                if (tokenizer.empty)
                                 {
                                     recordError(
                                         ErrorCode.noValueForNamedArgumentError,
@@ -356,7 +364,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                     break OuterLoop;
                                 }
 
-                                auto nextArgToken = argParser.front;
+                                auto nextArgToken = tokenizer.front;
                                 if ((nextArgToken & Kind._namedArgumentValueBit) == 0)
                                 {
                                     recordError(
@@ -366,14 +374,14 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                         nextArgToken.valueSlice);
 
                                     // Don't skip it, because it might be the name of another option.
-                                    // argParser.popFront();
+                                    // tokenizer.popFront();
                                     
                                     continue OuterLoop;
                                 }
 
                                 {
                                     // NOTE: ArgFlags._accumulateBit should have been handled in the binder.
-                                    auto result = ArgBinderInstance.bind!named(nextArgToken.valueSlice, command);
+                                    auto result = bindArgument!(named.argument)(nextArgToken.valueSlice, command);
                                     if (result.isError)
                                     {
                                         recordError(
@@ -383,7 +391,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                             positional.identifier,
                                             result.error, result.errorCode);
                                     }
-                                    argParser.popFront();
+                                    tokenizer.popFront();
                                     continue OuterLoop;
                                 }
                             }
@@ -396,12 +404,12 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                         "Unknown named argument `%`.",
                         currentArgToken.fullSlice);
 
-                    if (argParser.empty)
+                    if (tokenizer.empty)
                         break OuterLoop;
 
-                    if (argParser.front.kind == Kind.namedArgumentValue)
+                    if (tokenizer.front.kind == Kind.namedArgumentValue)
                     {
-                        argParser.popFront();
+                        tokenizer.popFront();
                         continue OuterLoop;
                     }
                 }
@@ -413,7 +421,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
             enum string messageFormat =
             (){
                 string ret = "Expected ";
-                if (commandInfo.positionalArgs.length == ArgumentInfo.numRequiredPositionalArguments)
+                if (ArgumentInfo.positional.length == ArgumentInfo.numRequiredPositionalArguments)
                     ret ~= "exactly";
                 else
                     ret ~= "at least";
@@ -423,7 +431,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                 {
                     import std.algorithm : map;
                     import std.string : join;
-                    enum string argList = commandInfo.positionalArgs.map!(a => a.identifier).join(", ");
+                    enum string argList = ArgumentInfo.positional.map!(a => a.identifier).join(", ");
                     ret ~= argList;
                 }
                 return ret;
@@ -436,42 +444,45 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                 currentPositionalArgIndex);
         }
 
-        if (requiredNamedArgHasNotBeenFoundBitArray.count > 0
-            && errorHandler.shouldRecord(ErrorCode.duplicateNamedArgumentError))
+        static if (ArgumentInfo.named.length > 0)
         {
-            import std.array;
-
-            // May want to return the whole thing here, but I think the first thing
-            // in the pattern should be the most descriptive anyway so should be encouraged.
-            string getPattern(size_t index)
+            if (requiredNamedArgHasNotBeenFoundBitArray.count > 0
+                && errorHandler.shouldRecord(ErrorCode.duplicateNamedArgumentError))
             {
-                return commandInfo.namedArgs[index].pattern.patterns[0];
+                import std.array;
+
+                // May want to return the whole thing here, but I think the first thing
+                // in the pattern should be the most descriptive anyway so should be encouraged.
+                string getPattern(size_t index)
+                {
+                    return commandInfo.namedArgs[index].pattern.patterns[0];
+                }
+
+                auto failMessageBuilder = appender!string("The following required named arguments were not found: ");
+                auto notFoundArgumentIndexes = requiredNamedArgHasNotBeenFoundBitArray.bitsSet;
+                failMessageBuilder ~= getPattern(notFoundArgumentIndexes.front);
+                notFoundArgumentIndexes.popFront();
+
+                foreach (notFoundArgumentIndex; notFoundArgumentIndexes)
+                {
+                    failMessageBuilder ~= ", ";
+                    failMessageBuilder ~= getPattern(notFoundArgumentIndex);
+                }
+
+                errorHandler.format(
+                    ErrorCode.duplicateNamedArgumentError,
+                    failMessageBuilder[]);
+                errorCounter++;
             }
-
-            auto failMessageBuilder = appender!string("The following required named arguments were not found: ");
-            auto notFoundArgumentIndexes = requiredNamedArgHasNotBeenFoundBitArray.bitsSet;
-            failMessageBuilder ~= getPattern(notFoundArgumentIndexes.front);
-            notFoundArgumentIndexes.popFront();
-
-            foreach (notFoundArgumentIndex; notFoundArgumentIndexes)
-            {
-                failMessageBuilder ~= ", ";
-                failMessageBuilder ~= getPattern(notFoundArgumentIndex);
-            }
-
-            errorHandler.format(
-                ErrorCode.duplicateNamedArgumentError,
-                failMessageBuilder[]);
-            errorCounter++;
         }
 
         debug if (errorCounter > 0)
         {
+            import std.stdio;
             writeln(errorCounter, " errors have occured.");
         }
 
-        result.errorCount = errorCounter;
-        return result;
+        return ParseResult(errorCounter, command);
     }
 }
 
@@ -481,7 +492,7 @@ version(unittest)
     struct InMemoryErrorOutput
     {
         import std.array;
-        Appender!ErrorCode errorCodes;
+        Appender!(ErrorCode[]) errorCodes;
         Appender!string result;
 
         bool shouldRecord(ErrorCode errorCode)
@@ -506,19 +517,20 @@ version(unittest)
     InMemoryErrorOutput createSink()
     {
         import std.array;
-        return InMemoryErrorOutput(appender!string);
+        return InMemoryErrorOutput(appender!(ErrorCode[]), appender!string);
     }
 
     mixin template Things(Struct)
     {
-        import std.algorithm;
         InMemoryErrorOutput output = createSink();
         auto parse(scope string[] args)
         {
             output.clear();
             return CommandParser!Struct.parse(args, output);
         }
-    } 
+    }
+
+    import std.algorithm;
 }
 
 
@@ -606,7 +618,7 @@ unittest
     static struct S
     {
         @ArgNamed
-        @(ArgFlags.count)
+        @(ArgConfig.accumulate)
         string a;
     }
     // TODO: static assert the parse function does not compile.
@@ -617,7 +629,7 @@ unittest
     static struct S
     {
         @ArgNamed
-        @(ArgFlags.optional)
+        @(ArgConfig.optional)
         string a;
     }
 
@@ -650,7 +662,7 @@ unittest
     static struct S
     {
         @ArgNamed
-        @(ArgFlags.aggregate)
+        @(ArgConfig.aggregate)
         string[] a;
     }
 
@@ -683,7 +695,7 @@ unittest
     static struct S
     {
         @ArgNamed
-        @(ArgFlags.aggregate | ArgFlags.optional)
+        @(ArgConfig.aggregate | ArgConfig.optional)
         string[] a;
     }
 
@@ -711,7 +723,7 @@ unittest
     static struct S
     {
         @ArgNamed
-        @(ArgFlags.accumulate)
+        @(ArgConfig.accumulate)
         int a;
     }
 
@@ -752,7 +764,7 @@ unittest
     static struct S
     {
         @ArgNamed
-        @(ArgFlags.accumulate | ArgFlags.optional)
+        @(ArgConfig.accumulate | ArgConfig.optional)
         int a;
     }
 
@@ -775,7 +787,7 @@ unittest
     static struct S
     {
         @ArgNamed
-        @(ArgFlags.parseAsFlag)
+        @(ArgConfig.parseAsFlag)
         bool a;
     }
 

@@ -8,9 +8,10 @@ import std.array;
 
 final class CommandLineInterface(Modules...)
 {
+    alias Tokenizer = Tokenizer;
     alias ArgBinderInstance = ArgBinder!Modules;
 
-    private alias CommandExecute = int delegate(ArgParser);
+    private alias CommandExecute = int delegate();
     private alias CommandHelp    = string delegate();
 
     private struct CommandInfo
@@ -42,24 +43,24 @@ final class CommandLineInterface(Modules...)
 
     int parseAndExecute(string[] args, bool ignoreFirstArg = true)
     {
-        return this.parseAndExecute(ArgParser(ignoreFirstArg ? args[1..$] : args));
+        return this.parseAndExecute(argTokenizer(ignoreFirstArg ? args[1..$] : args));
     }
 
-    int parseAndExecute(ArgParser parser)
+    int parseAndExecute(Tokenizer tokenizer)
     {
-        auto parserCopy = parser;
-        if(parser.empty)
-            parser = ArgParser(["-h"]);
+        auto tokenizerCopy = tokenizer;
+        if(tokenizer.empty)
+            tokenizer = argTokenizer(["-h"]);
 
         string[] args;
-        auto command = this.resolveCommand(parser, args);
+        auto command = this.resolveCommand(tokenizer, args);
         if(command.kind == command.Kind.partial || command == typeof(command).init)
         {
             if(this._default == CommandInfo.init)
             {
                 HelpText help = HelpText.make(Console.screenSize.x);
                 
-                if(parserCopy.empty || parserCopy == ArgParser(["-h"]))
+                if(tokenizerCopy.empty || tokenizerCopy == argTokenizer(["-h"]))
                     help.addHeader("Available commands:");
                 else
                 {
@@ -74,13 +75,13 @@ final class CommandLineInterface(Modules...)
             }
             else
             {
-                if(this.hasHelpArgument(parser) && !parserCopy.empty)
+                if(this.hasHelpArgument(tokenizer) && !tokenizerCopy.empty)
                 {
                     writeln(this._default.onHelp());
                     return 0;
                 }
 
-                try return this._default.onExecute(parserCopy);
+                try return this._default.onExecute(tokenizerCopy);
                 catch(ResultException ex)
                 {
                     writefln("%s: %s", this._appName.ansi.fg(Ansi4BitColour.red), ex.msg);
@@ -98,7 +99,7 @@ final class CommandLineInterface(Modules...)
             }
         }
 
-        if(this.hasHelpArgument(parser))
+        if(this.hasHelpArgument(tokenizer))
         {
             writeln(command.fullMatchChain[$-1].userData.onHelp());
             return 0;
@@ -114,7 +115,7 @@ final class CommandLineInterface(Modules...)
             return 0;
         }
 
-        try return command.fullMatchChain[$-1].userData.onExecute(parser);
+        try return command.fullMatchChain[$-1].userData.onExecute(tokenizer);
         catch(ResultException ex)
         {
             writefln("%s: %s", this._appName.ansi.fg(Ansi4BitColour.red), ex.msg);
@@ -131,7 +132,7 @@ final class CommandLineInterface(Modules...)
         }
     }
     
-    ResolveResult!CommandInfo resolveCommand(ref ArgParser parser, out string[] args)
+    ResolveResult!CommandInfo resolveCommand(ref Tokenizer tokenizer, out string[] args)
     {
         // NOTE: Could just return a tuple if we should always allocate, like this:
         // static struct Result
@@ -142,39 +143,32 @@ final class CommandLineInterface(Modules...)
         // Or even return the arguments as a range.
         // The user can do .array themselves.
 
-        scope(exit)
-            // TODO:
-            // The args should be ref, not out, and only allocate if necessary (like std.stdio.readln).
-            // In the test at the bottom the same array has been reused, which is misleading, because
-            // one would assume it reuses the same memory from the usage.
-            args = parser.map!(r => r.fullSlice).array;
-
         typeof(return) lastPartial;
         string[] command;
 
-        while(true)
+        while (true)
         {
-            if(parser.empty)
+            if (tokenizer.empty)
                 return lastPartial;
-            if(parser.front.kind == ArgParser.Result.Kind.argument)
+            if (!(tokenizer.front.kind & ArgToken.Kind.valueBit))
                 return lastPartial;
 
-            command ~= parser.front.fullSlice;
+            command ~= tokenizer.front.fullSlice;
             auto result = this._resolver.resolve(command);
 
             if(result.kind == result.Kind.partial)
                 lastPartial = result;
             else
             {
-                parser.popFront();
+                tokenizer.popFront();
                 return result;
             }
 
-            parser.popFront();
+            tokenizer.popFront();
         }
     }
 
-    private bool hasHelpArgument(ArgParser parser)
+    private bool hasHelpArgument(Tokenizer parser)
     {
         return parser
                 .filter!(r => r.kind == r.Kind.argument)
@@ -215,7 +209,7 @@ final class CommandLineInterface(Modules...)
 
     private CommandExecute getOnExecute(alias CommandT)()
     {
-        return (ArgParser parser) 
+        return (Tokenizer parser) 
         {
             auto comParser = CommandParser!(CommandT, ArgBinderInstance)();
             auto result = comParser.parse(parser);
@@ -281,7 +275,7 @@ unittest
     string[] a;
 
     {
-        auto p = ArgParser(["a"]);
+        auto p = Tokenizer(["a"]);
         const r = cli.resolveCommand(p, a);
         assert(r.kind == r.Kind.partial);
         assert(r.fullMatchChain.length == 1);
@@ -295,7 +289,7 @@ unittest
     {
         import std.conv : to;
 
-        auto p = ArgParser(args);
+        auto p = Tokenizer(args);
         const r = cli.resolveCommand(p, a);
         assert(r.kind == r.Kind.full);
         assert(r.fullMatchChain.length == args.length - 1);
@@ -306,7 +300,7 @@ unittest
 
     foreach(args; [["ae", "1", "--reverse"], ["a", "e", "-r", "1"]])
     {
-        auto p = ArgParser(args);
+        auto p = Tokenizer(args);
         const r = cli.resolveCommand(p, a);
         assert(r.kind == r.Kind.full);
         assert(r.fullMatchChain[$-1].userData.onExecute(p) == 0);

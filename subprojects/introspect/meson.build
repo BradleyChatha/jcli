@@ -10,6 +10,6 @@ jcli_intro_srcs = [
 
 jcli_intro_dep = declare_dependency(
     include_directories: include_directories('source/'),
-    sources: jcli_intro_srcs,
+    # sources: jcli_intro_srcs,
     dependencies: jcli_core_dep
 )

@@ -86,7 +86,7 @@ struct ArgToken
     }
 }
 
-struct ArgParser(TRange)
+struct ArgTokenizer(TRange)
     if (isInputRange!TRange 
         && is(ElementType!TRange == string))
 {
@@ -429,9 +429,9 @@ struct ArgParser(TRange)
     }
 }
 
-ArgParser!TRange argParser(TRange)(TRange range)
+ArgTokenizer!TRange argTokenizer(TRange)(TRange range)
 {
-    auto result = ArgParser!TRange(range);
+    auto result = ArgTokenizer!TRange(range);
     result.popFront();
     return result;
 }
@@ -442,101 +442,101 @@ unittest
     alias Kind = ArgToken.Kind;
     {
         auto args = ["hello", "world"];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.positionalArgument, "hello", "hello"),
             ArgToken(Kind.positionalArgument, "world", "world"),
         ]));
     }
     {
         auto args = ["--hello", "world"];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--hello", "hello"),
             ArgToken(Kind.namedArgumentValueOrPositionalArgument, "world", "world"),
         ]));
     }
     {
         auto args = ["-hello", "world"];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.shortNamedArgumentName, "-hello", "hello"),
             ArgToken(Kind.namedArgumentValueOrPositionalArgument, "world", "world"),
         ]));
     }
     {
         auto args = ["-hello=world"];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.shortNamedArgumentName, "-hello", "hello"),
             ArgToken(Kind.namedArgumentValue, "world", "world"),
         ]));
     }
     {
         auto args = [`--hello="world"`];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--hello", "hello"),
             ArgToken(Kind.namedArgumentValue, `"world"`, "world"),
         ]));
     }
     {
         auto args = [`--hello="--world"`];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--hello", "hello"),
             ArgToken(Kind.namedArgumentValue, `"--world"`, "--world"),
         ]));
     }
     {
         auto args = ["--"];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.twoDashesDelimiter, "--", "--"),
         ]));
     }
     {
         auto args = ["-"];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.error_singleDash, "-", ""),
         ]));
     }
     {
         auto args = ["---"];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.error_threeOrMoreDashes, "---", "---"),
         ]));
     }
     {
         auto args = [" "];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.positionalArgument, " ", " "),
         ]));
     }
     {
         auto args = ["--arg="];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
             ArgToken(Kind.error_noValueForNamedArgument, "", ""),
         ]));
     }
     {
         auto args = [`--arg="`];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
             ArgToken(Kind.error_malformedQuotes, `"`, `"`),
         ]));
     }
     {
         auto args = [`--arg="" stuff`];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
             ArgToken(Kind.error_inputAfterClosedQuote, `"" stuff`, `" stuff`),
         ]));
     }
     {
         auto args = [`--arg="stuff`];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
             ArgToken(Kind.error_unclosedQuotes, `"stuff`, "stuff"),
         ]));
     }
     {
         auto args = [`--arg= `];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
             ArgToken(Kind.error_spaceAfterAssignment, " ", " "),
         ]));
@@ -546,7 +546,7 @@ unittest
         // is expected to parse as
         // --arg --arg=stuff
         auto args = [`--arg`, `--arg=stuff`];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
             ArgToken(Kind.fullNamedArgumentName, "--arg", "arg"),
             ArgToken(Kind.namedArgumentValue, "stuff", "stuff"),
@@ -554,7 +554,7 @@ unittest
     }
     {
         auto args = ["a", "--a", "a", "-a=a"];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.positionalArgument, "a", "a"),
 
             ArgToken(Kind.fullNamedArgumentName, "--a", "a"),
@@ -566,21 +566,21 @@ unittest
     }
     {
         auto args = ["--a", "Штука"];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "a", "a"),
             ArgToken(Kind.namedArgumentValueOrPositionalArgument, "Штука", "Штука"),
         ]));
     }
     {
         auto args = [`--a="Штука"`];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "a", "a"),
             ArgToken(Kind.namedArgumentValue, `"Штука"`, "Штука"),
         ]));
     }
     {
         auto args = ["--a", "物事"];
-        assert(equal(argParser(args), [
+        assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "a", "a"),
             ArgToken(Kind.namedArgumentValueOrPositionalArgument, "物事", "物事"),
         ]));
@@ -591,7 +591,7 @@ unittest
     // import std.stdio : writeln;
     // import std.array : array;
     
-    // auto p = argParser(args);
+    // auto p = argTokenizer(args);
 
     // writeln(p.front);
     // writeln(p.front.valueSlice);

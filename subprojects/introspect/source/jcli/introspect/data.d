@@ -3,6 +3,8 @@ module jcli.introspect.data;
 import jcli.introspect.flags;
 import jcli.core;
 
+import std.conv : to;
+
 struct CommandGeneralInfo
 {
     Command uda;
@@ -22,13 +24,14 @@ struct ArgumentCommonInfo
 /// Reason: accessing with multiple dots is annoying and prevents easy refactoring.
 mixin template ArgumentGetters()
 {
-    @safe nothrow @nogc pure const
+    string name() const nothrow @nogc pure @safe { return uda.name; }
+
+    inout nothrow @nogc pure @safe
     {
-        string description() { return uda.description; }
-        string name() { return uda.name; }
-        string identifier() { return argument.identifier; }
-        ArgFlags flags() { return argument.flags; }
-        ArgGroup group() { return argument.group; }
+        ref inout(string) description() { return uda.description; }
+        ref inout(string) identifier() { return argument.identifier; }
+        ref inout(ArgFlags) flags() { return argument.flags; }
+        ref inout(ArgGroup) group() { return argument.group; }
     }
 }
 
@@ -90,22 +93,26 @@ struct PositionalArgumentInfo
 //     mixin("alias FieldType = typeof(TCommand." ~ fieldPath ~ ");");
 // }
 
-/// command.getArgumentFieldRef!argInfo
-template getArgumentFieldRef(alias commonArgumentInfoOrFieldPath)
-{
-    import core.lifetime: forward;
-    import std.string : join;
 
+private template fieldPathOf(alias commonArgumentInfoOrFieldPath)
+{
     static if (is(typeof(commonArgumentInfoOrFieldPath) == ArgumentCommonInfo)) 
         enum string fieldPath = info.identifier;
     else
         enum string fieldPath = commonArgumentInfoOrFieldPath;
-    
+}
+
+/// command.getArgumentFieldRef!argInfo
+template getArgumentFieldRef(alias commonArgumentInfoOrFieldPath)
+{
     ref auto getArgumentFieldRef(TCommand)(ref TCommand command)
     {
-        import core.lifetime: forward;
-        return mixin("command." ~ fieldPath ~ ";");
+        return mixin("command." ~ fieldPathOf!commonArgumentInfoOrFieldPath ~ ";");
     }
+}
+template getArgumentFieldSymbol(TCommand, alias commonArgumentInfoOrFieldPath)
+{
+    alias getArgumentFieldSymbol = mixin("TCommand." ~ fieldPathOf!commonArgumentInfoOrFieldPath ~ ";");
 }
 
 template CommandInfo(TCommand)
@@ -118,7 +125,7 @@ template CommandInfo(TCommand)
 template CommandArgumentsInfo(TCommand)
 {
     static foreach (field; TCommand.tupleof)
-        static assert(countUDAsOf!(field, ArgNamed, ArgPositional, ArgOverflow, ArgRaw).length <= 1);
+        static assert(countUDAsOf!(field, ArgNamed, ArgPositional, ArgOverflow, ArgRaw) <= 1);
 
     // TODO: 
     // We should have another member here, with the members that are nested structs.
@@ -153,11 +160,12 @@ template CommandArgumentsInfo(TCommand)
 
     /// Includes the simple string usage, which gets converted to an ArgNamed uda.
     immutable NamedArgumentInfo[]      named      = getNamedArgumentInfosOf!TCommand;
-    immutable PositionalArgumentInfo[] positional = [ argumentInfosOf!PositionalArgumentInfo ];
+    immutable PositionalArgumentInfo[] positional = getPositionalArgumentInfosOf!PositionalArgumentInfo;
     
-    import std.algorithm : count;
-    immutable size_t numRequiredPositionalArguments = positional.count!(
-        p => p.flags.has(ArgFlags._requiredBit));
+    import std.algorithm;
+    size_t numRequiredPositionalArguments() { return positional
+        .filter!((immutable p) => p.flags.has(ArgFlags._requiredBit))
+        .count; }
 
     enum takesOverflow = is(typeof(fieldWithUDAOf!ArgOverflow));
     static if (takesOverflow)
@@ -171,7 +179,7 @@ template CommandArgumentsInfo(TCommand)
 unittest
 {
     {
-        struct S
+        static struct S
         {
             @ArgNamed
             @ArgNamed
@@ -180,7 +188,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgNamed
             @ArgPositional
@@ -189,7 +197,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             @ArgPositional
@@ -198,7 +206,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgOverflow
             @ArgOverflow
@@ -207,7 +215,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgOverflow
             @ArgRaw
@@ -216,7 +224,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgOverflow
             string[] a;
@@ -233,7 +241,7 @@ unittest
         static assert(Info.positional.length == 0);
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             string a;
@@ -247,7 +255,7 @@ unittest
         static assert(positional.name == "a");
     }
     {
-        struct S
+        static struct S
         {
             @ArgNamed
             string a;
@@ -261,7 +269,7 @@ unittest
         static assert(named.name == "a");
     }
     {
-        struct S
+        static struct S
         {
             @("b")
             string a;
@@ -276,7 +284,7 @@ unittest
         static assert(named.description == "b");
     }
     {
-        struct S
+        static struct S
         {
             @("b")
             @ArgNamed
@@ -293,7 +301,7 @@ unittest
         // static assert(named.uda.description == "b");
     }
     {
-        struct S
+        static struct S
         {
             @("b")
             string a = "c";
@@ -302,7 +310,7 @@ unittest
         Info.named[0].argument.flags.has(ArgFlags._optionalBit);
     }
     {
-        struct S
+        static struct S
         {
             @ArgNamed
             string a = "c";
@@ -311,7 +319,7 @@ unittest
         Info.named[0].argument.flags.has(ArgFlags._optionalBit);
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             @(ArgConfig.optional)
@@ -323,7 +331,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             string a = "c";
@@ -335,7 +343,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             string a;
@@ -359,7 +367,7 @@ unittest
         }
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             string a;
@@ -383,7 +391,7 @@ unittest
         }
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             @(ArgConfig.parseAsFlag)
@@ -392,7 +400,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgNamed
             @(ArgConfig.parseAsFlag)
@@ -402,7 +410,7 @@ unittest
         static assert(Info.named[0].flags.has(ArgFlags._parseAsFlagBit));
     }
     {
-        struct S
+        static struct S
         {
             @ArgNamed
             @(ArgConfig.parseAsFlag)
@@ -414,7 +422,7 @@ unittest
         // NOTE: 
         // The previous version inferred that flag.
         // I think, inferring it could lead to bugs so I say you should specify it explicitly.
-        struct S
+        static struct S
         {
             @ArgNamed
             bool a;
@@ -423,7 +431,7 @@ unittest
         static assert(Info.named[0].flags.doesNotHave(ArgFlags._parseAsFlagBit));
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             bool a;
@@ -432,7 +440,7 @@ unittest
         static assert(Info.named[0].flags.doesNotHave(ArgFlags._parseAsFlagBit));
     }
     {
-        struct S
+        static struct S
         {
             @ArgNamed
             @(ArgConfig._optionalBit | ArgFlags._requiredBit)
@@ -441,7 +449,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgNamed
             Nullable!string a;
@@ -451,7 +459,7 @@ unittest
         static assert(a.flags.has(ArgFlags._optionalBit | ArgFlags._inferedOptionalityBit));
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             Nullable!string a;
@@ -461,7 +469,7 @@ unittest
         static assert(a.flags.has(ArgFlags._optionalBit | ArgFlags._inferedOptionalityBit));
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             @(ArgFlags._requiredBit)
@@ -470,7 +478,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             Nullable!string a;
@@ -480,7 +488,7 @@ unittest
         static assert(!__traits(compiles, CommandArgumentsInfo!S));
     }
     {
-        struct S
+        static struct S
         {
             @ArgPositional
             string a;
@@ -497,40 +505,51 @@ unittest
 
 private:
 
-ArgumentCommonInfo getCommonArgumentInfo(alias field)(ArgFlags initialFlags) pure
+import std.traits;
+import std.meta;
+
+template getFlags(alias field)
 {
-    import std.conv : to;
-    ArgumentCommonInfo result;
-    result.flags = initialFlags;
-    // ArgFlags[] recordedFlags = [];
-    
+    alias result = Alias!(ArgFlags.none);
     static foreach (uda; __traits(getAttributes, field))
     {
         static if (is(typeof(uda) : ArgFlags))
         {
-            // recordedFlags ~= uda;
             static assert(uda.doesNotHaveEither(
-                ArgFlags._inferedOptionalityBit, ArgFlags._mayChangeOptionalityWithoutBreakingThingsBit),
+                ArgFlags._inferedOptionalityBit | ArgFlags._mayChangeOptionalityWithoutBreakingThingsBit),
                 "Specifying the `_inferedOptionalityBit` or `_mayChangeOptionalityWithoutBreakingThingsBit`"
                 ~ " in user code is not allowed. The optionality will be inferred automatically by default, if possible.");
-            result.flags |= uda;
-        }
-        else static if (is(typeof(uda) == ArgGroup))
-        {
-            static assert(!is(typeof(group)), "Only one Group attribute is allowed per field.");
-            ArgGroup group = uda;
+            result = Alias!(result | uda);
         }
     }
+
+    alias getFlags = result;
+}
+
+
+// This is needed as a workaround for the function below.
+// Basically, you cannot access `field.init` or get the attributes
+// of a field symbol in a function context.
+// template FieldInfo(alias field)
+// {
+//     alias FieldType = typeof(field);
+//     enum FieldType initialValue = field.init;
+// }
+
+ArgFlags inferOptionalityAndValidate(FieldType)(ArgFlags initialFlags, FieldType fieldDefaultValue) pure
+{
+    import std.conv : to;
+    ArgFlags flags = initialFlags;
 
     // Validate all flags and try to infer optionality.
     with (ArgFlags)
     {
-        auto validationMessage = getArgumentFlagsValidationMessage(result.flags);
+        auto validationMessage = getArgumentFlagsValidationMessage(flags);
         assert(validationMessage is null, validationMessage);
 
-        string messageIfAddedOptional = getArgumentFlagsValidationMessage(result.flags | _optionalBit);
+        string messageIfAddedOptional = getArgumentFlagsValidationMessage(flags | _optionalBit);
 
-        static if (is(typeof(field) : Nullable!T, T))
+        static if (is(FieldType : Nullable!T, T))
         {
             assert(messageIfAddedOptional is null,
                 "Nullable types must be optional.\n" ~ messageIfAddedOptional);
@@ -539,21 +558,21 @@ ArgumentCommonInfo getCommonArgumentInfo(alias field)(ArgFlags initialFlags) pur
                 flags |= _optionalBit | _inferedOptionalityBit;
         }
         // Note: These two checks are common for both named arguments and positional arguments. 
-        else if (result.flag.doesNotHaveEither(_optionalBit | _requiredBit)) // @suppress(dscanner.suspicious.static_if_else)
+        else if (flags.doesNotHaveEither(_optionalBit | _requiredBit)) // @suppress(dscanner.suspicious.static_if_else)
         {
-            string messageIfAddedRequired = getArgumentFlagsValidationMessage(result.flags | _requiredBit);
+            string messageIfAddedRequired = getArgumentFlagsValidationMessage(flags | _requiredBit);
+            // TODO: 
+            // This rudimentary check fails e.g. for the following: 
+            // `struct A { int a = 0; }`
+            // Aka when the value is given, but is also the default.
+            // Guys from the D server say it's probably impossible to do currently.
+            bool canInferOptional = FieldType.init != fieldDefaultValue;
 
-            if (messageIfAddedOptional is null
-                // TODO: 
-                // This rudimentary check fails e.g. for the following: 
-                // `struct A { int a = 0; }`
-                // Aka when the value is given, but is also the default.
-                // Guys from the D server say it's probably impossible to do currently.
-                && typeof(field).init != field.init)
+            if (messageIfAddedOptional is null && canInferOptional)
             {
-                result.flags |= _optionalBit;
+                flags |= _optionalBit;
                 if (messageIfAddedRequired is null)
-                    result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
+                    flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
             }
             else
             {
@@ -562,18 +581,35 @@ ArgumentCommonInfo getCommonArgumentInfo(alias field)(ArgFlags initialFlags) pur
                     ~ "If we added required: " ~ messageIfAddedRequired ~ "\n"
                     ~ "If we added optional: " ~ messageIfAddedOptional);
 
-                result.flags |= _requiredBit;
+                flags |= _requiredBit;
                 if (messageIfAddedOptional is null)
-                    result.flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
+                    flags |= _mayChangeOptionalityWithoutBreakingThingsBit;
             }
-            result.flags |= _inferedOptionalityBit;
+            flags |= _inferedOptionalityBit;
         }
     }
 
-    static if (is(typeof(group)))
-        result.group = group;
-    result.identifier = __traits(identifier, field);
-    return result;
+    return flags;
+}
+
+
+enum string FieldDefaultValue = "__traits(child, __traits(parent, field).init)";
+
+template getCommonArgumentInfo(alias field, ArgFlags initialFlags)
+{
+    enum flagsBeforeInference = initialFlags | getFlags!field;
+    enum flagsAfterInference  = inferOptionalityAndValidate!(typeof(field))(
+        flagsBeforeInference, mixin(FieldDefaultValue), field);
+    
+    alias groups = getUDAs!(field, ArgGroup);
+    static assert(groups.length <= 1, "Only one group attribute is allowed");
+    static if (groups.length == 1)
+        enum group = groups[0];
+    else
+        enum group = ArgGroup.init;
+
+    enum identifier = __traits(identifier, field);
+    enum getCommonArgumentInfo = ArgumentCommonInfo(identifier, flagsAfterInference, groups);
 }
 
 template getArgumentInfo(UDAType, alias field)
@@ -582,76 +618,56 @@ template getArgumentInfo(UDAType, alias field)
     {
         static if (is(uda == UDAType))
         {
-            auto getArgumentInfo() { return UDAType(__traits(identifier, field), ""); }
+            enum getArgumentInfo = UDAType(__traits(identifier, field), "");
         }
         else static if (is(typeof(uda) == UDAType))
         {
-            auto getArgumentInfo() { return uda; }
+            enum getArgumentInfo = uda;
         }
     }
 }
 
-ArgNamed getSimpleArgumentInfo(alias field)() pure
+template getSimpleArgumentInfo(alias field)
 {
-    ArgNamed result;
-    result.argument = getCommonArgumentInfo!field(ArgFlags._namedArgumentBit);
-
-    import std.traits : getUDAs;
-    string description = getUDAs!(field, string)[0];
-
-    result.uda = ArgNamed(__traits(identifier, field), description);
-    return result;
+    enum argument = getCommonArgumentInfo!field(ArgFlags._namedArgumentBit);
+    enum description = getUDAs!(field, string)[0];
+    enum uda = ArgNamed(__traits(identifier, field), description);
+    enum getSimpleArgumentInfo = ArgNamed(uda, argument);
 }
 
 template commandUDAOf(Type)
 {
     static foreach (uda; __traits(getAttributes, Symbol))
     {
-        static if (is(Command == UDAInfo!uda.Type))
+        static if (is(uda == Command))
         {
-            enum commandUDAOf = UDAInfo!uda.value;
+            enum commandUDAOf = Command([__traits(identifier, Type)], "");
         }
-        static if (is(CommandDefault == UDAInfo!uda.Type))
+        else static if (is(typeof(uda) == Command))
+        {
+            enum commandUDAOf = uda;
+        }
+        else static if (is(CommandDefault == UDAInfo!uda.Type))
         {
             enum commandUDAOf = UDAInfo!uda.value;
         }
     }
 }
 
-CommandGeneralInfo getGeneralCommandInfoOf(TCommand)() pure
+template getGeneralCommandInfoOf(TCommand)
 {
-    CommandGeneralInfo result;
-    static foreach (uda; __traits(getAttributes, field))
-    {
-        static assert(!is(typeof(uda1)),
-            "Only one Command attribute is allowed per field.");
+    enum command    = commandUDAOf!TCommand;
+    enum isDefault  = is(typeof(command) == CommandDefault);
+    enum identifier = __traits(identifier, TCommand);
 
-        static if (is(uda == Command))
-        {
-            auto uda1 = Command([__traits(identifier, field)], "");
-        }
-        else static if (is(typeof(uda) == Command))
-        {
-            auto uda1 = uda;
-        }
-        else static if (is(uda == CommandDefault))
-        {
-            auto uda1 = CommandDefault();
-        }
-        else
-        {
-            auto uda1 = uda;
-        }
-    }
-    static assert(is(typeof(uda1)), "Command attribute not found.");
-    result.isDefault = is(typeof(uda1) == CommandDefault);
-    result.uda = uda1;
-    result.identifier = __traits(identifier, TCommand);
+    // TODO: Not needed, the general info is not needed either.
+    enum getGeneralCommandInfoOf = CommandGeneralInfo(command, identifier, isDefault);
 }
 
 template fieldsWithUDAOf(T, UDAType)
 {
     import std.traits : hasUDA;
+    import std.meta : AliasSeq;
     alias result = AliasSeq!();
     static foreach (field; T.tupleof)
     {
@@ -709,7 +725,7 @@ template countUDAsOf(alias something, UDATypes...)
 }
 
 
-PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)()
+PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)() pure
 {
     import std.algorithm;
     import std.range;
@@ -742,10 +758,10 @@ PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)()
     result
         .take(indexOfLastRequired)
         .filter!(isOptional)
-        .each!((ref p)
+        .each!((ref PositionalArgumentInfo p)
         {
-            assert(p.has(ArgFlags._mayChangeOptionalityWithoutBreakingThingsBit), 
-                "The positional argument " ~ p.identifer 
+            assert(p.flags.has(ArgFlags._mayChangeOptionalityWithoutBreakingThingsBit), 
+                "The positional argument " ~ p.identifier 
                 ~ " cannot be optional, because it is in between two positionals.");
             p.flags &= ~ArgFlags._mayChangeOptionalityWithoutBreakingThingsBit;
             p.flags &= ~ArgFlags._optionalBit;
@@ -776,45 +792,54 @@ PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)()
     // }
 }
 
-void inferArgumentFlagsSpecificToNamedArguments(alias field)(ref ArgFlags flags)
+ArgFlags inferArgumentFlagsSpecificToNamedArguments(FieldType)(ArgFlags flags, FieldType fieldDefaultValue) pure
 {
     with (ArgFlags)
     {
         if (flags.has(_parseAsFlagBit))
         {
-            // TODO: maybe allow flags in the future??
-            assert(is(typeof(field) == bool),
-                "Fields marked `parseAsFlag` must be boolean.");
-            assert(field.init == false, 
-                "Fields marked `parseAsFlag` must have the default value false.");
+            static if (is(FieldType == bool))
+            {
+                assert(fieldDefaultValue == false, 
+                    "Fields marked `parseAsFlag` must have the default value false.");
 
-            // NOTE: This one should always be covered by the flags validation instead.
-            assert(messageIfAddedOptional is null, "Should never be hit!!");
-            
-            if (flags.doesNotHave(_optionalBit))
-                flags |= _optionalBit | _inferedOptionalityBit;
+                // NOTE: This one should always be covered by the flags validation instead.
+                assert(messageIfAddedOptional is null, "Should never be hit!!");
+                
+                if (flags.doesNotHave(_optionalBit))
+                    flags |= _optionalBit | _inferedOptionalityBit;
+            }
+            else
+            {
+                // TODO: maybe allow flags in the future??
+                assert(false, "Fields marked `parseAsFlag` must be boolean.");
+            }
         }
     }
+    return flags;
 }
 
-
-NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)()
+NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)() pure
 {
     import std.traits : hasUDA;
     NamedArgumentInfo[] result;
+    
     static foreach (field; TCommand.tupleof)
     {{
-        static if (hasUDA!(field, ArgNamed))
+        enum hasNamed = hasUDA!(field, ArgNamed);
+        enum isSimple = !hasNamed && !hasUDA!(field, ArgPositional) && hasUDA!(field, string);
+
+        static if (hasNamed)
+            ArgNamed uda = getArgumentInfo!(ArgNamed, field);
+        else static if (isSimple)
+            ArgNamed uda = getSimpleArgumentInfo!field();
+        
+        static if (hasNamed || isSimple)
         {
-            auto arg = getArgumentInfo!field(ArgFlags._namedArgumentBit);
-            inferArgumentFlagsSpecificToNamedArguments!field(arg.flags);
-            result ~= arg;
-        }
-        else static if (!hasUDA!(field, ArgPositional) && hasUDA!(field, string))
-        {
-            auto arg = getSimpleArgumentInfo!field(ArgFlags._namedArgumentBit);
-            inferArgumentFlagsSpecificToNamedArguments!field(arg.flags);
-            result ~= arg;
+            auto argument  = getCommonArgumentInfo!(field, ArgFlags._namedArgumentBit);
+            argument.flags = inferArgumentFlagsSpecificToNamedArguments!(
+                typeof(field))(argument.flags, mixin(FieldDefaultValue));
+            result ~= NamedArgumentInfo(uda, argument);
         }
     }}
     return result;

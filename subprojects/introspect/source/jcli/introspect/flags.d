@@ -149,13 +149,13 @@ enum ArgFlags
     // _nestedStructBit = 1 << 13,
 }
 
-bool areArgumentFlagsValid(ArgFlags flags)
+bool areArgumentFlagsValid(ArgFlags flags) pure @safe
 {
     // for not just call into get message, but this can be optimized a little bit later.
     return getArgumentFlagsValidationMessage(flags) is null;
 }
 
-string getArgumentFlagsValidationMessage(ArgFlags flags)
+string getArgumentFlagsValidationMessage(ArgFlags flags) pure @safe
 {
     import std.bitmanip : bitsSet;        
     import std.conv : to;
@@ -206,35 +206,37 @@ string getArgumentFlagsValidationMessage(ArgFlags flags)
 
     return null;
 }
-
-bool doesNotHave(ArgFlags a, ArgFlags b)
+@safe nothrow @nogc pure const
 {
-    return (a & b) != b;
-}
-bool has(ArgFlags a, ArgFlags b)
-{
-    return (a & b) == b;
-}
-bool hasEither(ArgFlags a, ArgFlags b)
-{
-    return (a & b) != 0;
-}
-bool doesNotHaveEither(ArgFlags a, ArgFlags b)
-{
-    return (a & b) == 0;
-}
-unittest
-{
-    with (ArgFlags)
+    bool doesNotHave(ArgFlags a, ArgFlags b)
     {
-        ArgFlags a = _aggregateBit | _caseInsensitiveBit;
-        ArgFlags b = _canRedefineBit;
-        assert(doesNotHave(a, b));  
-        assert(doesNotHave(a, b | _caseInsensitiveBit));  
-        assert(has(a, _caseInsensitiveBit));  
-        assert(hasEither(a, b | _caseInsensitiveBit));
-        assert(hasEither(a, _caseInsensitiveBit)); 
-        assert(doesNotHaveEither(a, b));
+        return (a & b) != b;
+    }
+    bool has(ArgFlags a, ArgFlags b)
+    {
+        return (a & b) == b;
+    }
+    bool hasEither(ArgFlags a, ArgFlags b)
+    {
+        return (a & b) != 0;
+    }
+    bool doesNotHaveEither(ArgFlags a, ArgFlags b)
+    {
+        return (a & b) == 0;
+    }
+    unittest
+    {
+        with (ArgFlags)
+        {
+            ArgFlags a = _aggregateBit | _caseInsensitiveBit;
+            ArgFlags b = _canRedefineBit;
+            assert(doesNotHave(a, b));  
+            assert(doesNotHave(a, b | _caseInsensitiveBit));  
+            assert(has(a, _caseInsensitiveBit));  
+            assert(hasEither(a, b | _caseInsensitiveBit));
+            assert(hasEither(a, _caseInsensitiveBit)); 
+            assert(doesNotHaveEither(a, b));
+        }
     }
 }
 

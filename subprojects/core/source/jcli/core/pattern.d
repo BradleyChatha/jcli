@@ -3,13 +3,14 @@ module jcli.core.pattern;
 struct Pattern
 {
     import std.ascii;
+    import std.algorithm;
+
     string[] items;
     alias items this;
     
     this(string[] items) @safe pure nothrow
     in
     {
-        import std.algorithm;
         assert(items.length > 0, "The pattern must contain at least one item.");
         assert(items.all!(i => i.all!isASCII), "The pattern items must be ascii.");
         assert(items.all!(i => i.length > 0), "The pattern must not contain empty items.");
@@ -28,12 +29,24 @@ struct Pattern
         return Pattern(items);
     }
 
-    @safe @nogc
+    @safe // TODO: when and how does it allocate tho? @nogc
     auto matches(bool caseInsensitive)(string input) pure nothrow
     {
         return items.filter!((p) {
+            import std.algorithm : map, equal;
+
             static if (caseInsensitive)
-                return (std.ascii(pattern, input) == 0);
+            {
+                import std.ascii : toLower;
+                if (p.length != input.length)
+                    return false;
+                foreach (index; 0 .. p.length)
+                {
+                    if (toLower(p[index]) != toLower(input[index]))
+                        return false;
+                }
+                return true;
+            }
             else
                 return p == input;
         });
@@ -42,17 +55,17 @@ struct Pattern
     unittest
     {
         import std.algorithm : equal;
-        auto p = Pattern.fromString("a|A");
+        auto p = Pattern.parse("a|A");
         {
             enum caseInsensitive = true;
             assert(equal(p.matches!(caseInsensitive)("a"), ["a", "A"]));
-            assert(equal(p.matches!(caseInsensitive)("b"), []));
+            assert(equal(p.matches!(caseInsensitive)("b"), string[].init));
         }
         {
             enum caseInsensitive = false;
             assert(equal(p.matches!(caseInsensitive)("a"), ["a"]));
             assert(equal(p.matches!(caseInsensitive)("A"), ["A"]));
-            assert(equal(p.matches!(caseInsensitive)("b"), []));
+            assert(equal(p.matches!(caseInsensitive)("b"), string[].init));
         }
     }
     // @safe @nogc

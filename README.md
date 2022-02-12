@@ -1336,21 +1336,6 @@ As a reminder, to attach enum values onto something as a UDA, you must use the f
 
 
 The information below is useful for seeing which combinations of features are supported.
-
-Flags combinations supported:
-
-|                    | optionalBit | multipleBit | parseAsFlagBit   | countBit | caseInsensitiveBit | canRedefineBit | repeatableNameBit | aggregateBit |
-|--------------------|-------------|-------------|------------------|----------|--------------------|----------------|-------------------|--------------|
-| optionalBit        | o           | +           | +                | +        | +                  | +              | +                 | +            |
-| multipleBit        | +           | o           | -                | +        | +                  | +              | +                 | +            |
-| parseAsFlagBit     | +           | -           | o                | -        | + (for the name)   | +              | -                 | -            |
-| countBit           | +           | +           | -                | o        | +                  | -              | +                 | -            |
-| caseInsensitiveBit | +           | +           | + (for the name) | +        | o                  | +              | +                 | +            |
-| canRedefineBit     | +           | +           | +                | -        | +                  | o              | - (not yet)       | -            |
-| repeatableNameBit  | +           | +           | -                | +        | +                  | - (not yet)    | o                 | -            |
-| aggregateBit       | +           | +           | -                | -        | +                  | -              | -                 | o            |
-
-
 Flags that must be accompanied by one of the other flags:
 
 - `optionalBit` — none;
