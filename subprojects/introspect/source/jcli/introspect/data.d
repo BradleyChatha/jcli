@@ -12,8 +12,9 @@ struct CommandGeneralInfo
 
 struct ArgumentCommonInfo
 {
+    // TODO: Support nested structs. For now, no such thing.
+    // This is currently the name of the field, used to get a reference to that field.
     string identifier;
-    string[] fieldPathParts;
     ArgFlags flags;
     ArgGroup group;
 }
@@ -40,6 +41,42 @@ struct NamedArgumentInfo
     inout(Pattern) pattern() @safe nothrow @nogc inout { return uda.pattern; }
 }
 
+// It's a good idea to encapsulate this logic here.
+// It can be easily modified later when we add nested structs.
+template isNameMatch(NamedArgumentInfo namedArgumentInfo)
+{
+    import std.algorithm;
+    /// Takes a name, like the `aa` part of `-aa`.
+    /// Tries to match the pattern specified as the template argument.
+    bool isNameMatch(string value)
+    {
+        enum caseInsensitive = flags.has(ArgFlags._caseInsensitiveBit);
+        {
+            bool noMatches = namedArgumentInfo
+                .pattern
+                .matches!caseInsensitive(value)
+                .empty;
+            if (!noMatches)
+                return true;
+        }
+        static if (namedArgumentInfo.flags.has(ArgFlags._repeatableNameBit))
+        {
+            bool allSame = value.all(value[0]);
+            if (!allSame)
+                return false;
+            bool noMatches = namedArgumentInfo
+                .pattern
+                .matches!caseInsensitive(value[0])
+                .empty;
+            return !noMatches;
+        }
+        else
+        {
+            return false;
+        }
+    }
+}
+
 struct PositionalArgumentInfo
 {
     ArgPositional uda;
@@ -48,38 +85,26 @@ struct PositionalArgumentInfo
     mixin ArgumentGetters;
 }
 
-private template FieldType(TCommand, string fieldPath)
-{
-    mixin("alias FieldType = typeof(TCommand." ~ fieldPath ~ ");");
-}
+// private template FieldType(TCommand, string fieldPath)
+// {
+//     mixin("alias FieldType = typeof(TCommand." ~ fieldPath ~ ");");
+// }
 
-/// command.assign!argInfo(value)
-private void assign
-(
-    string fieldPath,
-    TCommand, 
-    TField
-)
-(
-    ref TCommand command,
-    auto ref TField value
-)
-    if (is(TField : FieldType!(TCommand, fieldPath)))
-{
-    import core.lifetime: forward;
-    mixin("command." ~ fieldPath ~ " = forward!value;");
-}
-
-template assign(ArgumentCommonInfo info)
+/// command.getArgumentFieldRef!argInfo
+template getArgumentFieldRef(alias commonArgumentInfoOrFieldPath)
 {
     import core.lifetime: forward;
     import std.string : join;
 
-    enum fieldPath = info.fieldPathParts.join(".");
+    static if (is(typeof(commonArgumentInfoOrFieldPath) == ArgumentCommonInfo)) 
+        enum string fieldPath = info.identifier;
+    else
+        enum string fieldPath = commonArgumentInfoOrFieldPath;
     
-    void assign(TCommand, F)(ref TCommand command, auto ref F value)
+    ref auto getArgumentFieldRef(TCommand)(ref TCommand command)
     {
-        .assign!(fieldPath, TCommand, F)(command, value);
+        import core.lifetime: forward;
+        return mixin("command." ~ fieldPath ~ ";");
     }
 }
 
@@ -94,6 +119,37 @@ template CommandArgumentsInfo(TCommand)
 {
     static foreach (field; TCommand.tupleof)
         static assert(countUDAsOf!(field, ArgNamed, ArgPositional, ArgOverflow, ArgRaw).length <= 1);
+
+    // TODO: 
+    // We should have another member here, with the members that are nested structs.
+    //
+    // Probably say positional arguments are not allowed for nested structs, 
+    // because it would be extremely confusing to implement and nobody will probably ever use them.
+    //
+    // The nested struct can be either named (aka -name.field to give a value to the flag `field`
+    // inside that nested struct argument), or flattened (allow to simply do -field).
+    //
+    // We should create another member which would point to the arguments with the nested types perhaps?
+    // We could get the names of the types by accessing the field identifiers?
+    // ```
+    // immutable NamedArgumentInfo[] nested;
+    // ```
+    // Then make a helper template that would flatten these for the linear iteration, 
+    // for use in the command parser. It really does not need to know about this nesting,
+    // since it would always read the arguments linearly, only matching actual qualified names,
+    // it does not care where in the struct that field is.
+    //
+    // But we still do need all the info for e.g. reading arguments from typical config format,
+    // where nesting is allowed. Like json or xml. There, the user would write out a nested object
+    // instead of assigning the fields individually, which would be kinda hard to implement without
+    // the nesting info (you'd have to reget that info from the stored dots in the idetifiers.
+
+    // TODO: 
+    // A similar mechanism can be used to get pointers to data received from other commands.
+    // This will be useful when nested commands partially match the given arguments.
+    // Currently not implemented whatsoever.
+
+    // TODO: These seem to be used only as a compile-time info thing, so these should perhaps be alias seqs.
 
     /// Includes the simple string usage, which gets converted to an ArgNamed uda.
     immutable NamedArgumentInfo[]      named      = getNamedArgumentInfosOf!TCommand;

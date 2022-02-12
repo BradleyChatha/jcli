@@ -184,7 +184,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                     if (ArgumentInfo.takesRaw)
                     {
                         auto rawArgumentStrings = argParser.leftoverRange();
-                        __traits(getMember, result.command, ArgumentInfo.raw.identifier) = rawArgumentStrings;
+                        result.command.getArgumentFieldRef!(ArgumentInfo.raw) = rawArgumentStrings;
                     }
                     argParser = typeof(argParser).init;
                     break OuterLoop;
@@ -206,7 +206,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                         {
                             if (ArgumentInfo.takesOverflow)
                             {
-                                __traits(getMember, result.command, ArgumentInfo.overflow.identifier)
+                                result.command.getArgumentFieldRef!(ArgumentInfo.overflow)
                                     ~= currentArgToken.fullSlice;
                             }
                             else
@@ -250,41 +250,8 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                     // Check if any of the arguments matched the name
                     static foreach (namedArgIndex, namedArgInfo; ArgumentInfo.named)
                     {{
-                        bool isMatch =
-                        (){
-                            import std.algorithm;
-                            enum caseInsensitive = namedArgInfo.flags.has(ArgFlags._caseInsensitiveBit);
-                            {
-                                bool noMatches = namedArgInfo
-                                    .pattern
-                                    .matches!caseInsensitive(arg.nameSlice)
-                                    .empty;
-                                if (!noMatches)
-                                    return true;
-                            }
-                            static if (namedArgInfo.flags.has(ArgFlags._repeatableNameBit))
-                            {
-                                bool allSame = arg.valueSlice.all(arg.valueSlice[0]);
-                                if (!allSame)
-                                    return false;
-                                bool noMatches = namedArgInfo
-                                    .pattern
-                                    .matches!caseInsensitive(arg.nameSlice[0])
-                                    .empty;
-                                return !noMatches;
-                            }
-                            else
-                            {
-                                return false;
-                            }
-                        }();
-
-                        if (isMatch)
+                        if (isNameMatch!namedArgInfo(arg.nameSlice))
                         {
-                            // if (namedArgInfo.existence & ArgExistence.optional)
-                            // {
-                            // }
-
                             static if (namedArgInfo.flags.doesNotHave(ArgFlags._multipleBit))
                             {
                                 if (namedArgHasBeenFoundBitArray[namedArgIndex])
@@ -312,25 +279,25 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                             {
                                 if (argParser.empty)
                                 {
-                                    __traits(getMember, result.command, namedArgInfo.identifier) = true;
+                                    result.command.getArgumentFieldRef!namedArgInfo = true;
                                     break OuterSwitch;
                                 }
 
                                 auto nextArgToken = argParser.front;
                                 if ((nextArgToken.kind & Kind._namedArgumentValueBit) == 0)
                                 {
-                                    __traits(getMember, result.command, namedArgInfo.identifier) = true;
+                                    result.command.getArgumentFieldRef!namedArgInfo = true;
                                     continue OuterSwitch;
                                 }
 
                                 // TODO: Shouldn't we consider the case sensitivity here??
                                 if (nextArgToken.valueSlice == "true")
                                 {
-                                    __traits(getMember, result.command, namedArgInfo.identifier) = true;
+                                    result.command.getArgumentFieldRef!namedArgInfo = true;
                                 }
                                 else if (nextArgToken.valueSlice == "false")
                                 {
-                                    __traits(getMember, result.command, namedArgInfo.identifier) = false;
+                                    result.command.getArgumentFieldRef!namedArgInfo = false;
                                 }
                                 else
                                 {
@@ -347,8 +314,9 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
 
                             else static if (namedArgInfo.argument.flags.has(ArgFlags._countBit))
                             {
-                                alias TypeOfField = typeof(__traits(getMember, result.command, namedArgInfo.identifier));
+                                alias TypeOfField = typeof(result.command.getArgumentFieldRef!namedArgInfo);
                                 static assert(__traits(isArithmetic, TypeOfField));
+                                
                                 static if (namedArgInfo.argument.flags.has(ArgFlags._canRedefineBit))
                                 {
                                     const valueToAdd = cast(TypeOfField) currentArgToken.valueSlice.length;
@@ -357,7 +325,7 @@ template CommandParser(alias CommandT_, alias ArgBinderInstance_ = ArgBinder!())
                                 {
                                     const valueToAdd = cast(TypeOfField) 1;
                                 }
-                                __traits(getMember, result.command, namedArgInfo.identifier) += valueToAdd;
+                                result.command.getArgumentFieldRef!namedArgInfo += valueToAdd;
 
                                 if (argParser.empty)
                                     break OuterLoop;

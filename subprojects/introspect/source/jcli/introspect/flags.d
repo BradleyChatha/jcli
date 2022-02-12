@@ -142,6 +142,11 @@ enum ArgFlags
     /// On the user side, it is usually provided via UDAs.
     @IncompatibleWithAnyOf(_positionalBit)
     _namedArgumentBit = 1 << 12,
+
+    /// Whether a field is of struct type, containing subfields, which are also arguments.
+    /// This means all fields of that nested struct are to be considered arguments, if marked as such.
+    /// I could force the user to 
+    // _nestedStructBit = 1 << 13,
 }
 
 bool areArgumentFlagsValid(ArgFlags flags)
