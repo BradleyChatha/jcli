@@ -534,7 +534,7 @@ version(unittest)
         return InMemoryErrorOutput(appender!(ErrorCode[]), appender!(char[]));
     }
 
-    mixin template Things(Struct)
+    mixin template ParseBoilerplate(Struct)
     {
         InMemoryErrorOutput output = createSink();
         auto parse(scope string[] args)
@@ -554,7 +554,7 @@ unittest
         string a;
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         // Ok
@@ -590,7 +590,7 @@ unittest
         string a;
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse(["-a", "b"]);
@@ -645,7 +645,7 @@ unittest
         string a;
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse(["-a", "b"]);
@@ -678,7 +678,7 @@ unittest
         string[] a;
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse(["-a", "b"]);
@@ -711,7 +711,7 @@ unittest
         string[] a;
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse(["-a", "b"]);
@@ -739,7 +739,7 @@ unittest
         int a;
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse(["-a"]);
@@ -792,7 +792,7 @@ unittest
         int a;
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse([]);
@@ -815,7 +815,7 @@ unittest
         bool a;
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse([]);
@@ -863,7 +863,7 @@ unittest
         string b = "Hello";
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse(["a"]);
@@ -900,7 +900,7 @@ unittest
         string[] overflow;
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse(["a"]);
@@ -943,7 +943,7 @@ unittest
         string[] raw;
     }
 
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse(["a"]);
@@ -980,7 +980,7 @@ unittest
         int a;
     }
     
-    mixin Things!S;
+    mixin ParseBoilerplate!S;
 
     {
         const result = parse([]);

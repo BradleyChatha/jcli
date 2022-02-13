@@ -887,10 +887,14 @@ ArgFlags inferArgumentFlagsSpecificToNamedArguments(FieldType)(ArgFlags flags, F
     {
         if (flags.has(_parseAsFlagBit))
         {
-            static if (is(FieldType == bool))
+            static if (is(FieldType == bool) || is(FieldType : Nullable!bool))
             {
-                assert(fieldDefaultValue == false, 
-                    "Fields marked `parseAsFlag` must have the default value false.");
+                static if (is(FieldType == bool))
+                    assert(fieldDefaultValue == false, 
+                        "Fields marked `parseAsFlag` must have the default value false.");
+                else
+                    assert(fieldDefaultValue.isNull,
+                        "Nullable fields marked with `parseAsFlag` must have the default value of null.");
 
                 string messageIfAddedOptional = getArgumentFlagsValidationMessage(flags | _optionalBit);
 

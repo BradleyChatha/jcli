@@ -253,6 +253,7 @@ private struct AssertEvenCommand
     int number;
 
     @ArgNamed("reverse|r", "If specified, then assert that the number is ODD instead.")
+    @(ArgConfig.parseAsFlag)
     Nullable!bool reverse;
 
     int onExecute()
