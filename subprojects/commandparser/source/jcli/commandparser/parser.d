@@ -47,6 +47,9 @@ private struct WriterThing
     }
 }
 
+// TODO: this thing.
+// interface IRecordError{}
+
 // TODO: 
 // Why does this template even exist?
 // It should just be a normal templated function.
@@ -539,7 +542,7 @@ unittest
         @ArgPositional
         string a;
     }
-    
+
     mixin Things!S;
 
     {

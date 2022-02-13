@@ -10,6 +10,9 @@ struct CommandGeneralInfo
     Command uda;
     string identifier;
     bool isDefault;
+    string name() const nothrow @nogc pure @safe { return uda.name; }
+    ref inout(string) description() inout nothrow @nogc pure @safe { return uda.description; }
+
 }
 
 struct ArgumentCommonInfo
@@ -120,7 +123,7 @@ template getArgumentFieldSymbol(TCommand, alias argumentInfoOrFieldPath)
 template CommandInfo(TCommand)
 {
     alias CommandT = TCommand;
-    immutable CommandInfo general = getGeneralCommandInfoOf!TCommand;
+    immutable CommandGeneralInfo general = getGeneralCommandInfoOf!TCommand;
     alias Arguments = CommandArgumentsInfo!TCommand;
 }
 
@@ -647,13 +650,13 @@ template getSimpleArgumentInfo(alias field)
     enum getSimpleArgumentInfo = ArgNamed(uda, argument);
 }
 
-template commandUDAOf(Type)
+template commandUDAOf(CommandType)
 {
-    static foreach (uda; __traits(getAttributes, Symbol))
+    static foreach (uda; __traits(getAttributes, CommandType))
     {
         static if (is(uda == Command))
         {
-            enum commandUDAOf = Command([__traits(identifier, Type)], "");
+            enum commandUDAOf = Command([__traits(identifier, CommandType)], "");
         }
         else static if (is(typeof(uda) == Command))
         {
