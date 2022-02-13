@@ -22,7 +22,15 @@ template PostValidate(_validationFunctions...)
 
 template bindArgument(Binders...)
 {
-    Result bindArgument(ArgumentCommonInfo argumentInfo, TCommand)(string stringValue, ref TCommand command)
+    Result bindArgument
+    (
+        alias /* Common or Named or Positional info */ argumentInfo,
+        TCommand
+    )
+    (
+        string stringValue,
+        ref TCommand command
+    )
     {
         alias BinderInfo = GetArgumentBinderInfo!(argumentInfo, TCommand, Binders);
 
@@ -60,9 +68,12 @@ template bindArgumentAcrossModules(Modules...)
     alias bindArgumentAcrossModules = bindArgument!(Binders);
 }
 
-template GetArgumentBinderInfo(ArgumentCommonInfo argumentCommonInfo, TCommand, Binders...)
+template GetArgumentBinderInfo(
+    alias /* Common or Named or Positional info */ argumentInfo,
+    TCommand,
+    Binders...)
 {
-    alias argumentFieldSymbol = getArgumentFieldSymbol!(TCommand, argumentCommonInfo);
+    alias argumentFieldSymbol = getArgumentFieldSymbol!(TCommand, argumentInfo);
     alias preValidators       = getValidators!(argumentFieldSymbol, PreValidate);
     alias postValidators      = getValidators!(argumentFieldSymbol, PostValidate);
     alias convertionFunction  = getConversionFunction!(argumentFieldSymbol, Binders);
@@ -100,15 +111,33 @@ template getConversionFunction(alias argumentFieldSymbol, Binders...)
     static assert(FoundExplicitConverters.length <= 1, "Only one @UseConverter may exist.");
     static if(FoundExplicitConverters.length == 0)
     {
+        // There is no such thing as a to!(Nullable!int), for example,
+        // but a Nullable!int can be created implicitly from an int.
+        //
+        // The whole point is, we need to convert into the underlying type 
+        // and not into the outer Nullable type, because then to!ThatType will fail,
+        // but the Nullable!T construction from a T won't.
+        // 
+        // So here we extract the inner type in case it is a Nullable.
+        //
+        // Note:
+        // Nullable-like user types can be handled in user code via the use of Binders.
+        // User-defined binders will match before the universal fallback converter (aka to!T).
+        // 
+        static if (is(ArgumentType : Nullable!T, T))
+            alias ConvertionType = T;
+        else
+            alias ConvertionType = ArgumentType;
+
         enum isValidConversionFunction(alias f) = 
-            __traits(compiles, { ArgumentType a = f!(ArgumentType)("").value; })
+            __traits(compiles, { ArgumentType a = f!(ConvertionType)("").value; })
             || __traits(compiles, { ArgumentType a = f("").value; });
         alias validConversionFunctions = Filter!(isValidConversionFunction, Binders);
 
         static if (validConversionFunctions.length == 0)
-            alias getConversionFunction = universalFallbackConverter!ArgumentType;
-        else static if(__traits(compiles, Instantiate!(validConversionFunctions[0], ArgumentType)))
-            alias getConversionFunction = Instantiate!(validConversionFunctions[0], ArgumentType);
+            alias getConversionFunction = universalFallbackConverter!ConvertionType;
+        else static if(__traits(compiles, Instantiate!(validConversionFunctions[0], ConvertionType)))
+            alias getConversionFunction = Instantiate!(validConversionFunctions[0], ConvertionType);
         else
             alias getConversionFunction = validConversionFunctions[0];
     }

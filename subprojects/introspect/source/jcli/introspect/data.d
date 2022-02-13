@@ -168,17 +168,22 @@ template CommandArgumentsInfo(TCommand)
     immutable PositionalArgumentInfo[] positional = getPositionalArgumentInfosOf!PositionalArgumentInfo;
     
     import std.algorithm;
-    size_t numRequiredPositionalArguments() { return positional
+    enum size_t numRequiredPositionalArguments = positional
         .filter!((immutable p) => p.flags.has(ArgFlags._requiredBit))
-        .count; }
+        .count;
 
-    enum takesOverflow = is(typeof(fieldWithUDAOf!ArgOverflow));
+    private alias fieldsWithOverflow = fieldsWithUDAOf!(TCommand, ArgOverflow);
+    static assert(fieldsWithOverflow.length <= 1, "No more than one overflow argument allowed");
+    enum takesOverflow = fieldsWithOverflow.length == 1;
     static if (takesOverflow)
-        immutable ArgumentCommonInfo overflow = getCommonArgumentInfo!(fieldWithUDAOf!ArgOverflow);
+        immutable ArgumentCommonInfo overflow = getCommonArgumentInfo!(fieldsWithOverflow[0], ArgConfig.aggregate);
 
-    enum takesRaw = is(typeof(fieldWithUDAOf!ArgRaw));
+    
+    private alias fieldsWithRaw = fieldsWithUDAOf!(TCommand, ArgRaw);
+    static assert(fieldsWithRaw.length <= 1, "No more than one raw argument allowed");
+    enum takesRaw = fieldsWithRaw.length == 1;
     static if (takesRaw)
-        immutable ArgumentCommonInfo raw = getCommonArgumentInfo!(fieldWithUDAOf!ArgRaw);
+        immutable ArgumentCommonInfo raw = getCommonArgumentInfo!(fieldsWithRaw[0], ArgConfig.aggregate);
 }
 
 unittest
@@ -238,12 +243,12 @@ unittest
             string[] b;
         }
         alias Info = CommandArgumentsInfo!S;
-        static assert(Info.takesOverflow);
-        static assert(Info.overflow.identifier == "a");
-        static assert(Info.takesRaw);
-        static assert(Info.raw.identifier == "b");
-        static assert(Info.named.length == 0);
-        static assert(Info.positional.length == 0);
+        assert(Info.takesOverflow);
+        assert(Info.overflow.identifier == "a");
+        assert(Info.takesRaw);
+        assert(Info.raw.identifier == "b");
+        assert(Info.named.length == 0);
+        assert(Info.positional.length == 0);
     }
     {
         static struct S
@@ -644,7 +649,7 @@ template getArgumentInfo(UDAType, alias field)
 
 template getSimpleArgumentInfo(alias field)
 {
-    enum argument = getCommonArgumentInfo!field(ArgFlags._namedArgumentBit);
+    enum argument = getCommonArgumentInfo!(field, ArgFlags._namedArgumentBit);
     enum description = getUDAs!(field, string)[0];
     enum uda = ArgNamed(__traits(identifier, field), description);
     enum getSimpleArgumentInfo = ArgNamed(uda, argument);
@@ -751,7 +756,7 @@ PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)() pure
     {{
         auto t = PositionalArgumentInfo(
             getArgumentInfo!(ArgPositional, field),
-            getCommonArgumentInfo!field(ArgFlags._positionalArgumentBit));
+            getCommonArgumentInfo!(field, ArgFlags._positionalArgumentBit));
         result ~= t;
     }}
 

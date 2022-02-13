@@ -32,7 +32,7 @@ enum CommandParsingErrorCode
 
 private alias ErrorCode = CommandParsingErrorCode;
 
-private struct WriterThing
+struct DefaultParseErrorHandler
 {
     const:
 
@@ -53,7 +53,7 @@ private struct WriterThing
 // TODO: 
 // Why does this template even exist?
 // It should just be a normal templated function.
-template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
+template CommandParser(alias CommandT_, alias _bindArgument = jcli.argbinder.bindArgument!())
 {
     alias CommandT     = CommandT_;
     alias bindArgument = _bindArgument;
@@ -73,7 +73,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
 
     static ParseResult parse(scope string[] args)
     {
-        static WriterThing dummy = WriterThing();
+        static DefaultParseErrorHandler dummy = DefaultParseErrorHandler();
         return parse(args, dummy);
     }
 
@@ -83,11 +83,11 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
     )
     (
         scope string[] args,
-        ref scope TErrorHandler errorHandlerFormatFunction
+        ref scope TErrorHandler errorHandler
     )
     {
         scope auto parser = argTokenizer(args);
-        return parse(errorHandlerFormatFunction, parser);
+        return parse(parser, errorHandler);
     }
 
     static ParseResult parse
@@ -99,8 +99,8 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
         TArgTokenizer : ArgTokenizer!T, T
     )
     (
-        ref scope TErrorHandler errorHandler,
-        ref scope TArgTokenizer tokenizer
+        ref scope TArgTokenizer tokenizer,
+        ref scope TErrorHandler errorHandler
     )
     {
         auto command = CommandT();
