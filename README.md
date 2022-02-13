@@ -1336,15 +1336,6 @@ As a reminder, to attach enum values onto something as a UDA, you must use the f
 
 
 The information below is useful for seeing which combinations of features are supported.
-Flags that must be accompanied by one of the other flags:
-
-- `optionalBit` — none;
-- `multipleBit` — one of `countBit`, `canRedefineBit` or `aggregateBit`;
-- `parseAsFlagBit` — `optionalBit`;
-- `countBit` — either `mutipleBit`, `repeatableNameBit`, or both;
-- `caseInsensitiveBit` — none;
-- `canRedefineBit` — `multipleBit`;
-- `repeatableNameBit` — `countBit`.
 
 Supported orthogonal higher level flag combinatons (encouraged to use).
 "implied" written in a cell means the flag combination from the header implies the flag combination from the left:
