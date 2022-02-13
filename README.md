@@ -7,12 +7,12 @@
 ![Tests](https://github.com/BradleyChatha/jcli/workflows/Test%20LDC%20x64/badge.svg)
 ![Build and Test](https://github.com/BradleyChatha/jcli/actions/workflows/unittests.yaml/badge.svg)
 
-** As of v0.20.0 JCLI is using a fully rewritten code base, which has major breaking changes. **
+**As of v0.20.0 JCLI is using a fully rewritten code base, which has major breaking changes, and as of v0.30.0 a largely rewritten codebase.**
 
 JCLI is a library to aid in the creation of command line tooling, with an aim of being easy to use, while also allowing
 the individual parts of the library to be used on their own, aiding more dedicated users in creation of their own CLI core.
 
-As a firm believer of good documentation, JCLI is completely documented with in-depth explanations where needed. In-browser documentation can be found [here](https://jcli.dpldocs.info/jcli.html) (new code base doesn't have docs yet, will come soon (tm)).
+As a firm believer of good documentation, JCLI is completely documented with in-depth explanations where needed. In-browser documentation can be found [here](https://jcli.dpldocs.info/jcli.html).
 
 Tested on Windows and Ubuntu 18.04.
 
@@ -34,14 +34,17 @@ Tested on Windows and Ubuntu 18.04.
   - [Inheritance](#inheritance)
   - [Argument groups](#argument-groups)
   - [Bash Completion](#bash-completion)
-  - [Argument parsing actions](#argument-parsing-actions)
-    - [ArgAction.count](#argactioncount)
   - [Command Introspection](#command-introspection)
   - [Light-weight command parsing](#light-weight-command-parsing)
   - [Light-weight command help text](#light-weight-command-help-text)
   - [Argument configuration](#argument-configuration)
     - [ArgConfig.caseInsensitive](#argconfigcaseinsensitive)
     - [ArgConfig.canRedefine](#argconfigcanredefine)
+    - [ArgConfig.optional](#argconfigoptional)
+    - [ArgConfig.accumulate](#argconfigaccumulate)
+    - [ArgConfig.aggregate](#argconfigaggregate)
+    - [ArgConfig.repeatableName](#argconfigrepeatablename)
+    - [ArgConfig.parseAsFlag](#argconfigparseasflag)
 - [Using JCLI without Dub](#using-jcli-without-dub)
 - [Contributing](#contributing)
 
@@ -617,6 +620,8 @@ Very simple. Very useful.
 
 ## User Defined argument validation
 
+**Currently not applicable since version v0.30.0**
+
 It's cool and all being able to very easily create arg binders, but sometimes commands will need validation logic involved.
 
 For example, some commands might only want files with a `.json` extention, while others may not care about extentions. So putting this logic into the arg binder itself isn't overly wise.
@@ -805,7 +810,7 @@ of information that is passed to an arg binder.
 What we need is a way to specify the binding behavior on a per-argument basis.
 
 While you *could* do a hackish thing such as creating two separate file types (`ReadOnlyFile` and `WriteFile`) then making arg binders for them, there's actually
-a much easier solution - `@BindWith`:
+a much easier solution - `@UseConverter`:
 
 ```d
 import std.stdio : File;
@@ -823,11 +828,11 @@ ResultOf!File openReadOnly(string arg)
 struct CopyCommand
 {
     @ArgPositional("source", "The source file.")
-    @BindWith!openReadOnly
+    @UseConverter!openReadOnly
     File source;
 
     @ArgPositional("destination", "The destination file.")
-    @BindWith!(arg => ok!File(File(arg, "w")))
+    @UseConverter!(arg => ok!File(File(arg, "w")))
     File destination;
 
     void onExecute()
@@ -840,14 +845,14 @@ struct CopyCommand
 
 To start off, we create the fairly self-explanatory `openReadOnly` function which looks exactly like an `@Binder`, except it doesn't have the UDA attached to it.
 
-Next, we attach `@BindWith!openReadOnly` onto our `source` argument. This tells JCLI to use our `openReadOnly` function as this argument's binder.
+Next, we attach `@UseConverter!openReadOnly` onto our `source` argument. This tells JCLI to use our `openReadOnly` function as this argument's binder.
 
-Finally, we attach `@BindWith!(/*lambda*/)` onto our `destination` argument, for the same reasons as above. A lambda is used here for demonstration purposes.
+Finally, we attach `@UseConverter!(/*lambda*/)` onto our `destination` argument, for the same reasons as above. A lambda is used here for demonstration purposes.
 
 And just like that we have now solved overcome our initial issue of "how to I customise binding for arguments of the same type?" in a simple, sane manner.
 
 I'd like to mention that this feature works alongside the usual arg binding behavior. In other words, you can define an `@Binder` for a type which will
-serve as the default method for binding, but then for those awkward, one-off cases you can use `@BindWith` to specify a different binding behavior on a per-argument
+serve as the default method for binding, but then for those awkward, one-off cases you can use `@UseConverter` to specify a different binding behavior on a per-argument
 basis.
 
 ## Unparsed Raw Arg List
@@ -861,7 +866,7 @@ Commands can access the raw arg list like so:
 struct EchoCommand
 {
     @ArgRaw
-    ArgParser rawArgs;
+    string[] rawArgs;
 
     void onExecute()
     {
@@ -872,7 +877,7 @@ struct EchoCommand
 }
 ```
 
-Simply make a field of type `ArgParser`, then mark it with `@ArgRaw`, and then voila:
+Simply make a field of type `string[]`, then mark it with `@ArgRaw`, and then voila:
 
 ```bash
 $> ./mytool echo -- Hello world, please be kind.
@@ -1025,54 +1030,6 @@ struct ComplexCommand
 JCLI provides automatic autocomplete for commands (currently only for command arguments, not commands themselves) via the `jcli.autocomplete` package.
 
 yada yada, do this up eventually once this is up and running again (it's almost ready though!).
-
-## Argument parsing actions
-
-There are specific cases where arguments may need to be parsed in a different manner. You can customise parsing behavior on a per-argument basis by attaching any enum value from the `ArgAction` enum.
-
-### ArgAction.count
-
-By attaching `@(ArgAction.count)` onto a named argument, the argument's behavior will change in the following ways:
-
-* Every time the argument is defined within the command's parameters, the value of the argument is incremented.
-
-* The argument becomes optional by default. (No need for `Nullable`).
-
-* No explicit value can be given to the argument.
-
-* Arg binding and arg validation are not performed.
-
-* Special syntax `-aaaa` (where 'a' is the name of the arg) is supported. (Increments 4 times).
-
-Here's an example command:
-
-```d
-@CommandDefault("Outputs the value of '-a'.")
-struct SumCommand
-{
-    @ArgNamed("a")
-    @(ArgAction.count)
-    int arg;
-
-    void onExecute()
-    {
-        writeln(this.arg);
-    }
-}
-```
-
-With an example usage:
-
-```bash
-$> ./myTool -a -a
-2
-
-$> ./myTool -aaaaa
-5
-
-$> ./myTool
-0
-```
 
 ## Command Introspection
 
@@ -1316,14 +1273,15 @@ The information below is useful for seeing which combinations of features are su
 Supported orthogonal higher level flag combinatons (encouraged to use).
 "implied" written in a cell means the flag combination from the header implies the flag combination from the left:
 
-|                | canRedefine | optional | caseInsensitive | accumulate | aggregate | repeatableName | parseAsFlag |
-|----------------|-------------|----------|----------------|------------|-----------|----------------|-------------|
-| canRedefine    | o           | +        | +              | -          | -         | - (not yet)    | +           |
-| optional       | + implied   | o        | +              | +          | +         | +              | + implied   |
-| caseInsensitive | +           | +        | o              | +          | +         | +              | +           |
-| accumulate     | -           | +        | +              | o          | -         | + implied      | -           |
-| aggregate      | -           | +        | +              | -          | o         | -              | -           |
-| repeatableName | - (not yet) | +        | +              | +          | -         | o              | -           |
+|                 | canRedefine | optional | caseInsensitive | accumulate | aggregate | repeatableName | parseAsFlag |
+|-----------------|-------------|----------|-----------------|------------|-----------|----------------|-------------|
+| canRedefine     | o           | +        | +               | -          | -         | - (not yet)    | +           |
+| optional        | + implied   | o        | +               | +          | +         | +              | + implied   |
+| caseInsensitive | +           | +        | o               | +          | +         | +              | +           |
+| accumulate      | -           | +        | +               | o          | -         | + implied      | -           |
+| aggregate       | -           | +        | +               | -          | o         | -              | -           |
+| repeatableName  | - (not yet) | +        | +               | +          | -         | o              | -           |
+| parseAsFlag     | -           | +        | +               | -          | -         | -              | o           |
 
 
 ### ArgConfig.caseInsensitive
@@ -1337,6 +1295,48 @@ By attaching `@(ArgConfig.caseInsensitive)` onto a named argument, it will allow
 By default, named arguments can only be defined once, meaning `--abc 2 --abc 1` produces an error.
 
 By attaching `@(ArgConfig.canRedefine)` onto a named argument, the right-most definition will be used (so, `--abc 1` in this case).
+
+### ArgConfig.optional
+
+By default, named arguments are mandatory unless marked they're a `Nullable` type.
+
+By attaching `@(ArgConfig.optional)` onto a named argument, it is no longer an error to not specify the argument.
+
+### ArgConfig.accumulate
+
+This is a special case for numeric named arguments. Everytime the argument is defined, it will increment the argument's value.
+
+So `-a` produces `1`, `-a -a -a` produces `3`, etc.
+
+### ArgConfig.aggregate
+
+This is a special case for array named arguments. Everytime the argument is defined, it will append a value onto the array.
+
+So `-a a -a b` would produce `["a", "b"]`.
+
+### ArgConfig.repeatableName
+
+Allows the argument's name to be repeated multiple times.
+
+So `-v` would define `v` once, `-vvvv` would define `-v` multiple times.
+
+This is mostly useful when paired with `ArgConfig.accumulate`.
+
+### ArgConfig.parseAsFlag
+
+Enables flag semantics for the named argument. This can only work on `bool` and `Nullable!bool`.
+
+If the argument is defined by itself with no value, then it is set to true: `--verbose`
+
+If the argument is defined with a value, and the value is either `true` or `false`, then the
+argument is set to that given value: `--verbose true`
+
+If the argument is defined with a value, and the value isn't `true` or `false`, and there's
+a space between the argument name and its value, then the value is treated as a positional argument
+instead of a named argument value, and the named argument is set to `true`: `--verbose foo`
+
+If the argument is defined with a value, and the value isn't `true` or `false`, and there''s
+an equal sign between the argument name and its value, then this is treated as an error: `--verbose=foo`
 
 # Using JCLI without Dub
 
