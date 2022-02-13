@@ -26,7 +26,8 @@ string toFlagsString(Flags)(Flags flags)
                             result ~= " | ";
                         else
                             isFirst = false;
-                        result ~= ReadableFlags.stringof ~ "." ~ memberName;
+                        // result ~= ReadableFlags.stringof ~ "." ~ memberName;
+                        result ~= memberName;
                         break Switch;
                     }
                 }
