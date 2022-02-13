@@ -32,7 +32,7 @@ private alias ErrorCode = CommandParsingErrorCode;
 
 struct DefaultParseErrorHandler
 {
-    const:
+    const @safe:
 
     bool shouldRecord(ErrorCode errorCode)
     {
@@ -45,37 +45,41 @@ struct DefaultParseErrorHandler
     }
 }
 
-// TODO: this thing.
+// TODO: 
+// I think there is a solid reason to do a handler interface here.
+// It would have the two methods like in the default handler above.
+// The format method will have to be a vararg one.
+// Why? To control the binary size. A couple of virtual calls for the errors will be
+// better than generating code for this function twice, even tho meh I don't know.
+// It isn't that big in code, but when instantiated for a large struct, it could bloat
+// the binary size. 
 // interface IRecordError{}
 
-// TODO: 
-// Why does this template even exist?
-// It should just be a normal templated function.
-template CommandParser(alias CommandT_, alias _bindArgument = jcli.argbinder.bindArgument!())
+/// The errors are always recorded (or ignored) via a handler object.
+struct ParseResult(CommandType)
 {
-    alias CommandT     = CommandT_;
-    alias bindArgument = _bindArgument;
-    alias ArgumentInfo = jcli.introspect.CommandArgumentsInfo!CommandT;
+    size_t errorCount;
+    // TODO: we should take the command as a ref?
+    CommandType value;
+    
+    @safe nothrow @nogc pure const:
+    bool isOk() { return errorCount == 0; }
+    bool isError() { return errorCount > 0; }
+}
+
+template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgument!())
+{
+    alias ArgumentInfo = jcli.introspect.CommandArgumentsInfo!CommandType;
+    alias Result       = ParseResult!CommandType;
 
     static import std.stdio;
-    static struct ParseResult
+    ParseResult!CommandType parse(scope string[] args)
     {
-        size_t errorCount;
-        // TODO: we should take the command as a ref?
-        CommandT value;
-        
-        @safe nothrow @nogc pure const:
-        bool isOk() { return errorCount == 0; }
-        bool isError() { return errorCount > 0; }
-    }
-
-    static ParseResult parse(scope string[] args)
-    {
-        static DefaultParseErrorHandler dummy = DefaultParseErrorHandler();
+        scope auto dummy = DefaultParseErrorHandler();
         return parse(args, dummy);
     }
 
-    static ParseResult parse
+    ParseResult!CommandType parse
     (
         TErrorHandler
     )
@@ -88,7 +92,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = jcli.argbinder.bin
         return parse(parser, errorHandler);
     }
 
-    static ParseResult parse
+    ParseResult!CommandType parse
     (
         // TODO:
         // Perhaps this should be a delegate?
@@ -101,7 +105,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = jcli.argbinder.bin
         ref scope TErrorHandler errorHandler
     )
     {
-        auto command = CommandT();
+        auto command = CommandType();
 
         static if (ArgumentInfo.named.length > 0)
         {
@@ -491,7 +495,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = jcli.argbinder.bin
             }
         }
 
-        return ParseResult(errorCounter, command);
+        return typeof(return)(errorCounter, command);
     }
 }
 
