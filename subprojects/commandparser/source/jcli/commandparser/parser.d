@@ -174,7 +174,7 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
                 tokenizer.popFront();
                 break OuterLoop;
             }
-                    
+
             tokenizer.popFront();
 
             // Cannot be final, since there are flags.
@@ -307,18 +307,24 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
 
                             static if (namedArgInfo.flags.has(ArgFlags._parseAsFlagBit))
                             {
+                                // Default to setting the field to true, since it's defined.
+                                // The only scenario where it should be false is if `--arg false` is used.
+                                command.getArgumentFieldRef!namedArgInfo = true;
+
                                 if (tokenizer.empty)
-                                {
-                                    command.getArgumentFieldRef!namedArgInfo = true;
                                     break OuterLoop;
-                                }
 
                                 auto nextArgToken = tokenizer.front;
                                 if (!(nextArgToken.kind & Kind.valueBit))
-                                {
-                                    command.getArgumentFieldRef!namedArgInfo = true;
                                     continue OuterLoop;
-                                }
+
+                                // Providing a value to a bool is optional, so to avoid producing an unwanted
+                                // error, we need to white list the allowed values if it's not explicitly
+                                // marked as the argument's value.
+                                if(nextArgToken.kind == Kind.namedArgumentValueOrPositionalArgument
+                                && nextArgToken.valueSlice != "true" 
+                                && nextArgToken.valueSlice != "false")
+                                    continue OuterLoop;
 
                                 auto bindResult = bindArgument!namedArgInfo(command, nextArgToken.valueSlice);
                                 if (bindResult.isOk)
@@ -326,18 +332,14 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
                                     tokenizer.popFront();
                                     continue OuterLoop;
                                 }
-                                else if (bindResult.isError && nextArgToken.kind == Kind.namedArgumentValue)
+                                else if (bindResult.isError)
                                 {
                                     recordBindError(bindResult);
                                     tokenizer.popFront();
                                     continue OuterLoop;
                                 }
-                                else
-                                {
-                                    // Skip reporting this error, because providing values to boolean flags is optional.
-                                    continue OuterLoop;
-                                }
                             }
+                            
 
                             else static if (namedArgInfo.argument.flags.has(ArgFlags._countBit))
                             {
@@ -402,14 +404,7 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
                                     // NOTE: ArgFlags._accumulateBit should have been handled in the binder.
                                     auto result = bindArgument!namedArgInfo(command, nextArgToken.valueSlice);
                                     if (result.isError)
-                                    {
-                                        recordError(
-                                            ErrorCode.bindError,
-                                            "An error occured while trying to bind the named argument %s: "
-                                                ~ "%s; Error code %d.",
-                                            namedArgInfo.identifier,
-                                            result.error, result.errorCode);
-                                    }
+                                        recordBindError(result);
                                     tokenizer.popFront();
                                     continue OuterLoop;
                                 }
@@ -445,7 +440,7 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
                 else
                     ret ~= "at least";
 
-                ret ~= "%d positional arguments but got only %d. The command takes the following positional arguments: ";
+                ret ~= " %d positional arguments but got only %d. The command takes the following positional arguments: ";
 
                 {
                     import std.algorithm : map;
@@ -846,6 +841,26 @@ unittest
         const result = parse(["-a", "-a"]);
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgPositional
+        string _;
+
+        @ArgNamed("implicit")
+        @(ArgConfig.parseAsFlag)
+        bool a;
+    }
+
+    mixin ParseBoilerplate!S;
+
+    {
+        const result = parse(["-implicit", "positional"]);
+        assert(result.isOk, output.result.data);
     }
 }
 
