@@ -51,7 +51,8 @@ template bindArgument(Binders...)
                 return fail!void(validationResult.error, validationResult.errorCode);
         }}
 
-        ResultOf!ArgumentType conversionResult = conversionFunction(stringValue);
+        ResultOf!ArgumentType conversionResult; // Declared here first in order for opAssign to be called.
+        conversionResult = conversionFunction(stringValue);
         if (!conversionResult.isOk)
             return fail!void(conversionResult.error, conversionResult.errorCode);
 
