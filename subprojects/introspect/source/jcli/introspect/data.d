@@ -67,12 +67,12 @@ template isNameMatch(NamedArgumentInfo namedArgumentInfo)
         }
         static if (namedArgumentInfo.flags.has(ArgFlags._repeatableNameBit))
         {
-            bool allSame = value.all(value[0]);
+            bool allSame = value.all!(a => a == value[0]);
             if (!allSame)
                 return false;
             bool noMatches = namedArgumentInfo
                 .pattern
-                .matches!caseInsensitive(value[0])
+                .matches!caseInsensitive(value[0 .. 1])
                 .empty;
             return !noMatches;
         }

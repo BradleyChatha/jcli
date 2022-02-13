@@ -6,25 +6,26 @@ import std.conv : to;
 /// This is needed mostly for testing purposes
 enum CommandParsingErrorCode
 {
+    none = 0,
     /// Since we don't need to test the underlying argument parser, this is a placeholder.
     /// Ideally, we should mirror those errors here, or something like that.
-    argumentParserError,
+    argumentParserError = 1 << 0,
     ///
-    tooManyPositionalArgumentsError,
+    tooManyPositionalArgumentsError = 1 << 1,
     /// Either trying to bind a positional argument or a named one.
-    bindError,
+    bindError = 1 << 2,
     ///
-    duplicateNamedArgumentError,
+    duplicateNamedArgumentError = 1 << 3,
     ///
-    countArgumentGivenValueError,
+    countArgumentGivenValueError = 1 << 4,
     /// 
-    noValueForNamedArgumentError,
+    noValueForNamedArgumentError = 1 << 5,
     ///
-    unknownNamedArgumentError,
+    unknownNamedArgumentError = 1 << 6,
     ///
-    tooFewPositionalArgumentsError,
+    tooFewPositionalArgumentsError = 1 << 7,
     ///
-    missingNamedArgumentsError,
+    missingNamedArgumentsError = 1 << 8,
 }
 
 private alias ErrorCode = CommandParsingErrorCode;
@@ -274,12 +275,17 @@ template CommandParser(alias CommandT_, alias _bindArgument = jcli.argbinder.bin
 
                             static if (namedArgInfo.flags.doesNotHave(ArgFlags._multipleBit))
                             {
-                                if (namedArgHasBeenFoundBitArray[namedArgIndex])
+                                if (namedArgHasBeenFoundBitArray[namedArgIndex]
+                                    // This error type being ignored means the user implicitly wants
+                                    // all of the arguments to be processed as though they had the canRedefine bit.
+                                    && errorHandler.shouldRecord(ErrorCode.duplicateNamedArgumentError))
                                 {
-                                    recordError(
+                                    errorHandler.format(
                                         ErrorCode.duplicateNamedArgumentError,
                                         "Duplicate named argument %s.",
                                         namedArgInfo.name);
+                                    errorCounter++;
+                                    
 
                                     // Skip its value too
                                     if (!tokenizer.empty
@@ -334,7 +340,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = jcli.argbinder.bin
                                 alias TypeOfField = typeof(command.getArgumentFieldRef!namedArgInfo);
                                 static assert(__traits(isArithmetic, TypeOfField));
                                 
-                                static if (namedArgInfo.argument.flags.has(ArgFlags._canRedefineBit))
+                                static if (namedArgInfo.argument.flags.has(ArgFlags._repeatableNameBit))
                                 {
                                     const valueToAdd = cast(TypeOfField) currentArgToken.valueSlice.length;
                                 }
@@ -759,6 +765,18 @@ unittest
         assert(result.isError);
         assert(output.errorCodes[].canFind(ErrorCode.countArgumentGivenValueError));
     }
+    {
+        // Does not imply repeatableName.
+        const result = parse(["-aaa"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.unknownNamedArgumentError));
+    }
+    {
+        // Still not allowed even with a number.
+        const result = parse(["-a=3"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.countArgumentGivenValueError));
+    }
 }
 
 unittest
@@ -946,5 +964,82 @@ unittest
         assert(result.isOk);
         assert(result.value.a == "c");
         assert(result.value.raw == ["--Штука", "-物事"]);
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgNamed
+        @(ArgConfig.repeatableName | ArgConfig.optional)
+        int a;
+    }
+    
+    mixin Things!S;
+
+    {
+        const result = parse([]);
+        assert(result.isOk);
+        assert(result.value.a == 0);
+    }
+    {
+        const result = parse(["-a"]);
+        assert(result.isOk);
+        assert(result.value.a == 1);
+    }
+    {
+        const result = parse(["-aaa"]);
+        assert(result.isOk);
+        assert(result.value.a == 3);
+    }
+    {
+        const result = parse(["-aaa", "-a"]);
+        assert(result.isError);
+        assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
+    }
+}
+
+unittest
+{
+    static struct S
+    {
+        @ArgNamed
+        int a;
+    }
+    
+    struct TestErrorHandler
+    {
+        ErrorCode ignoredErrorCodes;
+        Appender!(ErrorCode[]) errorCodes;
+
+        bool shouldRecord(ErrorCode errorCode)
+        {
+            return (errorCode & ignoredErrorCodes) == 0;
+        }
+
+        void format(T...)(ErrorCode errorCode, T args)
+        {
+            errorCodes ~= errorCode;
+        }
+
+        void clear()
+        {
+            errorCodes.clear();
+        }
+    }
+
+    static auto parse(scope string[] args, ref TestErrorHandler handler)
+    {
+        handler.clear();
+        return CommandParser!S.parse(args, handler);
+    }
+    auto handler = TestErrorHandler(ErrorCode.none, appender!(ErrorCode[]));
+
+    {
+        handler.ignoredErrorCodes = ErrorCode.duplicateNamedArgumentError;
+        const result = parse(["-a=2", "-a=3"], handler);
+        assert(result.isOk);
+        assert(result.value.a == 3);
     }
 }
