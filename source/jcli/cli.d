@@ -221,8 +221,8 @@ final class CommandLineInterface(Modules...)
             static DefaultParseErrorHandler dummy = DefaultParseErrorHandler();
             auto result = CommandParser.parse(parser, dummy);
 
-            import std.exception : enforce;
-            enforce(result.isOk);
+            if(!result.isOk) // Error is already printed
+                return -1;
 
             static if(is(typeof(result.value.onExecute()) == int))
             {

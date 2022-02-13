@@ -339,7 +339,6 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
                                     continue OuterLoop;
                                 }
                             }
-                            
 
                             else static if (namedArgInfo.argument.flags.has(ArgFlags._countBit))
                             {

@@ -13,19 +13,20 @@ enum Colour
 @Command("echo", "Echos all of its parameters.")
 struct EchoCommand
 {
-    @ArgNamed("b|bool", "Boolean arguments are implicitly true unless given true/false as a value.")
+    @ArgNamed("bool|b", "Boolean arguments are implicitly true unless given true/false as a value.")
+    @(ArgConfig.parseAsFlag)
     Nullable!bool b;
 
-    @ArgNamed("i|int", "Integer argument (any numeric type is supported)")
+    @ArgNamed("int|i", "Integer argument (any numeric type is supported)")
     Nullable!int i;
 
-    @ArgNamed("f|float", "Float argument (in fact _any_ type that can be passed to `std.conv.to!T(str)` will work!)")
+    @ArgNamed("float|f", "Float argument (in fact _any_ type that can be passed to `std.conv.to!T(str)` will work!)")
     Nullable!float f;
 
-    @ArgNamed("e|enum", "Enum arguments, for example, work with `str.to!Enum()`")
+    @ArgNamed("enum|e", "Enum arguments, for example, work with `str.to!Enum()`")
     Nullable!Colour e;
 
-    @ArgNamed("s|string", "Strings are obviously supported")
+    @ArgNamed("string|s", "Strings are obviously supported")
     Nullable!string s;
 
     void onExecute()

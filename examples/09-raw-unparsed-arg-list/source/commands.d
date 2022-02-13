@@ -23,11 +23,11 @@ struct RunCommand
     string command;
 
     @ArgRaw
-    ArgParser args;
+    string[] args;
 
     void onExecute()
     {
-        writefln("Running command '%s' with arguments %s", this.command, args.map!(arg => arg.fullSlice).filter!(arg => arg.length));
+        writefln("Running command '%s' with arguments %s", this.command, args);
     }
 
     /++

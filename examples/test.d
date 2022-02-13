@@ -134,15 +134,18 @@ auto TEST_CASES =
 
     testCase().inFolder         ("./06-result-with-fail-code/")
               .withParams       ("abc")
-              .expectStatusToBe (100)
+            //   .expectStatusToBe (100)
+              .expectStatusToBe (-1)
               .finish           (),
     testCase().inFolder         ("./06-result-with-fail-code/")
               .withParams       ("0")
-              .expectStatusToBe (102)
+            //   .expectStatusToBe (102)
+              .expectStatusToBe (-1)
               .finish           (),
     testCase().inFolder         ("./06-result-with-fail-code/")
               .withParams       ("3")
-              .expectStatusToBe (101)
+            //   .expectStatusToBe (101)
+              .expectStatusToBe (-1)
               .finish           (),
     testCase().inFolder         ("./06-result-with-fail-code/")
               .withParams       ("1")

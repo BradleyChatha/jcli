@@ -17,7 +17,7 @@ enum ArgConfig : ArgFlags
 
     /// The name of the argument is case insensitive.
     /// Aka "--STUFF" will work in place of "--stuff".
-    caseInsesitive = ArgFlags._caseInsensitiveBit,
+    caseInsensitive = ArgFlags._caseInsensitiveBit,
 
     /// Example: `-a -a` gives 2.
     accumulate = ArgFlags._multipleBit | ArgFlags._countBit,

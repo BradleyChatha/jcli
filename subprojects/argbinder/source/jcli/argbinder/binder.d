@@ -14,12 +14,15 @@ template UseConverter(alias _conversionFunction)
 }
 template PreValidate(_validationFunctions...)
 {
-    alias validationFunctions = _validationFunction;
+    alias validationFunctions = _validationFunctions;
 }
 template PostValidate(_validationFunctions...)
 {
-    alias validationFunctions = _validationFunction;
+    alias validationFunctions = _validationFunctions;
 }
+
+alias PreValidator = PreValidate!();
+alias PostValidator = PostValidate!();
 
 template bindArgument(Binders...)
 {

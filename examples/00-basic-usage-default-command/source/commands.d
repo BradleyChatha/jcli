@@ -21,6 +21,7 @@ struct AssertEvenCommand
     //
     // i.e. "mytool.exe -a 20 --value 400" - '-a 20' assigns '20' to the arg named 'a', ditto for '--value 400'
     @ArgNamed("reverse", "If specified, then assert that the number is ODD instead.")
+    @(ArgConfig.parseAsFlag)
     Nullable!bool reverse;
 
     // Return either int or void. Use `int` if you want to control the exit code.

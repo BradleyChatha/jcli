@@ -1316,11 +1316,11 @@ The information below is useful for seeing which combinations of features are su
 Supported orthogonal higher level flag combinatons (encouraged to use).
 "implied" written in a cell means the flag combination from the header implies the flag combination from the left:
 
-|                | canRedefine | optional | caseInsesitive | accumulate | aggregate | repeatableName | parseAsFlag |
+|                | canRedefine | optional | caseInsensitive | accumulate | aggregate | repeatableName | parseAsFlag |
 |----------------|-------------|----------|----------------|------------|-----------|----------------|-------------|
 | canRedefine    | o           | +        | +              | -          | -         | - (not yet)    | +           |
 | optional       | + implied   | o        | +              | +          | +         | +              | + implied   |
-| caseInsesitive | +           | +        | o              | +          | +         | +              | +           |
+| caseInsensitive | +           | +        | o              | +          | +         | +              | +           |
 | accumulate     | -           | +        | +              | o          | -         | + implied      | -           |
 | aggregate      | -           | +        | +              | -          | o         | -              | -           |
 | repeatableName | - (not yet) | +        | +              | +          | -         | o              | -           |

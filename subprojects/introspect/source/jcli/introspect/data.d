@@ -5,12 +5,20 @@ import jcli.core;
 
 import std.conv : to;
 
-struct CommandGeneralInfo
+struct CommandGeneralInfo(CommandUdaT)
 {
-    Command uda;
+    CommandUdaT uda;
     string identifier;
     bool isDefault;
-    string name() const nothrow @nogc pure @safe { return uda.name; }
+
+    string name() const nothrow @nogc pure @safe 
+    {
+        static if(__traits(hasMember, CommandUdaT, "name")) 
+            return uda.name;
+        else
+            return "";
+    }
+    
     ref inout(string) description() inout nothrow @nogc pure @safe { return uda.description; }
 
 }
@@ -125,7 +133,7 @@ template getArgumentFieldSymbol(TCommand, alias argumentInfoOrFieldPath)
 template CommandInfo(TCommand)
 {
     alias CommandType = TCommand;
-    immutable CommandGeneralInfo general = getGeneralCommandInfoOf!TCommand;
+    immutable general = getGeneralCommandInfoOf!TCommand;
     alias Arguments = CommandArgumentsInfo!TCommand;
 }
 
@@ -560,7 +568,7 @@ ArgFlags foldArgumentFlags(udas...)()
 // This function is needed as a separate entity as a workaround the compiler quirk that makes
 // us unable to query attributes of field symbols in templated functions.
 // I would've inlined it below, but we're forced to use a template, or pass the arguments as an alias seq. 
-ArgFlags inferOptionalityAndValidate(FieldType)(ArgFlags initialFlags, FieldType fieldDefaultValue) pure
+ArgFlags inferOptionalityAndValidate(FieldType)(ArgFlags initialFlags, FieldType fieldDefaultValue)
 {
     import std.conv : to;
     ArgFlags flags = initialFlags;
@@ -681,7 +689,7 @@ template getGeneralCommandInfoOf(TCommand)
     enum identifier = __traits(identifier, TCommand);
 
     // TODO: Not needed, the general info is not needed either.
-    enum getGeneralCommandInfoOf = CommandGeneralInfo(command, identifier, isDefault);
+    enum getGeneralCommandInfoOf = CommandGeneralInfo!(typeof(command))(command, identifier, isDefault);
 }
 
 template fieldsWithUDAOf(T, UDAType)
