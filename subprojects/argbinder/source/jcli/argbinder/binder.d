@@ -4,21 +4,20 @@ import jcli.introspect, jcli.core;
 
 import std.algorithm;
 import std.meta;
-import std.conv : to;
 import std.traits;
 
 enum Binder;
-template UseConverter(alias _ConverterFunction)
+template UseConverter(alias _convertionFunction)
 { 
-    alias ConverterFunction = _ConverterFunction;
+    alias convertionFunction = _convertionFunction;
 }
-template PreValidate(_ValidationFunctions...)
+template PreValidate(_validationFunctions...)
 {
-    alias ValidationFunctions = _ValidationFunction;
+    alias validationFunctions = _validationFunction;
 }
-template PostValidate(_ValidationFunctions...)
+template PostValidate(_validationFunctions...)
 {
-    alias ValidationFunctions = _ValidationFunction;
+    alias validationFunctions = _validationFunction;
 }
 
 template bindArgument(Binders...)
@@ -57,20 +56,21 @@ template bindArgument(Binders...)
 template bindArgumentAcrossModules(Modules...)
 {
     alias ToBinder(alias M)         = getSymbolsByUDA!(M, Binder);
-    alias Binders                   = staticMap!(ToBinder, AliasSeq!(Modules, jcli.argbinder.binder));
+    alias Binders                   = staticMap!(ToBinder, Modules);
     alias bindArgumentAcrossModules = bindArgument!(Binders);
 }
 
 template GetArgumentBinderInfo(ArgumentCommonInfo argumentCommonInfo, TCommand, Binders...)
 {
-    alias argumentFieldSymbol = getArgumentFieldSymbol!argumentCommonInfo;
-    alias preValidators       = getValidators!(ArgumentFieldSymbol, PreValidator);
-    alias postValidators      = getValidators!(ArgumentFieldSymbol, PostValidator);
-    alias convertionFunction  = getConversionFunction!(ArgumentFieldSymbol, Binders);
+    alias argumentFieldSymbol = getArgumentFieldSymbol!(TCommand, argumentCommonInfo);
+    alias preValidators       = getValidators!(argumentFieldSymbol, PreValidate);
+    alias postValidators      = getValidators!(argumentFieldSymbol, PostValidate);
+    alias convertionFunction  = getConversionFunction!(argumentFieldSymbol, Binders);
 }
 
 // This function should be used to convert the string 
 // to the given value when all other options have failed.
+import std.conv : to, ConvException;
 ResultOf!T universalFallbackConverter(T)(string value)
     if (__traits(compiles, to!T))
 {
@@ -86,34 +86,34 @@ template getValidators(alias ArgSymbol, alias ValidatorUDAType)
 {
     alias result = AliasSeq!();
     static foreach (alias ValidatorUDA; getUDAs!(ArgSymbol, ValidatorUDAType))
-        result = AliasSeq!(result, ValidatorUDA.ValidationFunctions);
+        result = AliasSeq!(result, ValidatorUDA.validationFunctions);
     alias getValidators = result;
 }
 
 /// Binders must be functions returning ResultOf
-template getConversionFunction(alias ArgSymbol, Binders...)
+template getConversionFunction(alias argumentFieldSymbol, Binders...)
 {
     import std.traits;
-    alias ArgumentType = typeof(ArgSymbol);
-    alias FoundExplicitConverters = getUDAs!(ArgSymbol, UseConverter);
+    alias ArgumentType = typeof(argumentFieldSymbol);
+    alias FoundExplicitConverters = getUDAs!(argumentFieldSymbol, UseConverter);
 
-    static assert(FoundExplicitBinders.length <= 1, "Only one @UseConverter may exist.");
-    static if(FoundExplicitBinders.length == 0)
+    static assert(FoundExplicitConverters.length <= 1, "Only one @UseConverter may exist.");
+    static if(FoundExplicitConverters.length == 0)
     {
-        alias ConverterFunction = FoundExplicitConverters[0].ConverterFunction;
-
         enum isValidConversionFunction(alias f) = 
-            __traits(compiles, { ArgumentType a = f!(ArgT)("").value; })
+            __traits(compiles, { ArgumentType a = f!(ArgumentType)("").value; })
             || __traits(compiles, { ArgumentType a = f("").value; });
-        alias ValidConversionFunctions = Filter!(isValidConversionFunction, Binders);
+        alias validConversionFunctions = Filter!(isValidConversionFunction, Binders);
 
-        static if (ValidConversionFunctions.length == 0)
-            alias getConversionFunction = universalFallbackConverter!ArgT;
-        else static if(__traits(compiles, Instantiate!(ValidConversionFunctions[0], ArgT)))
-            alias getConversionFunction = Instantiate!(ValidConversionFunctions[0], ArgT);
+        static if (validConversionFunctions.length == 0)
+            alias getConversionFunction = universalFallbackConverter!ArgumentType;
+        else static if(__traits(compiles, Instantiate!(validConversionFunctions[0], ArgumentType)))
+            alias getConversionFunction = Instantiate!(validConversionFunctions[0], ArgumentType);
         else
-            alias getConversionFunction = ValidConversionFunctions[0];
+            alias getConversionFunction = validConversionFunctions[0];
     }
     else
-        alias getConversionFunction = FoundExplicitBinders[0].Func;
+    {
+        alias getConversionFunction = FoundExplicitConverters[0].converterFunction;
+    }
 }

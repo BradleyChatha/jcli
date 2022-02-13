@@ -9,7 +9,13 @@ package(jcli) mixin template BeingNamed()
 
     @safe pure const:
     string name() nothrow @nogc { return pattern[0]; }
+}
 
+// NOTE: 
+// The constructors seem to not work when mixed in with the template above,
+// which is why I mix in the string.
+private enum string ConstructorsMixinString = 
+q{
     this(string stringPattern, string description = "")
     {
         this.pattern = Pattern.parse(stringPattern);
@@ -27,11 +33,12 @@ package(jcli) mixin template BeingNamed()
         this.pattern = Pattern(pattern);
         this.description = description;
     }
-}
+};
 
 struct Command
 {
     mixin BeingNamed;
+    mixin(ConstructorsMixinString);
 }
 
 struct CommandDefault
@@ -48,6 +55,7 @@ struct ArgPositional
 struct ArgNamed
 {
     mixin BeingNamed;
+    mixin(ConstructorsMixinString);
 }
 
 struct ArgGroup

@@ -84,8 +84,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
     )
     {
         scope auto parser = argTokenizer(args);
-        const result = parse(errorHandlerFormatFunction, parser);
-        return result;
+        return parse(errorHandlerFormatFunction, parser);
     }
 
     static ParseResult parse
@@ -123,12 +122,12 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
             // For non-required arguments this is always 0.
             size_t[lengthOfBitArrayStorage] requiredNamedArgHasNotBeenFoundBitArrayStorage;
             BitArray requiredNamedArgHasNotBeenFoundBitArray = BitArray(
-                cast(void) requiredNamedArgHasNotBeenFoundBitArrayStorage, ArgumentInfo.named.length);
+                cast(void[]) requiredNamedArgHasNotBeenFoundBitArrayStorage, ArgumentInfo.named.length);
 
             // Is 1 if an argument has been found at least once, otherwise 0.
             size_t[lengthOfBitArrayStorage] namedArgHasBeenFoundBitArrayStorage;
             BitArray namedArgHasBeenFoundBitArray = BitArray(
-                cast(void) namedArgHasBeenFoundBitArrayStorage, ArgumentInfo.named.length);
+                cast(void[]) namedArgHasBeenFoundBitArrayStorage, ArgumentInfo.named.length);
             
             static foreach (index, arg; ArgumentInfo.named)
             {
@@ -258,7 +257,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
                     // Check if any of the arguments matched the name
                     static foreach (namedArgIndex, namedArgInfo; ArgumentInfo.named)
                     {{
-                        if (isNameMatch!namedArgInfo(arg.nameSlice))
+                        if (isNameMatch!namedArgInfo(currentArgToken.nameSlice))
                         {
                             static if (namedArgInfo.flags.doesNotHave(ArgFlags._multipleBit))
                             {
@@ -275,27 +274,27 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
                                     {
                                         tokenizer.popFront();
                                     }
-                                    continue OuterSwitch;
+                                    continue OuterLoop;
                                 }
                             }
-                            namedArgHasBeenFoundBitArray[namedArgInfo] = true;
+                            namedArgHasBeenFoundBitArray[namedArgIndex] = true;
 
                             static if (namedArgInfo.flags.has(ArgFlags._optionalBit))
-                                requiredNamedArgHasNotBeenFoundBitArray[namedArgInfo] = true;
+                                requiredNamedArgHasNotBeenFoundBitArray[namedArgIndex] = true;
 
                             static if (namedArgInfo.flags.has(ArgFlags._parseAsFlagBit))
                             {
                                 if (tokenizer.empty)
                                 {
                                     command.getArgumentFieldRef!namedArgInfo = true;
-                                    break OuterSwitch;
+                                    break OuterLoop;
                                 }
 
                                 auto nextArgToken = tokenizer.front;
                                 if ((nextArgToken.kind & Kind._namedArgumentValueBit) == 0)
                                 {
                                     command.getArgumentFieldRef!namedArgInfo = true;
-                                    continue OuterSwitch;
+                                    continue OuterLoop;
                                 }
 
                                 // TODO: Shouldn't we consider the case sensitivity here??
@@ -317,7 +316,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
                                 }
 
                                 tokenizer.popFront();
-                                continue OuterSwitch;
+                                continue OuterLoop;
                             }
 
                             else static if (namedArgInfo.argument.flags.has(ArgFlags._countBit))
@@ -365,7 +364,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
                                 }
 
                                 auto nextArgToken = tokenizer.front;
-                                if ((nextArgToken & Kind._namedArgumentValueBit) == 0)
+                                if ((nextArgToken.kind & Kind._namedArgumentValueBit) == 0)
                                 {
                                     recordError(
                                         ErrorCode.noValueForNamedArgumentError,
@@ -381,14 +380,14 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
 
                                 {
                                     // NOTE: ArgFlags._accumulateBit should have been handled in the binder.
-                                    auto result = bindArgument!(named.argument)(nextArgToken.valueSlice, command);
+                                    auto result = bindArgument!(namedArgInfo.argument)(nextArgToken.valueSlice, command);
                                     if (result.isError)
                                     {
                                         recordError(
                                             ErrorCode.bindError,
                                             "An error occured while trying to bind the named argument %: "
                                                 ~ "%; Error code %.",
-                                            positional.identifier,
+                                            namedArgInfo.identifier,
                                             result.error, result.errorCode);
                                     }
                                     tokenizer.popFront();
@@ -418,7 +417,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
 
         if (currentPositionalArgIndex < ArgumentInfo.numRequiredPositionalArguments)
         {
-            enum string messageFormat =
+            enum messageFormat =
             (){
                 string ret = "Expected ";
                 if (ArgumentInfo.positional.length == ArgumentInfo.numRequiredPositionalArguments)
@@ -431,7 +430,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
                 {
                     import std.algorithm : map;
                     import std.string : join;
-                    enum string argList = ArgumentInfo.positional.map!(a => a.identifier).join(", ");
+                    enum argList = ArgumentInfo.positional.map!(a => a.name).join(", ");
                     ret ~= argList;
                 }
                 return ret;
@@ -455,7 +454,7 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
                 // in the pattern should be the most descriptive anyway so should be encouraged.
                 string getPattern(size_t index)
                 {
-                    return commandInfo.namedArgs[index].pattern.patterns[0];
+                    return ArgumentInfo.named[index].name;
                 }
 
                 auto failMessageBuilder = appender!string("The following required named arguments were not found: ");
@@ -489,11 +488,13 @@ template CommandParser(alias CommandT_, alias _bindArgument = bindArgument!())
 
 version(unittest)
 {
+    import std.algorithm;
+    import std.array;
+
     struct InMemoryErrorOutput
     {
-        import std.array;
         Appender!(ErrorCode[]) errorCodes;
-        Appender!string result;
+        Appender!(char[]) result;
 
         bool shouldRecord(ErrorCode errorCode)
         {
@@ -516,8 +517,7 @@ version(unittest)
 
     InMemoryErrorOutput createSink()
     {
-        import std.array;
-        return InMemoryErrorOutput(appender!(ErrorCode[]), appender!string);
+        return InMemoryErrorOutput(appender!(ErrorCode[]), appender!(char[]));
     }
 
     mixin template Things(Struct)
@@ -529,8 +529,6 @@ version(unittest)
             return CommandParser!Struct.parse(args, output);
         }
     }
-
-    import std.algorithm;
 }
 
 
@@ -541,7 +539,7 @@ unittest
         @ArgPositional
         string a;
     }
-
+    
     mixin Things!S;
 
     {
@@ -856,12 +854,12 @@ unittest
     {
         const result = parse([]);
         assert(result.isError);
-        assert(output.errorCode[].canFind(ErrorCode.tooFewPositionalArgumentsError));
+        assert(output.errorCodes[].canFind(ErrorCode.tooFewPositionalArgumentsError));
     }
     {
         const result = parse(["a", "b", "c"]);
         assert(result.isError);
-        assert(output.errorCode[].canFind(ErrorCode.tooManyPositionalArgumentsError));
+        assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
     }
 }
 
@@ -893,7 +891,7 @@ unittest
     {
         const result = parse([]);
         assert(result.isError);
-        assert(output.errorCode[].canFind(ErrorCode.tooFewPositionalArgumentsError));
+        assert(output.errorCodes[].canFind(ErrorCode.tooFewPositionalArgumentsError));
     }
     {
         const result = parse(["a", "b", "c"]);
@@ -904,7 +902,7 @@ unittest
     {
         const result = parse(["a", "b", "-c"]);
         assert(result.isError);
-        assert(output.errorCode[].canFind(ErrorCode.unknownNamedArgumentError));
+        assert(output.errorCodes[].canFind(ErrorCode.unknownNamedArgumentError));
     }
 }
 

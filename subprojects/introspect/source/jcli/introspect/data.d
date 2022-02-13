@@ -53,7 +53,7 @@ template isNameMatch(NamedArgumentInfo namedArgumentInfo)
     /// Tries to match the pattern specified as the template argument.
     bool isNameMatch(string value)
     {
-        enum caseInsensitive = flags.has(ArgFlags._caseInsensitiveBit);
+        enum caseInsensitive = namedArgumentInfo.flags.has(ArgFlags._caseInsensitiveBit);
         {
             bool noMatches = namedArgumentInfo
                 .pattern
@@ -94,25 +94,27 @@ struct PositionalArgumentInfo
 // }
 
 
-private template fieldPathOf(alias commonArgumentInfoOrFieldPath)
+private template fieldPathOf(alias argumentInfoOrFieldPath)
 {
-    static if (is(typeof(commonArgumentInfoOrFieldPath) == ArgumentCommonInfo)) 
-        enum string fieldPath = info.identifier;
+    static if (is(typeof(argumentInfoOrFieldPath) == ArgumentCommonInfo)) 
+        enum string fieldPathOf = argumentInfoOrFieldPath.identifier;
+    else static if (is(typeof(argumentInfoOrFieldPath.argument) == ArgumentCommonInfo)) 
+        enum string fieldPathOf = argumentInfoOrFieldPath.argument.identifier;
     else
-        enum string fieldPath = commonArgumentInfoOrFieldPath;
+        enum string fieldPathOf = argumentInfoOrFieldPath;
 }
 
 /// command.getArgumentFieldRef!argInfo
-template getArgumentFieldRef(alias commonArgumentInfoOrFieldPath)
+template getArgumentFieldRef(alias argumentInfoOrFieldPath)
 {
     ref auto getArgumentFieldRef(TCommand)(ref TCommand command)
     {
-        return mixin("command." ~ fieldPathOf!commonArgumentInfoOrFieldPath ~ ";");
+        mixin("return command." ~ fieldPathOf!argumentInfoOrFieldPath ~ ";");
     }
 }
-template getArgumentFieldSymbol(TCommand, alias commonArgumentInfoOrFieldPath)
+template getArgumentFieldSymbol(TCommand, alias argumentInfoOrFieldPath)
 {
-    alias getArgumentFieldSymbol = mixin("TCommand." ~ fieldPathOf!commonArgumentInfoOrFieldPath ~ ";");
+    mixin("alias getArgumentFieldSymbol = TCommand." ~ fieldPathOf!argumentInfoOrFieldPath ~ ";");
 }
 
 template CommandInfo(TCommand)
@@ -508,10 +510,13 @@ private:
 import std.traits;
 import std.meta;
 
-template getFlags(alias field)
+// NOTE:
+// Passing the udas as a sequence works, but trying to get them within the function does not.
+// Apparently, it may work if we mark the function static, but afaik that's a compiler bug.
+ArgFlags foldArgumentFlags(udas...)()
 {
-    alias result = Alias!(ArgFlags.none);
-    static foreach (uda; __traits(getAttributes, field))
+    ArgFlags result;
+    static foreach (uda; udas)
     {
         static if (is(typeof(uda) : ArgFlags))
         {
@@ -519,11 +524,10 @@ template getFlags(alias field)
                 ArgFlags._inferedOptionalityBit | ArgFlags._mayChangeOptionalityWithoutBreakingThingsBit),
                 "Specifying the `_inferedOptionalityBit` or `_mayChangeOptionalityWithoutBreakingThingsBit`"
                 ~ " in user code is not allowed. The optionality will be inferred automatically by default, if possible.");
-            result = Alias!(result | uda);
+            result |= uda;
         }
     }
-
-    alias getFlags = result;
+    return result;
 }
 
 
@@ -536,6 +540,9 @@ template getFlags(alias field)
 //     enum FieldType initialValue = field.init;
 // }
 
+// This function is needed as a separate entity as a workaround the compiler quirk that makes
+// us unable to query attributes of field symbols in templated functions.
+// I would've inlined it below, but we're forced to use a template, or pass the arguments as an alias seq. 
 ArgFlags inferOptionalityAndValidate(FieldType)(ArgFlags initialFlags, FieldType fieldDefaultValue) pure
 {
     import std.conv : to;
@@ -593,13 +600,18 @@ ArgFlags inferOptionalityAndValidate(FieldType)(ArgFlags initialFlags, FieldType
 }
 
 
-enum string FieldDefaultValue = "__traits(child, __traits(parent, field).init)";
+// NOTE: 
+// We never pass alias to field even to CTFE functions as template parameters,
+// because the compiler essetially prevents their use there.
+// Passing to templates is ok, but trying to do anything with them in template functions
+// makes the compiler complain.
+enum defaultValueOf(alias field) = __traits(child, __traits(parent, field).init, field);
 
 template getCommonArgumentInfo(alias field, ArgFlags initialFlags)
 {
-    enum flagsBeforeInference = initialFlags | getFlags!field;
+    enum flagsBeforeInference = initialFlags | foldArgumentFlags!(__traits(getAttributes, field));
     enum flagsAfterInference  = inferOptionalityAndValidate!(typeof(field))(
-        flagsBeforeInference, mixin(FieldDefaultValue), field);
+        flagsBeforeInference, defaultValueOf!field);
     
     alias groups = getUDAs!(field, ArgGroup);
     static assert(groups.length <= 1, "Only one group attribute is allowed");
@@ -803,8 +815,10 @@ ArgFlags inferArgumentFlagsSpecificToNamedArguments(FieldType)(ArgFlags flags, F
                 assert(fieldDefaultValue == false, 
                     "Fields marked `parseAsFlag` must have the default value false.");
 
+                string messageIfAddedOptional = getArgumentFlagsValidationMessage(flags | _optionalBit);
+
                 // NOTE: This one should always be covered by the flags validation instead.
-                assert(messageIfAddedOptional is null, "Should never be hit!!");
+                assert(messageIfAddedOptional is null, "Should never be hit!!\n" ~ messageIfAddedOptional);
                 
                 if (flags.doesNotHave(_optionalBit))
                     flags |= _optionalBit | _inferedOptionalityBit;
@@ -837,8 +851,8 @@ NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)() pure
         static if (hasNamed || isSimple)
         {
             auto argument  = getCommonArgumentInfo!(field, ArgFlags._namedArgumentBit);
-            argument.flags = inferArgumentFlagsSpecificToNamedArguments!(
-                typeof(field))(argument.flags, mixin(FieldDefaultValue));
+            argument.flags = inferArgumentFlagsSpecificToNamedArguments!(typeof(field))(
+                argument.flags, defaultValueOf!field);
             result ~= NamedArgumentInfo(uda, argument);
         }
     }}
