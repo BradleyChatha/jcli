@@ -1,7 +1,10 @@
 module jcli.core.result;
 
+
 struct ResultOf(alias T)
 {
+    import std.typecons : Nullable;
+
     enum IsVoid = is(T == void);
     alias This = typeof(this);
 
@@ -39,6 +42,14 @@ struct ResultOf(alias T)
         t._error = error;
         t._errorCode = errorCode;
         return t;
+    }
+
+    static if(!is(T == void) && is(T : Nullable!DataT, DataT))
+    void opAssign(inout ResultOf!DataT notNullResult)
+    {
+        this._error = notNullResult._error;
+        this._errorCode = notNullResult._errorCode;
+        this._value = notNullResult._value;
     }
 
     inout:

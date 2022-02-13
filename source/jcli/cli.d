@@ -6,16 +6,13 @@ import std.algorithm;
 import std.stdio : writefln, writeln;
 import std.array;
 
-// Currently broken, so just ingnore it for now.
-// Needs a complete rework.
-version(NotBroken):
-
+// Needs a complete rewrite
 final class CommandLineInterface(Modules...)
 {
     alias Tokenizer     = ArgTokenizer!(string[]);
     alias bindArgument  = bindArgumentAcrossModules!Modules;
 
-    private alias CommandExecute = int delegate();
+    private alias CommandExecute = int delegate(Tokenizer);
     private alias CommandHelp    = string delegate();
 
     private struct CommandInfo
@@ -57,7 +54,8 @@ final class CommandLineInterface(Modules...)
             tokenizer = argTokenizer(["-h"]);
 
         string[] args;
-        auto command = this.resolveCommand(tokenizer, args);
+        auto command = this.resolveCommand(tokenizer);
+        args = tokenizer.map!(token => token.fullSlice).array;
         if(command.kind == command.Kind.partial || command == typeof(command).init)
         {
             if(this._default == CommandInfo.init)
@@ -72,8 +70,8 @@ final class CommandLineInterface(Modules...)
                     help.addLine(null);
                     help.addHeader("Did you mean:");
                 }
-                foreach(comm; this._uniqueCommands)
-                    help.addArgument(comm.name, [HelpTextDescription(0, comm.description)]);
+                // foreach(comm; this._uniqueCommands)
+                //     help.addArgument(comm.name, [HelpTextDescription(0, comm.description)]);
                 writeln(help.finish());
                 return -1;
             }
@@ -136,7 +134,7 @@ final class CommandLineInterface(Modules...)
         }
     }
     
-    ResolveResult!CommandInfo resolveCommand(ref Tokenizer tokenizer, out string[] args)
+    ResolveResult!CommandInfo resolveCommand(ref Tokenizer tokenizer)
     {
         // NOTE: Could just return a tuple if we should always allocate, like this:
         // static struct Result
@@ -175,7 +173,7 @@ final class CommandLineInterface(Modules...)
     private bool hasHelpArgument(Tokenizer parser)
     {
         return parser
-                .filter!(r => r.kind == r.Kind.argument)
+                .filter!(r => r.kind & ArgToken.Kind.argumentNameBit)
                 .any!(r => r.nameSlice == "h" || r.nameSlice == "help");
     }
 
@@ -187,8 +185,7 @@ final class CommandLineInterface(Modules...)
             
             import std.traits : hasUDA;
             static if(hasUDA!(Symbol, Command) || hasUDA!(Symbol, CommandDefault))
-                static if (false)
-                    this.getCommand!Symbol;
+                this.getCommand!Symbol;
         }}
     }
 
@@ -205,11 +202,13 @@ final class CommandLineInterface(Modules...)
             info.pattern = getUDAs!(CommandT, Command)[0].pattern;
             info.description = getUDAs!(CommandT, Command)[0].description;
             foreach(pattern; info.pattern)
+            {
                 this._resolver.add(
-                    pattern
-                        .map!(p => p => splitter(' '))
-                        .joiner
-                        .array, info, &(AutoComplete!CommandT()).complete);
+                    pattern.splitter(' ').array, 
+                    info, 
+                    &(AutoComplete!CommandT()).complete
+                );
+            }
             this._uniqueCommands ~= info;
         }
         else
@@ -268,7 +267,7 @@ private struct AssertEvenCommand
     }
 }
 
-@CommandDefault("echo")
+@Command("echo")
 private struct EchoCommand
 {
     @ArgOverflow
@@ -285,11 +284,10 @@ private struct EchoCommand
 unittest
 {
     auto cli = new CommandLineInterface!(jcli.cli);
-    string[] a;
 
     {
         auto p = argTokenizer(["a"]);
-        const r = cli.resolveCommand(p, a);
+        const r = cli.resolveCommand(p);
         assert(r.kind == r.Kind.partial);
         assert(r.fullMatchChain.length == 1);
         assert(r.fullMatchChain[0].fullMatchString == "a");
@@ -303,7 +301,7 @@ unittest
         import std.conv : to;
 
         auto p = argTokenizer(args);
-        const r = cli.resolveCommand(p, a);
+        const r = cli.resolveCommand(p);
         assert(r.kind == r.Kind.full);
         assert(r.fullMatchChain.length + 1 == args.length);
         assert(r.fullMatchChain.map!(fm => fm.fullMatchString).equal(args[0..$-1]));
@@ -314,7 +312,7 @@ unittest
     foreach(args; [["ae", "1", "--reverse"], ["a", "e", "-r", "1"]])
     {
         auto p = argTokenizer(args);
-        const r = cli.resolveCommand(p, a);
+        const r = cli.resolveCommand(p);
         assert(r.kind == r.Kind.full);
         assert(r.fullMatchChain[$-1].userData.onExecute(p) == 0);
     }

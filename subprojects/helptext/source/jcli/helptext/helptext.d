@@ -44,7 +44,7 @@ struct CommandHelpText(alias CommandT_)
         static foreach(i, nam; ArgumentInfo.named)
         {
             named ~= Arg(
-                patternToNamedArgList(nam.pattern),
+                patternToNamedArgList(cast()nam.pattern),
                 nam.description,
                 nam.group,
                 nam.flags.has(ArgFlags._optionalBit)
