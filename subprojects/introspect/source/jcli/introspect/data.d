@@ -99,12 +99,14 @@ struct PositionalArgumentInfo
 
 private template fieldPathOf(alias argumentInfoOrFieldPath)
 {
-    static if (is(typeof(argumentInfoOrFieldPath) == ArgumentCommonInfo)) 
+    static if (is(Unqual!(typeof(argumentInfoOrFieldPath)) == ArgumentCommonInfo)) 
         enum string fieldPathOf = argumentInfoOrFieldPath.identifier;
-    else static if (is(typeof(argumentInfoOrFieldPath.argument) == ArgumentCommonInfo)) 
+    else static if (is(Unqual!(typeof(argumentInfoOrFieldPath.argument)) == ArgumentCommonInfo)) 
         enum string fieldPathOf = argumentInfoOrFieldPath.argument.identifier;
-    else
+    else static if (is(Unqual!(typeof(argumentInfoOrFieldPath)) == string))
         enum string fieldPathOf = argumentInfoOrFieldPath;
+    else
+        static assert(false, "Unsupported thing: " ~ Unqual!(typeof(argumentInfoOrFieldPath)).stringof);
 }
 
 /// command.getArgumentFieldRef!argInfo
@@ -122,13 +124,15 @@ template getArgumentFieldSymbol(TCommand, alias argumentInfoOrFieldPath)
 
 template CommandInfo(TCommand)
 {
-    alias CommandT = TCommand;
+    alias CommandType = TCommand;
     immutable CommandGeneralInfo general = getGeneralCommandInfoOf!TCommand;
     alias Arguments = CommandArgumentsInfo!TCommand;
 }
 
 template CommandArgumentsInfo(TCommand)
 {
+    alias CommandType = TCommand;
+
     static foreach (field; TCommand.tupleof)
         static assert(countUDAsOf!(field, ArgNamed, ArgPositional, ArgOverflow, ArgRaw) <= 1);
 
@@ -165,8 +169,8 @@ template CommandArgumentsInfo(TCommand)
 
     /// Includes the simple string usage, which gets converted to an ArgNamed uda.
     immutable NamedArgumentInfo[]      named      = getNamedArgumentInfosOf!TCommand;
-    immutable PositionalArgumentInfo[] positional = getPositionalArgumentInfosOf!PositionalArgumentInfo;
-    
+    immutable PositionalArgumentInfo[] positional = getPositionalArgumentInfosOf!TCommand;
+
     import std.algorithm;
     enum size_t numRequiredPositionalArguments = positional
         .filter!((immutable p) => p.flags.has(ArgFlags._requiredBit))
@@ -263,6 +267,7 @@ unittest
         enum positional = Info.positional[0];
         static assert(positional.identifier == "a");
         static assert(positional.name == "a");
+        static assert(positional.flags.has(ArgFlags._positionalArgumentBit));
     }
     {
         static struct S
@@ -277,6 +282,7 @@ unittest
         enum named = Info.named[0];
         static assert(named.identifier == "a");
         static assert(named.name == "a");
+        static assert(named.flags.has(ArgFlags._namedArgumentBit));
     }
     {
         static struct S
@@ -292,6 +298,7 @@ unittest
         static assert(named.identifier == "a");
         static assert(named.name == "a");
         static assert(named.description == "b");
+        static assert(named.flags.has(ArgFlags._namedArgumentBit));
     }
     {
         static struct S
@@ -305,6 +312,7 @@ unittest
         enum named = Info.named[0];
         static assert(named.identifier == "a");
         static assert(named.name == "a");
+        static assert(named.flags.has(ArgFlags._namedArgumentBit));
 
         // The description is not applied here, because 
         // ArgNamed takes precedence over the string.
@@ -317,7 +325,7 @@ unittest
             string a = "c";
         }
         alias Info = CommandArgumentsInfo!S;
-        Info.named[0].argument.flags.has(ArgFlags._optionalBit);
+        static assert(Info.named[0].flags.has(ArgFlags._optionalBit));
     }
     {
         static struct S
@@ -326,7 +334,7 @@ unittest
             string a = "c";
         }
         alias Info = CommandArgumentsInfo!S;
-        Info.named[0].argument.flags.has(ArgFlags._optionalBit);
+        static assert(Info.named[0].flags.has(ArgFlags._optionalBit));
     }
     {
         static struct S
@@ -349,8 +357,9 @@ unittest
             @ArgPositional
             string b;
         }
-        // For now does not compile, but it should
-        static assert(!__traits(compiles, CommandArgumentsInfo!S));
+        alias Info = CommandArgumentsInfo!S;
+        static assert(Info.positional[0].flags.has(ArgFlags._requiredBit));
+        static assert(Info.positional[1].flags.has(ArgFlags._requiredBit));
     }
     {
         static struct S
@@ -370,7 +379,7 @@ unittest
             static assert(a.flags.doesNotHave(ArgFlags._optionalBit));
         }
         {
-            enum b = Info.positional[0];
+            enum b = Info.positional[1];
             static assert(b.identifier == "b");
             static assert(b.name == "b");
             static assert(b.flags.doesNotHave(ArgFlags._optionalBit));
@@ -447,7 +456,7 @@ unittest
             bool a;
         }
         alias Info = CommandArgumentsInfo!S;
-        static assert(Info.named[0].flags.doesNotHave(ArgFlags._parseAsFlagBit));
+        static assert(Info.positional[0].flags.doesNotHave(ArgFlags._parseAsFlagBit));
     }
     {
         static struct S
@@ -465,7 +474,7 @@ unittest
             Nullable!string a;
         }
         alias Info = CommandArgumentsInfo!S;
-        alias a = Info.named[0];
+        enum a = Info.named[0];
         static assert(a.flags.has(ArgFlags._optionalBit | ArgFlags._inferedOptionalityBit));
     }
     {
@@ -475,7 +484,7 @@ unittest
             Nullable!string a;
         }
         alias Info = CommandArgumentsInfo!S;
-        alias a = Info.named[0];
+        enum a = Info.positional[0];
         static assert(a.flags.has(ArgFlags._optionalBit | ArgFlags._inferedOptionalityBit));
     }
     {
@@ -506,9 +515,9 @@ unittest
             Nullable!string b;
         }
         alias Info = CommandArgumentsInfo!S;
-        alias a = Info.named[0];
+        enum a = Info.positional[0];
         static assert(a.flags.has(ArgFlags._requiredBit | ArgFlags._inferedOptionalityBit));
-        alias b = Info.named[1];
+        enum b = Info.positional[1];
         static assert(b.flags.has(ArgFlags._optionalBit | ArgFlags._inferedOptionalityBit));
     }
 }
@@ -607,7 +616,6 @@ ArgFlags inferOptionalityAndValidate(FieldType)(ArgFlags initialFlags, FieldType
     return flags;
 }
 
-
 // NOTE: 
 // We never pass alias to field even to CTFE functions as template parameters,
 // because the compiler essetially prevents their use there.
@@ -645,14 +653,6 @@ template getArgumentInfo(UDAType, alias field)
             enum getArgumentInfo = uda;
         }
     }
-}
-
-template getSimpleArgumentInfo(alias field)
-{
-    enum argument = getCommonArgumentInfo!(field, ArgFlags._namedArgumentBit);
-    enum description = getUDAs!(field, string)[0];
-    enum uda = ArgNamed(__traits(identifier, field), description);
-    enum getSimpleArgumentInfo = ArgNamed(uda, argument);
 }
 
 template commandUDAOf(CommandType)
@@ -698,12 +698,56 @@ template fieldsWithUDAOf(T, UDAType)
     }
     alias fieldsWithUDAOf = result;
 }
+unittest
+{
+    enum Test;
+    static struct S
+    {
+        @Test string a;
+        @Test string b;
+        string c;
+    }
+    alias fields = fieldsWithUDAOf!(S, Test);
+    static assert(fields.length == 2);
+    static assert(fields[0].stringof == "a");
+    static assert(fields[1].stringof == "b");
+}
 
 template fieldWithUDAOf(T, UDAType)
 {
     alias allFields = fieldsWithUDAOf!(T, UDAType);
-    static assert(allFields.length == 0);
+    static assert(allFields.length > 0);
     alias fieldWithUDAOf = allFields[0];
+}
+unittest
+{
+    enum Test;
+    {
+        static struct S
+        {
+            @Test string a;
+            string c;
+        }
+        alias field = fieldWithUDAOf!(S, Test);
+        static assert(field.stringof == "a");
+    }
+    {
+        static struct S
+        {
+            @Test string a;
+            @Test string c;
+        }
+        alias field = fieldWithUDAOf!(S, Test);
+        static assert(field.stringof == "a");
+    }
+    {
+        static struct S
+        {
+            string a;
+            string c;
+        }
+        static assert(!__traits(compiles, fieldWithUDAOf!(S, Test)));
+    }
 }
 
 template UDAInfo(alias uda)
@@ -726,6 +770,32 @@ template UDAInfo(alias uda)
         alias Type = uda;
     }
 }
+unittest
+{
+    struct Data { int a; }
+    enum Enum;
+    {
+        @Data int b;
+
+        alias Info = UDAInfo!(getUDAs!(b, Data));
+        static assert(Info.hasDefaultValue);
+        static assert(is(Info.Type == Data));
+    }
+    {
+        @Data(1) int b;
+
+        alias Info = UDAInfo!(getUDAs!(b, Data));
+        static assert(!Info.hasDefaultValue);
+        static assert(Info.value == Data(1));
+        static assert(is(Info.Type == Data));
+    }
+    {
+        @Enum int b;
+
+        alias Info = UDAInfo!(getUDAs!(b, Enum));
+        static assert(is(Info.Type == Enum));
+    }
+}
 
 template countUDAsOf(alias something, UDATypes...)
 {
@@ -743,7 +813,6 @@ template countUDAsOf(alias something, UDATypes...)
         return result;
     }();
 }
-
 
 PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)() pure
 {
@@ -852,9 +921,14 @@ NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)() pure
         enum isSimple = !hasNamed && !hasUDA!(field, ArgPositional) && hasUDA!(field, string);
 
         static if (hasNamed)
+        {
             ArgNamed uda = getArgumentInfo!(ArgNamed, field);
+        }
         else static if (isSimple)
-            ArgNamed uda = getSimpleArgumentInfo!field();
+        {
+            enum description = getUDAs!(field, string)[0];
+            ArgNamed uda = ArgNamed(__traits(identifier, field), description);
+        }
         
         static if (hasNamed || isSimple)
         {

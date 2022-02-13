@@ -567,21 +567,21 @@ unittest
     {
         auto args = ["--a", "Штука"];
         assert(equal(argTokenizer(args), [
-            ArgToken(Kind.fullNamedArgumentName, "a", "a"),
+            ArgToken(Kind.fullNamedArgumentName, "--a", "a"),
             ArgToken(Kind.namedArgumentValueOrPositionalArgument, "Штука", "Штука"),
         ]));
     }
     {
         auto args = [`--a="Штука"`];
         assert(equal(argTokenizer(args), [
-            ArgToken(Kind.fullNamedArgumentName, "a", "a"),
+            ArgToken(Kind.fullNamedArgumentName, "--a", "a"),
             ArgToken(Kind.namedArgumentValue, `"Штука"`, "Штука"),
         ]));
     }
     {
         auto args = ["--a", "物事"];
         assert(equal(argTokenizer(args), [
-            ArgToken(Kind.fullNamedArgumentName, "a", "a"),
+            ArgToken(Kind.fullNamedArgumentName, "--a", "a"),
             ArgToken(Kind.namedArgumentValueOrPositionalArgument, "物事", "物事"),
         ]));
     }

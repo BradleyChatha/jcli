@@ -83,7 +83,7 @@ enum ArgFlags
     _optionalBit = 1 << 0,
 
     /// An argument with the same name may appear multiple times.
-    @RequiresExactlyOneOf(countBit | canRedefineBit | aggregateBit)
+    @RequiresExactlyOneOf(_countBit | _canRedefineBit | _aggregateBit)
     _multipleBit = 1 << 1,
 
     /// Allow an argument name to appear without a value.
@@ -92,7 +92,7 @@ enum ArgFlags
     _parseAsFlagBit = 1 << 2,
 
     /// Implies that the field should get the number of occurences of the argument.
-    @RequiresOneOrMoreOf(_mutipleBit | _repeatableNameBit)
+    @RequiresOneOrMoreOf(_multipleBit | _repeatableNameBit)
     _countBit = 1 << 3,
 
     /// The name of the argument is case insensitive.
@@ -140,7 +140,7 @@ enum ArgFlags
 
     /// Whether is positional. 
     /// On the user side, it is usually provided via UDAs.
-    @IncompatibleWithAnyOf(_positionalBit)
+    @IncompatibleWithAnyOf(_positionalArgumentBit)
     _namedArgumentBit = 1 << 12,
 
     /// Whether a field is of struct type, containing subfields, which are also arguments.
@@ -155,50 +155,56 @@ bool areArgumentFlagsValid(ArgFlags flags) pure @safe
     return getArgumentFlagsValidationMessage(flags) is null;
 }
 
+// string toFlagsString(ArgFlags flags) pure @safe
+// {
+//     return jcli.core.utils.toFlagsString(flags);
+// }
+
 string getArgumentFlagsValidationMessage(ArgFlags flags) pure @safe
 {
     import std.bitmanip : bitsSet;        
     import std.conv : to;
+    import jcli.core.utils;
 
-    alias ArgFlagsInfo = _ArgFlagsInfo!();
+    alias ArgFlagsInfo = _ArgFlagsInfo!(ArgFlags);
     
     foreach (size_t index; bitsSet(flags))
     {
-        const currentFlag = 2 ^^ index;
+        const currentFlag = cast(ArgFlags)(1 << index);
         {
             const f = ArgFlagsInfo.incompatible[index];
             if (flags.hasEither(f))
             {
-                return "The flag " ~ currentFlag.to!string ~ " is incompatible with " ~ f.to!string;
+                return "The flag " ~ currentFlag.toFlagsString ~ " is incompatible with " ~ f.toFlagsString;
             }
         }
         {
             const f = ArgFlagsInfo.requiresAll[index];
             if (flags.doesNotHave(f))
             {
-                return "The flag " ~ currentFlag.to!string ~ " requires all of " ~ f.to!string;
+                return "The flag " ~ currentFlag.toFlagsString ~ " requires all of " ~ f.toFlagsString;
             }
         }
         {
             const f = ArgFlagsInfo.requiresOneOrMore[index];
             if (f != 0 && flags.doesNotHaveEither(f))
             {
-                return "The flag " ~ currentFlag.to!string ~ " requires one or more of " ~ f.to!string;
+                return "The flag " ~ currentFlag.toFlagsString ~ " requires one or more of " ~ f.toFlagsString;
             }
         }
         {
             const f = ArgFlagsInfo.requiresExactlyOne[index];
             if (f != 0)
             {
-                auto matches = currentFlag & f;
+                auto matches = flags & f;
 
                 import std.range : walkLength;
                 auto numMatches = bitsSet(matches).walkLength;
 
                 if (numMatches != 1)
                 {
-                    return "The flag " ~ currentFlag.to!string ~ " requires exactly one of " ~ f.to!string
-                        ~ ". Were matched all of the following: " ~ matches.to!string;
+                    return "The flag " ~ currentFlag.toFlagsString ~ " requires exactly one of " ~ f.toFlagsString
+                        ~ ". Were matched all of the following: " ~ matches.toFlagsString;
                 }
             }
         }
@@ -240,30 +246,30 @@ string getArgumentFlagsValidationMessage(ArgFlags flags) pure @safe
     }
 }
 
-private template _ArgFlagsInfo()
+private template _ArgFlagsInfo(Flags)
 {
-    immutable ArgFlags[argFlagCount] incompatible        = getFlagsInfo!IncompatibleWithAnyOf;
-    immutable ArgFlags[argFlagCount] requiresAll         = getFlagsInfo!RequiresAllOf;
-    immutable ArgFlags[argFlagCount] requiresExactlyOne  = getFlagsInfo!RequiresExactlyOneOf;
-    immutable ArgFlags[argFlagCount] requiresOneOrMore   = getFlagsInfo!RequiresOneOrMoreOf;
+    immutable Flags[argFlagCount] incompatible        = getFlagsInfo!IncompatibleWithAnyOf;
+    immutable Flags[argFlagCount] requiresAll         = getFlagsInfo!RequiresAllOf;
+    immutable Flags[argFlagCount] requiresExactlyOne  = getFlagsInfo!RequiresExactlyOneOf;
+    immutable Flags[argFlagCount] requiresOneOrMore   = getFlagsInfo!RequiresOneOrMoreOf;
 
     enum argFlagCount = 
     (){
         import std.bitmanip : bitsSet;
         import std.algorithm;
         import std.range;
-        return ArgFlags.max.bitsSet.array[$ - 1] + 1;
+        return Flags.max.bitsSet.array[$ - 1] + 1;
     }();
 
-    ArgFlags[argFlagCount] getFlagsInfo(TUDA)()
+    Flags[argFlagCount] getFlagsInfo(TUDA)()
     {
-        ArgFlags[argFlagCount] result;
+        Flags[argFlagCount] result;
 
         import std.bitmanip : bitsSet; 
-        static foreach (enumMember; __traits(allMembers, ArgFlags))
+        static foreach (memberName; __traits(allMembers, Flags))
         {{
-            size_t index = __traits(getMember, ArgFlags, enumMember).bitsSet.front;
-            static foreach (uda; __traits(getAttributes, enumMember))
+            size_t index = __traits(getMember, Flags, memberName).bitsSet.front;
+            static foreach (uda; __traits(getAttributes, __traits(getMember, Flags, memberName)))
             {
                 static if (is(typeof(uda) == TUDA))
                 {

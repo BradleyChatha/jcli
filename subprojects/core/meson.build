@@ -5,6 +5,7 @@ jcli_core_srcs = [
     'source/jcli/core/udas.d',
     'source/jcli/core/pattern.d',
     'source/jcli/core/result.d',
+    'source/jcli/core/utils.d',
 ]
 
 jcli_core_dep = declare_dependency(
