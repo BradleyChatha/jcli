@@ -1,71 +1,84 @@
 module jcli.core.pattern;
 
-import std;
-
 struct Pattern
 {
-    static struct Result
+    import std.ascii;
+    import std.algorithm;
+
+    string[] items;
+    alias items this;
+    
+    this(string[] items) @safe pure nothrow
+    in
     {
-        bool matched;
-        string pattern;
+        assert(items.length > 0, "The pattern must contain at least one item.");
+        assert(items.all!(i => i.all!isASCII), "The pattern items must be ascii.");
+        assert(items.all!(i => i.length > 0), "The pattern must not contain empty items.");
+        assert(items.map!(i => i.length).maxIndex == 0, "The first item in the items list must be the longest");
+    }
+    do
+    {
+        this.items = items;
+    }
+    
+    static Pattern parse(string patternString) @safe pure 
+    {
+        import std.string : split;
+        
+        auto items = patternString.split('|');
+        return Pattern(items);
     }
 
-    private string _pattern;
+    @safe // TODO: when and how does it allocate tho? @nogc
+    auto matches(bool caseInsensitive)(string input) pure nothrow
+    {
+        return items.filter!((p) {
+            import std.algorithm : map, equal;
 
-    @safe @nogc
-    this(string pattern) nothrow pure
-    {
-        this._pattern = pattern;
-    }
-
-    @safe /*@nogc*/
-    auto patterns() /*nothrow*/ pure inout
-    {
-        return this._pattern.splitter('|');
-    }
-    ///
-    unittest
-    {
-        auto p = Pattern("a|bc|one|two three");
-        assert(p.patterns.equal([
-            "a",
-            "bc",
-            "one",
-            "two three"
-        ]));
-    }
-
-    @safe /*@nogc*/
-    inout(Result) match(string input, bool insensitive = false) /*nothrow*/ pure inout
-    {
-        Result r;
-        foreach(pattern; this.patterns)
-        {
-            import std.uni : toLower;
-            if(
-                (!insensitive && pattern == input)
-                || (insensitive && pattern.equal(input.map!toLower.map!(ch => cast(char)ch)))
-            )
+            static if (caseInsensitive)
             {
-                r = Result(true, pattern);
-                break;
+                import std.ascii : toLower;
+                if (p.length != input.length)
+                    return false;
+                foreach (index; 0 .. p.length)
+                {
+                    if (toLower(p[index]) != toLower(input[index]))
+                        return false;
+                }
+                return true;
             }
-        }
-        return r;
+            else
+                return p == input;
+        });
     }
     ///
     unittest
     {
-        auto p = Pattern("a|bc|one|two three");
-        assert(p.match("a")         == Result(true, "a"));
-        assert(p.match("one")       == Result(true, "one"));
-        assert(p.match("two three") == Result(true, "two three"));
-        assert(p.match("cb")        == Result(false, null));
+        import std.algorithm : equal;
+        auto p = Pattern.parse("a|A");
+        {
+            enum caseInsensitive = true;
+            assert(equal(p.matches!(caseInsensitive)("a"), ["a", "A"]));
+            assert(equal(p.matches!(caseInsensitive)("b"), string[].init));
+        }
+        {
+            enum caseInsensitive = false;
+            assert(equal(p.matches!(caseInsensitive)("a"), ["a"]));
+            assert(equal(p.matches!(caseInsensitive)("A"), ["A"]));
+            assert(equal(p.matches!(caseInsensitive)("b"), string[].init));
+        }
     }
-
-    @safe @nogc
-    string pattern() nothrow pure const
-    {
-        return this._pattern;
-    }
+    // @safe @nogc
+    // string firstMatch(bool caseInsensitive)(string input) nothrow pure
+    // {
+    //     static struct Result
+    //     {
+    //         bool matched;
+    //         string pattern;
+    //     }
+    //     auto m = matches!caseInsensitive(input);
+    //     if (m.empty)
+    //         return Result(false, null);
+    //     return Result(true, m.front);
+    // }
 }

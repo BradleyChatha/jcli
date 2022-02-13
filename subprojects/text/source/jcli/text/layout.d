@@ -1,6 +1,6 @@
 module jcli.text.layout;
 
-import std, jcli.text;
+import jcli.text;
 
 struct Layout
 {
@@ -22,6 +22,9 @@ struct Layout
     @safe
     Rect blockRectToRealRect(Rect blockRect) const
     {
+        import std.math : round;
+        import std.conv : to;
+
         blockRect = oobRect(OnOOB.constrain, Rect(0, 0, this._horizBlocks, this._vertBlocks), blockRect);
         return Rect(
             this._area.left + (this.blockWidth * blockRect.left).round.to!int,

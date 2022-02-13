@@ -1,6 +1,6 @@
 module jcli.resolver.resolver;
 
-import std;
+import std.conv : to;
 
 alias ResolveValueProvider = string[] delegate(string[] currArgs);
 

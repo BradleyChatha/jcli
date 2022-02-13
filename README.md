@@ -1310,6 +1310,22 @@ You can attach any values from the `ArgConfig` enum directly onto an argument, t
 
 As a reminder, to attach enum values onto something as a UDA, you must use the form `@(ArgConfig.xxx)`.
 
+
+The information below is useful for seeing which combinations of features are supported.
+
+Supported orthogonal higher level flag combinatons (encouraged to use).
+"implied" written in a cell means the flag combination from the header implies the flag combination from the left:
+
+|                | canRedefine | optional | caseInsesitive | accumulate | aggregate | repeatableName | parseAsFlag |
+|----------------|-------------|----------|----------------|------------|-----------|----------------|-------------|
+| canRedefine    | o           | +        | +              | -          | -         | - (not yet)    | +           |
+| optional       | + implied   | o        | +              | +          | +         | +              | + implied   |
+| caseInsesitive | +           | +        | o              | +          | +         | +              | +           |
+| accumulate     | -           | +        | +              | o          | -         | + implied      | -           |
+| aggregate      | -           | +        | +              | -          | o         | -              | -           |
+| repeatableName | - (not yet) | +        | +              | +          | -         | o              | -           |
+
+
 ### ArgConfig.caseInsensitive
 
 By default, named arguments are case-sensitive, meaning `abc` is not the same as `abC`.

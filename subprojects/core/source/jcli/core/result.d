@@ -48,6 +48,11 @@ struct ResultOf(alias T)
         return this._error is null;
     }
 
+    bool isError()()
+    {
+        return this._error !is null;
+    }
+
     string error()()
     {
         assert(!this.isOk, "Cannot call .error on an ok result. Please use .isOk to check.");

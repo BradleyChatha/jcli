@@ -1,6 +1,6 @@
 module jcli.text.widgets.text;
 
-import std, jcli.text;
+import jcli.text;
 
 struct TextWidget
 {

@@ -1,12 +1,21 @@
 module jcli.cli;
 
-import jcli, std;
+import jcli;
+
+import std.algorithm;
+import std.stdio : writefln, writeln;
+import std.array;
+
+// Currently broken, so just ingnore it for now.
+// Needs a complete rework.
+version(NotBroken):
 
 final class CommandLineInterface(Modules...)
 {
-    alias ArgBinderInstance = ArgBinder!Modules;
+    alias Tokenizer     = ArgTokenizer!(string[]);
+    alias bindArgument  = bindArgumentAcrossModules!Modules;
 
-    private alias CommandExecute = int delegate(ArgParser);
+    private alias CommandExecute = int delegate();
     private alias CommandHelp    = string delegate();
 
     private struct CommandInfo
@@ -30,29 +39,32 @@ final class CommandLineInterface(Modules...)
         this._resolver = new typeof(_resolver)();
         static foreach(mod; Modules)
             this.findCommands!mod;
+
+        import std.file : thisExePath;
+        import std.path : baseName;
         this._appName = thisExePath().baseName;
     }
 
     int parseAndExecute(string[] args, bool ignoreFirstArg = true)
     {
-        return this.parseAndExecute(ArgParser(ignoreFirstArg ? args[1..$] : args));
+        return this.parseAndExecute(argTokenizer(ignoreFirstArg ? args[1..$] : args));
     }
 
-    int parseAndExecute(ArgParser parser)
+    int parseAndExecute(Tokenizer tokenizer)
     {
-        auto parserCopy = parser;
-        if(parser.empty)
-            parser = ArgParser(["-h"]);
+        auto tokenizerCopy = tokenizer;
+        if(tokenizer.empty)
+            tokenizer = argTokenizer(["-h"]);
 
         string[] args;
-        auto command = this.resolveCommand(parser, args);
+        auto command = this.resolveCommand(tokenizer, args);
         if(command.kind == command.Kind.partial || command == typeof(command).init)
         {
             if(this._default == CommandInfo.init)
             {
                 HelpText help = HelpText.make(Console.screenSize.x);
                 
-                if(parserCopy.empty || parserCopy == ArgParser(["-h"]))
+                if(tokenizerCopy.empty || tokenizerCopy == argTokenizer(["-h"]))
                     help.addHeader("Available commands:");
                 else
                 {
@@ -61,19 +73,19 @@ final class CommandLineInterface(Modules...)
                     help.addHeader("Did you mean:");
                 }
                 foreach(comm; this._uniqueCommands)
-                    help.addArgument(comm.pattern.patterns.front, [HelpTextDescription(0, comm.description)]);
+                    help.addArgument(comm.name, [HelpTextDescription(0, comm.description)]);
                 writeln(help.finish());
                 return -1;
             }
             else
             {
-                if(this.hasHelpArgument(parser) && !parserCopy.empty)
+                if(this.hasHelpArgument(tokenizer) && !tokenizerCopy.empty)
                 {
                     writeln(this._default.onHelp());
                     return 0;
                 }
 
-                try return this._default.onExecute(parserCopy);
+                try return this._default.onExecute(tokenizerCopy);
                 catch(ResultException ex)
                 {
                     writefln("%s: %s", this._appName.ansi.fg(Ansi4BitColour.red), ex.msg);
@@ -91,7 +103,7 @@ final class CommandLineInterface(Modules...)
             }
         }
 
-        if(this.hasHelpArgument(parser))
+        if(this.hasHelpArgument(tokenizer))
         {
             writeln(command.fullMatchChain[$-1].userData.onHelp());
             return 0;
@@ -107,7 +119,7 @@ final class CommandLineInterface(Modules...)
             return 0;
         }
 
-        try return command.fullMatchChain[$-1].userData.onExecute(parser);
+        try return command.fullMatchChain[$-1].userData.onExecute(tokenizer);
         catch(ResultException ex)
         {
             writefln("%s: %s", this._appName.ansi.fg(Ansi4BitColour.red), ex.msg);
@@ -123,38 +135,44 @@ final class CommandLineInterface(Modules...)
             return -1;
         }
     }
-
-    ResolveResult!CommandInfo resolveCommand(ref ArgParser parser, out string[] args)
+    
+    ResolveResult!CommandInfo resolveCommand(ref Tokenizer tokenizer, out string[] args)
     {
+        // NOTE: Could just return a tuple if we should always allocate, like this:
+        // static struct Result
+        // {
+        //     string[] args;
+        //     ResolveResult!CommandInfo info;
+        // }
+        // Or even return the arguments as a range.
+        // The user can do .array themselves.
+
         typeof(return) lastPartial;
-
         string[] command;
-        scope(exit)
-            args = parser.map!(r => r.fullSlice).array;
 
-        while(true)
+        while (true)
         {
-            if(parser.empty)
+            if (tokenizer.empty)
                 return lastPartial;
-            if(parser.front.kind == ArgParser.Result.Kind.argument)
+            if (!(tokenizer.front.kind & ArgToken.Kind.valueBit))
                 return lastPartial;
 
-            command ~= parser.front.fullSlice;
+            command ~= tokenizer.front.fullSlice;
             auto result = this._resolver.resolve(command);
 
             if(result.kind == result.Kind.partial)
                 lastPartial = result;
             else
             {
-                parser.popFront();
+                tokenizer.popFront();
                 return result;
             }
 
-            parser.popFront();
+            tokenizer.popFront();
         }
     }
 
-    private bool hasHelpArgument(ArgParser parser)
+    private bool hasHelpArgument(Tokenizer parser)
     {
         return parser
                 .filter!(r => r.kind == r.Kind.argument)
@@ -166,24 +184,32 @@ final class CommandLineInterface(Modules...)
         static foreach(member; __traits(allMembers, Module))
         {{
             alias Symbol = __traits(getMember, Module, member);
+            
+            import std.traits : hasUDA;
             static if(hasUDA!(Symbol, Command) || hasUDA!(Symbol, CommandDefault))
-                this.getCommand!Symbol;
+                static if (false)
+                    this.getCommand!Symbol;
         }}
     }
 
+    // TODO: this is already implemented in the introspect, needs rework
     private void getCommand(alias CommandT)()
     {
         CommandInfo info;
-
         info.onHelp = getOnHelp!CommandT();
         info.onExecute = getOnExecute!CommandT();
 
+        import std.traits : getUDAs, hasUDA;
         static if(hasUDA!(CommandT, Command))
         {
             info.pattern = getUDAs!(CommandT, Command)[0].pattern;
             info.description = getUDAs!(CommandT, Command)[0].description;
-            foreach(pattern; info.pattern.patterns)
-                this._resolver.add(pattern.splitter(' ').array, info, &(AutoComplete!CommandT()).complete);
+            foreach(pattern; info.pattern)
+                this._resolver.add(
+                    pattern
+                        .map!(p => p => splitter(' '))
+                        .joiner
+                        .array, info, &(AutoComplete!CommandT()).complete);
             this._uniqueCommands ~= info;
         }
         else
@@ -192,18 +218,22 @@ final class CommandLineInterface(Modules...)
 
     private CommandExecute getOnExecute(alias CommandT)()
     {
-        return (ArgParser parser) 
+        return (Tokenizer parser) 
         {
-            auto comParser = CommandParser!(CommandT, ArgBinderInstance)();
-            auto result = comParser.parse(parser);
-            result.enforceOk();
+            alias CommandParser = jcli.commandparser.CommandParser!(CommandT, bindArgument);
+            static DefaultParseErrorHandler dummy = DefaultParseErrorHandler();
+            auto result = CommandParser.parse(parser, dummy);
 
-            auto com = result.value;
-            static if(is(typeof(com.onExecute()) == int))
-                return com.onExecute();
+            import std.exception : enforce;
+            enforce(result.isOk);
+
+            static if(is(typeof(result.value.onExecute()) == int))
+            {
+                return result.value.onExecute();
+            }
             else
             {
-                com.onExecute();
+                result.value.onExecute();
                 return 0;
             }
         };
@@ -218,7 +248,7 @@ final class CommandLineInterface(Modules...)
     }
 }
 
-version(unittest)
+version(unittest):
 @Command("assert even|ae|a e", "Asserts that the given number is even.")
 private struct AssertEvenCommand
 {
@@ -238,7 +268,6 @@ private struct AssertEvenCommand
     }
 }
 
-version(unittest)
 @CommandDefault("echo")
 private struct EchoCommand
 {
@@ -256,22 +285,27 @@ private struct EchoCommand
 unittest
 {
     auto cli = new CommandLineInterface!(jcli.cli);
-    auto p = ArgParser(["a"]);
     string[] a;
-    auto r = cli.resolveCommand(p, a);
-    assert(r.kind == r.Kind.partial);
-    assert(r.fullMatchChain.length == 1);
-    assert(r.fullMatchChain[0].fullMatchString == "a");
-    assert(r.partialMatches.length == 2);
-    assert(r.partialMatches[0].fullMatchString == "assert");
-    assert(r.partialMatches[1].fullMatchString == "ae");
+
+    {
+        auto p = argTokenizer(["a"]);
+        const r = cli.resolveCommand(p, a);
+        assert(r.kind == r.Kind.partial);
+        assert(r.fullMatchChain.length == 1);
+        assert(r.fullMatchChain[0].fullMatchString == "a");
+        assert(r.partialMatches.length == 2);
+        assert(r.partialMatches[0].fullMatchString == "assert");
+        assert(r.partialMatches[1].fullMatchString == "ae");
+    }
 
     foreach(args; [["ae", "2"], ["assert", "even", "2"], ["a", "e", "2"]])
     {
-        p = ArgParser(args);
-        r = cli.resolveCommand(p, a);
+        import std.conv : to;
+
+        auto p = argTokenizer(args);
+        const r = cli.resolveCommand(p, a);
         assert(r.kind == r.Kind.full);
-        assert(r.fullMatchChain.length == args.length-1);
+        assert(r.fullMatchChain.length + 1 == args.length);
         assert(r.fullMatchChain.map!(fm => fm.fullMatchString).equal(args[0..$-1]));
         assert(p.front.fullSlice == "2", p.to!string);
         assert(r.fullMatchChain[$-1].userData.onExecute(p) == 0);
@@ -279,16 +313,18 @@ unittest
 
     foreach(args; [["ae", "1", "--reverse"], ["a", "e", "-r", "1"]])
     {
-        p = ArgParser(args);
-        r = cli.resolveCommand(p, a);
+        auto p = argTokenizer(args);
+        const r = cli.resolveCommand(p, a);
         assert(r.kind == r.Kind.full);
         assert(r.fullMatchChain[$-1].userData.onExecute(p) == 0);
     }
 
-    assert(cli.parseAndExecute(["assert", "even", "2"], false) == 0);
-    assert(cli.parseAndExecute(["assert", "even", "1", "-r"], false) == 0);
-    assert(cli.parseAndExecute(["assert", "even", "2", "-r"], false) == 128);
-    assert(cli.parseAndExecute(["assert", "even", "1"], false) == 128);
+    {
+        assert(cli.parseAndExecute(["assert", "even", "2"], false) == 0);
+        assert(cli.parseAndExecute(["assert", "even", "1", "-r"], false) == 0);
+        assert(cli.parseAndExecute(["assert", "even", "2", "-r"], false) == 128);
+        assert(cli.parseAndExecute(["assert", "even", "1"], false) == 128);
+    }
 
     // Commented out to stop it from writing output.
     // assert(cli.parseAndExecute(["assrt", "evn", "20"], false) == 69);

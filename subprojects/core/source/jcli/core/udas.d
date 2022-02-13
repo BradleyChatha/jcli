@@ -2,16 +2,42 @@ module jcli.core.udas;
 
 import jcli.core.pattern;
 
-struct Command
+package(jcli) mixin template BeingNamed()
 {
     Pattern pattern;
     string description;
 
-    this(string pattern, string description = "")
+    string name() const @nogc nothrow pure @safe { return pattern[0]; }
+}
+
+// NOTE: 
+// The constructors seem to not work when mixed in with the template above,
+// which is why I mix in the string.
+private enum string constructorsMixinString = 
+q{
+    this(string stringPattern, string description = "") pure
+    {
+        this.pattern = Pattern.parse(stringPattern);
+        this.description = description;
+    }
+    
+    this(Pattern pattern, string description = "") pure nothrow @nogc
+    {
+        this.pattern = pattern;
+        this.description = description;
+    }
+
+    this(string[] pattern, string description = "") pure
     {
         this.pattern = Pattern(pattern);
         this.description = description;
     }
+};
+
+struct Command
+{
+    mixin BeingNamed;
+    mixin(constructorsMixinString);
 }
 
 struct CommandDefault
@@ -22,26 +48,20 @@ struct CommandDefault
 struct ArgPositional
 {
     string name;
-    string description;
+    string description = "";
 }
 
 struct ArgNamed
 {
-    Pattern pattern;
-    string description;
-
-    this(string pattern, string description = "")
-    {
-        this.pattern = Pattern(pattern);
-        this.description = description;
-    }
+    mixin BeingNamed;
+    mixin(constructorsMixinString);
 }
 
 struct ArgGroup
 {
     string name;
-    string description;
+    string description = "";
 }
 
-struct ArgOverflow{}
-struct ArgRaw{}
+enum ArgOverflow;
+enum ArgRaw;

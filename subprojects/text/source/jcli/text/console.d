@@ -1,6 +1,9 @@
 module jcli.text.console;
 
-import std, jansi, jcli.text;
+import jansi, jcli.text;
+
+import std.conv : to;
+import std.stdio : stdout;
 
 version(Windows) import core.sys.windows.windows;
 version(Posix) import core.sys.posix.termios, core.sys.posix.unistd, core.sys.posix.signal;
@@ -52,6 +55,8 @@ struct ConsoleKeyEvent
     }
     SpecialKey specialKeys;
 }
+
+import std.sumtype;
 
 alias ConsoleEvent = SumType!(
     ConsoleKeyEvent,
@@ -257,6 +262,7 @@ final class Console
 
     void refreshHandler(uint row, const TextBufferCell[] rowCells)
     {
+        import std.array;
         static Appender!(char[]) builder;
 
         Console.setCursor(0, row.to!uint + 1);
@@ -283,6 +289,7 @@ final class Console
     {
         assert(this.isAttached, "We're not attached to the console.");
         auto buffer = new TextBuffer(Console.screenSize.x, Console.screenSize.y);
+        import std.functional : toDelegate;
         buffer.onRefresh((&Console.refreshHandler).toDelegate);
         return buffer;
     }
