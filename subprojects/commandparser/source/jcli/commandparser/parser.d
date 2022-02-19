@@ -67,6 +67,491 @@ struct ParseResult(CommandType)
     bool isError() { return errorCount > 0; }
 }
 
+struct CommandParsingContext(size_t numBitsInStorage)
+{
+    size_t currentPositionalArgIndex = 0;
+    size_t errorCounter = 0;
+
+    static if (numBitsInStorage > 0)
+    {
+        import std.bitmanip : BitArray;
+
+        private static size_t getNumberOfSizetsNecessaryToHoldBits(size_t numBits)
+        {
+            static size_t ceilDivide(size_t a, size_t b)
+            {
+                return (a + b - 1) / b;
+            }
+            size_t numBytesToHoldBits = ceilDivide(numBits, 8);
+            size_t numSizeTsToHoldBits = ceilDivide(numBytesToHoldBits, 8);
+            return numSizeTsToHoldBits;
+        }
+
+        enum bitStorageSize = getNumberOfSizetsNecessaryToHoldBits(numBitsInStorage);
+
+        // Is 0 if a required argument has been found, otherwise 1.
+        // For non-required arguments this is always 0.
+        size_t[bitStorageSize] requiredNamedArgHasNotBeenFoundBitArrayStorage = 0;
+        size_t[bitStorageSize] namedArgHasBeenFoundBitArrayStorage = 0;
+        
+        const @nogc nothrow pure @trusted:
+
+        BitArray requiredNamedArgHasNotBeenFoundBitArray()
+        {
+            return BitArray(cast(void[]) requiredNamedArgHasNotBeenFoundBitArrayStorage[], numBitsInStorage);
+        }
+
+        BitArray namedArgHasBeenFoundBitArray()
+        {
+            return BitArray(cast(void[]) namedArgHasBeenFoundBitArrayStorage[], numBitsInStorage);
+        }
+    }
+}
+
+void resetNamedArgumentArrayStorage
+(
+    CommandType,
+    Context : CommandParsingContext!size, size_t size
+)
+(
+    ref scope Context context
+)
+{
+    static if (size > 0)
+    {
+        context.requiredNamedArgHasNotBeenFoundBitArrayStorage = 0;
+        
+        static foreach (index, arg; CommandArgumentsInfo!CommandType.named)
+        {
+            static if (arg.flags.has(ArgFlags._requiredBit))
+            {
+                context.requiredNamedArgHasNotBeenFoundBitArray[index] = true;
+            }
+        }
+    }
+}
+
+/// Reserved for later use, but kinda serves no purpose right now.
+/// This return value should be ignored for now.
+enum ConsumeSingleArgumentResultKind
+{
+    _tokenizerEmptyBit = 1,
+    _doneBit = 2,
+
+    // No flag implies the token has been consumed.
+    // On error, ok is still returned.
+    // Check `context.errorCount` for the errors. 
+    ok = 0,
+
+    // The parsing preemptively finished.
+    // Does not mean the tokenizer is empty.
+    done = _doneBit,
+}
+
+
+/// Consumes one or more tokens from the given tokenizer,
+/// Will overconsume positional and orphan arguments.
+ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
+(
+    alias bindArgument,
+    Context : CommandParsingContext!numBitsInStorage, size_t numBitsInStorage,
+    CommandType,
+    TArgTokenizer : ArgTokenizer!T, T,
+    TErrorHandler
+)
+(
+    ref scope Context context,
+    ref scope CommandType command,
+    ref scope TArgTokenizer tokenizer,
+    ref scope TErrorHandler errorHandler
+)
+{
+    alias ArgumentInfo = jcli.introspect.CommandArgumentsInfo!CommandType;
+    alias Kind = ArgToken.Kind;
+    alias ResultKind = ConsumeSingleArgumentResultKind;
+
+    static assert(numBitsInStorage >= ArgumentInfo.named.length);
+
+    const currentArgToken = tokenizer.front;
+
+    // This has to be handled before the switch, because we pop before the switch.
+    if (currentArgToken.kind == Kind.twoDashesDelimiter)
+    {
+        static if (ArgumentInfo.takesRaw)
+        {
+            auto rawArgumentStrings = tokenizer.leftoverRange();
+            command.getArgumentFieldRef!(ArgumentInfo.raw) = rawArgumentStrings;
+            // To the outside it looks like we have consumed all arguments.
+            tokenizer = typeof(tokenizer).init;
+        }
+        
+        tokenizer.popFront();
+        return ResultKind.done;
+    }
+
+    tokenizer.popFront();
+
+    void recordError(T...)(ErrorCode code, auto ref T args)
+    {
+        if (errorHandler.shouldRecord(code))
+        {
+            errorHandler.format(code, args);
+            context.errorCounter++;
+        }
+    }
+
+    // Cannot be final, since there are flags.
+    switch (currentArgToken.kind)
+    {
+        default:
+        {
+            assert(0);
+        }
+
+        // if (currentArgToken.kind & Kind.errorBit)
+        // {
+        // }
+        case Kind.error_inputAfterClosedQuote:
+        case Kind.error_malformedQuotes:
+        case Kind.error_noValueForNamedArgument:
+        case Kind.error_singleDash:
+        case Kind.error_spaceAfterAssignment:
+        case Kind.error_spaceAfterDashes:
+        case Kind.error_threeOrMoreDashes:
+        case Kind.error_unclosedQuotes:
+        {
+            // for now just log and go next
+            // TODO: better errors
+            recordError(
+                ErrorCode.argumentParserError,
+                "An error has occured in the parser: %s",
+                currentArgToken.kind.stringof);
+            return ResultKind.ok;
+        }
+
+        case Kind.namedArgumentValue:
+        {
+            assert(false, "This one should have been handled in the named argument section.");
+        }
+
+        // (currentArgToken.kind & (Kind._positionalArgumentBit | Kind.valueBit))
+        //      == Kind._positionalArgumentBit | Kind.valueBit
+        case Kind.namedArgumentValueOrOrphanArgument:
+        case Kind.positionalArgument:
+        // TODO: imo orphan arguments should not be treated like positional ones.
+        case Kind.orphanArgumentBit:
+        {
+            InnerSwitch: switch (context.currentPositionalArgIndex)
+            {
+                default:
+                {
+                    static if (ArgumentInfo.takesOverflow)
+                    {
+                        command.getArgumentFieldRef!(ArgumentInfo.overflow)
+                            ~= currentArgToken.fullSlice;
+                    }
+                    else
+                    {
+                        recordError(
+                            ErrorCode.tooManyPositionalArgumentsError,
+                            "Too many (%d) positional arguments detected near %s.",
+                            context.currentPositionalArgIndex,
+                            currentArgToken.fullSlice);
+                    }
+                    break InnerSwitch;
+                }
+                static foreach (positionalIndex, positional; ArgumentInfo.positional)
+                {
+                    case positionalIndex:
+                    {
+                        auto result = bindArgument!positional(command, currentArgToken.valueSlice);
+                        if (result.isError)
+                        {
+                            recordError(
+                                ErrorCode.bindError,
+                                "An error occured while trying to bind the positional argument %s at index %d: "
+                                    ~ "%s; Error code %d.",
+                                positional.identifier, positionalIndex,
+                                result.error, result.errorCode);
+                        }
+                        break InnerSwitch;
+                    }
+                }
+            } // InnerSwitch
+
+            context.currentPositionalArgIndex++;
+            return ResultKind.ok;
+        }
+
+        // currentArgToken.kind & Kind.argumentNameBit
+        case Kind.fullNamedArgumentName:
+        case Kind.shortNamedArgumentName:
+        {
+            // Check if any of the arguments matched the name
+            static foreach (namedArgIndex, namedArgInfo; ArgumentInfo.named)
+            {{
+                if (isNameMatch!namedArgInfo(currentArgToken.nameSlice))
+                {
+                    void recordBindError(R)(in R result)
+                    {
+                        recordError(
+                            ErrorCode.bindError,
+                            "An error occured while trying to bind the named argument %s: "
+                                ~ "%s; Error code %d.",
+                            namedArgInfo.identifier,
+                            result.error, result.errorCode);
+                    }
+
+                    static if (namedArgInfo.flags.doesNotHave(ArgFlags._multipleBit))
+                    {
+                        if (context.namedArgHasBeenFoundBitArray[namedArgIndex]
+                            // This error type being ignored means the user implicitly wants
+                            // all of the arguments to be processed as though they had the canRedefine bit.
+                            && errorHandler.shouldRecord(ErrorCode.duplicateNamedArgumentError))
+                        {
+                            errorHandler.format(
+                                ErrorCode.duplicateNamedArgumentError,
+                                "Duplicate named argument %s.",
+                                namedArgInfo.name);
+                            context.errorCounter++;
+
+                            // Skip its value too
+                            if (!tokenizer.empty
+                                && tokenizer.front.kind == Kind.namedArgumentValue)
+                            {
+                                tokenizer.popFront();
+                            }
+                            return ResultKind.ok;
+                        }
+                    }
+                    context.namedArgHasBeenFoundBitArray[namedArgIndex] = true;
+
+                    static if (namedArgInfo.flags.has(ArgFlags._requiredBit))
+                        context.requiredNamedArgHasNotBeenFoundBitArray[namedArgIndex] = false;
+
+                    static if (namedArgInfo.flags.has(ArgFlags._parseAsFlagBit))
+                    {
+                        // Default to setting the field to true, since it's defined.
+                        // The only scenario where it should be false is if `--arg false` is used.
+                        // TODO: 
+                        // Allow custom flag values with a UDA.
+                        // parseAsFlag should not be restricted to bool, ideally.
+                        command.getArgumentFieldRef!namedArgInfo = true;
+
+                        if (tokenizer.empty)
+                            return ResultKind.ok;
+
+                        auto nextArgToken = tokenizer.front;
+                        if (nextArgToken.kind.doesNotHave(Kind.valueBit))
+                            return ResultKind.ok;
+
+                        // Providing a value to a bool is optional, so to avoid producing an unwanted
+                        // error, we need to white list the allowed values if it's not explicitly
+                        // marked as the argument's value.
+                        //
+                        // Actually, no! This does not work, because custom converters exist.
+                        // Imagine the user specified that bool to have a switch converter, aka on/off.
+                        // We try and convert, we just swallow the error if it does not succeed.
+                        //  
+                        // If we want to not allocate the extra error string here, we could
+                        // forward the error handler to the binder, maybe??
+                        //
+                        // if(nextArgToken.kind == Kind.namedArgumentValueOrOrphanArgument)
+                            // continue OuterLoop;
+
+                        auto bindResult = bindArgument!namedArgInfo(command, nextArgToken.valueSlice);
+
+                        // So there are 3 possibilities:
+                        // 1. the value was compatible with the converter, and we got true or false.
+                        if (bindResult.isOk)
+                        {
+                            tokenizer.popFront();
+                        }
+
+                        // 2. the value was not compatible with the converter, and we got an error.
+                        // bindResult.isError is always true here.
+                        else if (
+                            // so here we check if it had definitely been for this argument.
+                            // aka this will be true when `--arg=kek` is passed, but not when `--arg kek` is passed.
+                            nextArgToken.kind.doesNotHave(Kind.orphanArgumentBit))
+                        {
+                            recordBindError(bindResult);
+                            tokenizer.popFront();
+                        }
+
+                        // 3. It's an error, but the value can be interpreted as another sort of argument.
+                        // For now, we consider orphan arguments to be just positional arguments, but not for long.
+                        // `--arg kek` would get to this point and ignore the `kek`.
+                        return ResultKind.ok;
+                    }
+
+                    else static if (namedArgInfo.argument.flags.has(ArgFlags._countBit))
+                    {
+                        alias TypeOfField = typeof(command.getArgumentFieldRef!namedArgInfo);
+                        static assert(__traits(isArithmetic, TypeOfField));
+                        
+                        static if (namedArgInfo.argument.flags.has(ArgFlags._repeatableNameBit))
+                        {
+                            const valueToAdd = cast(TypeOfField) currentArgToken.valueSlice.length;
+                        }
+                        else
+                        {
+                            const valueToAdd = cast(TypeOfField) 1;
+                        }
+                        command.getArgumentFieldRef!namedArgInfo += valueToAdd;
+
+                        if (tokenizer.empty)
+                            return ResultKind.ok;
+
+                        auto nextArgToken = tokenizer.front;
+                        if (nextArgToken.kind == Kind.namedArgumentValue)
+                        {
+                            recordError(
+                                ErrorCode.countArgumentGivenValueError,
+                                "The count argument %s cannot be given a value, got %s.",
+                                namedArgInfo.name,
+                                nextArgToken.valueSlice);
+                            tokenizer.popFront();
+                        }
+                        return ResultKind.ok;
+                    }
+
+                    else
+                    {
+                        static assert(namedArgInfo.flags.doesNotHave(ArgFlags._parseAsFlagBit));
+                        
+                        if (tokenizer.empty)
+                        {
+                            recordError(
+                                ErrorCode.noValueForNamedArgumentError,
+                                "Expected a value for the argument %s.",
+                                namedArgInfo.name);
+                            return ResultKind.ok;
+                        }
+
+                        auto nextArgToken = tokenizer.front;
+                        if (nextArgToken.kind.doesNotHave(Kind.namedArgumentValueBit))
+                        {
+                            recordError(
+                                ErrorCode.noValueForNamedArgumentError,
+                                "Expected a value for the argument %s, got %s.",
+                                namedArgInfo.name,
+                                nextArgToken.valueSlice);
+
+                            // Don't skip it, because it might be the name of another option.
+                            // tokenizer.popFront();
+                            
+                            return ResultKind.ok;
+                        }
+
+                        {
+                            // NOTE: ArgFlags._accumulateBit should have been handled in the binder.
+                            auto result = bindArgument!namedArgInfo(command, nextArgToken.valueSlice);
+                            if (result.isError)
+                                recordBindError(result);
+                            tokenizer.popFront();
+                            return ResultKind.ok;
+                        }
+                    }
+                }
+            }} // static foreach
+
+            /// TODO: conditionally allow unknown arguments
+            recordError(
+                ErrorCode.unknownNamedArgumentError,
+                "Unknown named argument `%s`.",
+                currentArgToken.fullSlice);
+
+            if (tokenizer.empty)
+                return ResultKind.ok;
+
+            if (tokenizer.front.kind == Kind.namedArgumentValue)
+                tokenizer.popFront();
+
+            return ResultKind.ok;
+        }
+    } // TokenKindSwitch
+}
+
+
+void maybeReportParseErrorsFromFinalContext
+(
+    CommandType,
+    Context : CommandParsingContext!numBitsInStorage, size_t numBitsInStorage,
+    TErrorHandler
+)
+(
+    ref scope Context context,
+    ref scope TErrorHandler errorHandler
+)
+{
+    alias ArgumentInfo = jcli.introspect.CommandArgumentsInfo!CommandType;
+
+    if (context.currentPositionalArgIndex < ArgumentInfo.numRequiredPositionalArguments)
+    {
+        enum messageFormat =
+        (){
+            string ret = "Expected ";
+            if (ArgumentInfo.positional.length == ArgumentInfo.numRequiredPositionalArguments)
+                ret ~= "exactly";
+            else
+                ret ~= "at least";
+
+            ret ~= " %d positional arguments but got only %d. The command takes the following positional arguments: ";
+
+            {
+                import std.algorithm : map;
+                import std.string : join;
+                enum argList = ArgumentInfo.positional.map!(a => a.name).join(", ");
+                ret ~= argList;
+            }
+            return ret;
+        }();
+
+        if (errorHandler.shouldRecord(ErrorCode.tooFewPositionalArgumentsError))
+        {
+            errorHandler.format(
+                ErrorCode.tooFewPositionalArgumentsError,
+                messageFormat,
+                ArgumentInfo.numRequiredPositionalArguments,
+                context.currentPositionalArgIndex);
+            context.errorCounter++;
+        }
+    }
+
+    static if (ArgumentInfo.named.length > 0)
+    {
+        if (context.requiredNamedArgHasNotBeenFoundBitArray.count > 0
+            && errorHandler.shouldRecord(ErrorCode.missingNamedArgumentsError))
+        {
+            import std.array;
+
+            // May want to return the whole thing here, but I think the first thing
+            // in the pattern should be the most descriptive anyway so should be encouraged.
+            string getPattern(size_t index)
+            {
+                return ArgumentInfo.named[index].name;
+            }
+
+            auto failMessageBuilder = appender!string("The following required named arguments were not found: ");
+            auto notFoundArgumentIndexes = context.requiredNamedArgHasNotBeenFoundBitArray.bitsSet;
+            failMessageBuilder ~= getPattern(notFoundArgumentIndexes.front);
+            notFoundArgumentIndexes.popFront();
+
+            foreach (notFoundArgumentIndex; notFoundArgumentIndexes)
+            {
+                failMessageBuilder ~= ", ";
+                failMessageBuilder ~= getPattern(notFoundArgumentIndex);
+            }
+
+            errorHandler.format(
+                ErrorCode.missingNamedArgumentsError,
+                failMessageBuilder[]);
+            context.errorCounter++;
+        }
+    }
+}
+
 template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgument!())
 {
     alias ArgumentInfo = jcli.introspect.CommandArgumentsInfo!CommandType;
@@ -107,417 +592,18 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
     {
         auto command = CommandType();
 
-        static if (ArgumentInfo.named.length > 0)
+        CommandParsingContext!(ArgumentInfo.named.length) context; 
+        resetNamedArgumentArrayStorage!CommandType(context);
+
+        while (!tokenizer.empty)
         {
-            import std.bitmanip : BitArray;
-            static size_t getNumberOfSizetsNecessaryToHoldBits(size_t numBits)
-            {
-                static size_t ceilDivide(size_t a, size_t b)
-                {
-                    return (a + b - 1) / b;
-                }
-                size_t numBytesToHoldBits = ceilDivide(numBits, 8);
-                size_t numSizeTsToHoldBits = ceilDivide(numBytesToHoldBits, 8);
-                return numSizeTsToHoldBits;
-            }
-            enum lengthOfBitArrayStorage = getNumberOfSizetsNecessaryToHoldBits(ArgumentInfo.named.length);
-            static assert(lengthOfBitArrayStorage > 0);
-
-            // Is 0 if a required argument has been found, otherwise 1.
-            // For non-required arguments this is always 0.
-            size_t[lengthOfBitArrayStorage] requiredNamedArgHasNotBeenFoundBitArrayStorage;
-            BitArray requiredNamedArgHasNotBeenFoundBitArray = BitArray(
-                cast(void[]) requiredNamedArgHasNotBeenFoundBitArrayStorage, ArgumentInfo.named.length);
-
-            // Is 1 if an argument has been found at least once, otherwise 0.
-            size_t[lengthOfBitArrayStorage] namedArgHasBeenFoundBitArrayStorage;
-            BitArray namedArgHasBeenFoundBitArray = BitArray(
-                cast(void[]) namedArgHasBeenFoundBitArrayStorage, ArgumentInfo.named.length);
-            
-            static foreach (index, arg; ArgumentInfo.named)
-            {
-                static if (arg.flags.has(ArgFlags._requiredBit))
-                {
-                    requiredNamedArgHasNotBeenFoundBitArray[index] = true;
-                }
-            }
+            const _ = consumeSingleArgumentIntoCommand!(bindArgument)(
+                context, command, tokenizer, errorHandler);
         }
 
-        size_t currentPositionalArgIndex = 0;
-        size_t errorCounter = 0;
-        alias Kind = ArgToken.Kind;
+        maybeReportParseErrorsFromFinalContext!CommandType(context, errorHandler);
 
-        void recordError(T...)(ErrorCode code, auto ref T args)
-        {
-            if (errorHandler.shouldRecord(code))
-            {
-                errorHandler.format(code, args);
-                errorCounter++;
-            }
-        }
-
-        OuterLoop: while (!tokenizer.empty)
-        {
-            const currentArgToken = tokenizer.front;
-
-            // This has to be handled before the switch, because we pop before the switch.
-            if (currentArgToken.kind == Kind.twoDashesDelimiter)
-            {
-                static if (ArgumentInfo.takesRaw)
-                {
-                    auto rawArgumentStrings = tokenizer.leftoverRange();
-                    command.getArgumentFieldRef!(ArgumentInfo.raw) = rawArgumentStrings;
-                    // To the outside it looks like we have consumed all arguments.
-                    tokenizer = typeof(tokenizer).init;
-                }
-                
-                tokenizer.popFront();
-                break OuterLoop;
-            }
-
-            tokenizer.popFront();
-
-            // Cannot be final, since there are flags.
-            switch (currentArgToken.kind)
-            {
-                default:
-                {
-                    assert(0);
-                }
-
-                // if (currentArgToken.kind & Kind.errorBit)
-                // {
-                // }
-                case Kind.error_inputAfterClosedQuote:
-                case Kind.error_malformedQuotes:
-                case Kind.error_noValueForNamedArgument:
-                case Kind.error_singleDash:
-                case Kind.error_spaceAfterAssignment:
-                case Kind.error_spaceAfterDashes:
-                case Kind.error_threeOrMoreDashes:
-                case Kind.error_unclosedQuotes:
-                {
-                    // for now just log and go next
-                    // TODO: better errors
-                    recordError(
-                        ErrorCode.argumentParserError,
-                        "An error has occured in the parser: %s",
-                        currentArgToken.kind.stringof);
-                    continue OuterLoop;
-                }
-
-                case Kind.namedArgumentValue:
-                {
-                    assert(false, "This one should have been handled in the named argument section.");
-                }
-
-                // (currentArgToken.kind & (Kind._positionalArgumentBit | Kind.valueBit))
-                //      == Kind._positionalArgumentBit | Kind.valueBit
-                case Kind.namedArgumentValueOrOrphanArgument:
-                case Kind.positionalArgument:
-                // TODO: imo orphan arguments should not be treated like positional ones.
-                case Kind.orphanArgumentBit:
-                {
-                    InnerSwitch: switch (currentPositionalArgIndex)
-                    {
-                        default:
-                        {
-                            static if (ArgumentInfo.takesOverflow)
-                            {
-                                command.getArgumentFieldRef!(ArgumentInfo.overflow)
-                                    ~= currentArgToken.fullSlice;
-                            }
-                            else
-                            {
-                                recordError(
-                                    ErrorCode.tooManyPositionalArgumentsError,
-                                    "Too many (%d) positional arguments detected near %s.",
-                                    currentPositionalArgIndex,
-                                    currentArgToken.fullSlice);
-                            }
-                            break InnerSwitch;
-                        }
-                        static foreach (positionalIndex, positional; ArgumentInfo.positional)
-                        {
-                            case positionalIndex:
-                            {
-                                auto result = bindArgument!positional(command, currentArgToken.valueSlice);
-                                if (result.isError)
-                                {
-                                    recordError(
-                                        ErrorCode.bindError,
-                                        "An error occured while trying to bind the positional argument %s at index %d: "
-                                            ~ "%s; Error code %d.",
-                                        positional.identifier, positionalIndex,
-                                        result.error, result.errorCode);
-                                }
-                                break InnerSwitch;
-                            }
-                        }
-                    } // InnerSwitch
-
-                    currentPositionalArgIndex++;
-                    continue OuterLoop;
-                }
-
-                // currentArgToken.kind & Kind.argumentNameBit
-                case Kind.fullNamedArgumentName:
-                case Kind.shortNamedArgumentName:
-                {
-                    // Check if any of the arguments matched the name
-                    static foreach (namedArgIndex, namedArgInfo; ArgumentInfo.named)
-                    {{
-                        if (isNameMatch!namedArgInfo(currentArgToken.nameSlice))
-                        {
-                            void recordBindError(R)(in R result)
-                            {
-                                recordError(
-                                    ErrorCode.bindError,
-                                    "An error occured while trying to bind the named argument %s: "
-                                        ~ "%s; Error code %d.",
-                                    namedArgInfo.identifier,
-                                    result.error, result.errorCode);
-                            }
-
-                            static if (namedArgInfo.flags.doesNotHave(ArgFlags._multipleBit))
-                            {
-                                if (namedArgHasBeenFoundBitArray[namedArgIndex]
-                                    // This error type being ignored means the user implicitly wants
-                                    // all of the arguments to be processed as though they had the canRedefine bit.
-                                    && errorHandler.shouldRecord(ErrorCode.duplicateNamedArgumentError))
-                                {
-                                    errorHandler.format(
-                                        ErrorCode.duplicateNamedArgumentError,
-                                        "Duplicate named argument %s.",
-                                        namedArgInfo.name);
-                                    errorCounter++;
-                                    
-
-                                    // Skip its value too
-                                    if (!tokenizer.empty
-                                        && tokenizer.front.kind == Kind.namedArgumentValue)
-                                    {
-                                        tokenizer.popFront();
-                                    }
-                                    continue OuterLoop;
-                                }
-                            }
-                            namedArgHasBeenFoundBitArray[namedArgIndex] = true;
-
-                            static if (namedArgInfo.flags.has(ArgFlags._requiredBit))
-                                requiredNamedArgHasNotBeenFoundBitArray[namedArgIndex] = false;
-
-                            static if (namedArgInfo.flags.has(ArgFlags._parseAsFlagBit))
-                            {
-                                // Default to setting the field to true, since it's defined.
-                                // The only scenario where it should be false is if `--arg false` is used.
-                                // TODO: 
-                                // Allow custom flag values with a UDA.
-                                // parseAsFlag should not be restricted to bool, ideally.
-                                command.getArgumentFieldRef!namedArgInfo = true;
-
-                                if (tokenizer.empty)
-                                    break OuterLoop;
-
-                                auto nextArgToken = tokenizer.front;
-                                if (nextArgToken.kind.doesNotHave(Kind.valueBit))
-                                    continue OuterLoop;
-
-                                // Providing a value to a bool is optional, so to avoid producing an unwanted
-                                // error, we need to white list the allowed values if it's not explicitly
-                                // marked as the argument's value.
-                                //
-                                // Actually, no! This does not work, because custom converters exist.
-                                // Imagine the user specified that bool to have a switch converter, aka on/off.
-                                // We try and convert, we just swallow the error if it does not succeed.
-                                //  
-                                // If we want to not allocate the extra error string here, we could
-                                // forward the error handler to the binder, maybe??
-                                //
-                                // if(nextArgToken.kind == Kind.namedArgumentValueOrOrphanArgument)
-                                    // continue OuterLoop;
-
-                                auto bindResult = bindArgument!namedArgInfo(command, nextArgToken.valueSlice);
-
-                                // So there are 3 possibilities:
-                                // 1. the value was compatible with the converter, and we got true or false.
-                                if (bindResult.isOk)
-                                {
-                                    tokenizer.popFront();
-                                    continue OuterLoop;
-                                }
-
-                                // 2. the value was not compatible with the converter, and we got an error.
-                                // bindResult.isError is always true here.
-                                else if (
-                                    // so here we check if it had definitely been for this argument.
-                                    // aka this will be true when `--arg=kek` is passed, but not when `--arg kek` is passed.
-                                    nextArgToken.kind.doesNotHave(Kind.orphanArgumentBit))
-                                {
-                                    recordBindError(bindResult);
-                                    tokenizer.popFront();
-                                    continue OuterLoop;
-                                }
-
-                                // 3. It's an error, but the value can be interpreted as another sort of argument.
-                                // For now, we consider orphan arguments to be just positional arguments, but not for long.
-                                // `--arg kek` would get to this point and ignore the `kek`.
-                                else
-                                {
-                                    continue OuterLoop;
-                                }
-                            }
-
-                            else static if (namedArgInfo.argument.flags.has(ArgFlags._countBit))
-                            {
-                                alias TypeOfField = typeof(command.getArgumentFieldRef!namedArgInfo);
-                                static assert(__traits(isArithmetic, TypeOfField));
-                                
-                                static if (namedArgInfo.argument.flags.has(ArgFlags._repeatableNameBit))
-                                {
-                                    const valueToAdd = cast(TypeOfField) currentArgToken.valueSlice.length;
-                                }
-                                else
-                                {
-                                    const valueToAdd = cast(TypeOfField) 1;
-                                }
-                                command.getArgumentFieldRef!namedArgInfo += valueToAdd;
-
-                                if (tokenizer.empty)
-                                    break OuterLoop;
-
-                                auto nextArgToken = tokenizer.front;
-                                if (nextArgToken.kind == Kind.namedArgumentValue)
-                                {
-                                    recordError(
-                                        ErrorCode.countArgumentGivenValueError,
-                                        "The count argument %s cannot be given a value, got %s.",
-                                        namedArgInfo.name,
-                                        nextArgToken.valueSlice);
-                                    tokenizer.popFront();
-                                }
-                                continue OuterLoop;
-                            }
-
-                            else
-                            {
-                                static assert(namedArgInfo.flags.doesNotHave(ArgFlags._parseAsFlagBit));
-                                
-                                if (tokenizer.empty)
-                                {
-                                    recordError(
-                                        ErrorCode.noValueForNamedArgumentError,
-                                        "Expected a value for the argument %s.",
-                                        namedArgInfo.name);
-                                    break OuterLoop;
-                                }
-
-                                auto nextArgToken = tokenizer.front;
-                                if ((nextArgToken.kind & Kind.namedArgumentValueBit) == 0)
-                                {
-                                    recordError(
-                                        ErrorCode.noValueForNamedArgumentError,
-                                        "Expected a value for the argument %s, got %s.",
-                                        namedArgInfo.name,
-                                        nextArgToken.valueSlice);
-
-                                    // Don't skip it, because it might be the name of another option.
-                                    // tokenizer.popFront();
-                                    
-                                    continue OuterLoop;
-                                }
-
-                                {
-                                    // NOTE: ArgFlags._accumulateBit should have been handled in the binder.
-                                    auto result = bindArgument!namedArgInfo(command, nextArgToken.valueSlice);
-                                    if (result.isError)
-                                        recordBindError(result);
-                                    tokenizer.popFront();
-                                    continue OuterLoop;
-                                }
-                            }
-                        }
-                    }} // static foreach
-
-                    /// TODO: conditionally allow unknown arguments
-                    recordError(
-                        ErrorCode.unknownNamedArgumentError,
-                        "Unknown named argument `%s`.",
-                        currentArgToken.fullSlice);
-
-                    if (tokenizer.empty)
-                        break OuterLoop;
-
-                    if (tokenizer.front.kind == Kind.namedArgumentValue)
-                    {
-                        tokenizer.popFront();
-                        continue OuterLoop;
-                    }
-                }
-            } // TokenKindSwitch
-        } // OuterLoop
-
-        if (currentPositionalArgIndex < ArgumentInfo.numRequiredPositionalArguments)
-        {
-            enum messageFormat =
-            (){
-                string ret = "Expected ";
-                if (ArgumentInfo.positional.length == ArgumentInfo.numRequiredPositionalArguments)
-                    ret ~= "exactly";
-                else
-                    ret ~= "at least";
-
-                ret ~= " %d positional arguments but got only %d. The command takes the following positional arguments: ";
-
-                {
-                    import std.algorithm : map;
-                    import std.string : join;
-                    enum argList = ArgumentInfo.positional.map!(a => a.name).join(", ");
-                    ret ~= argList;
-                }
-                return ret;
-            }();
-
-            recordError(
-                ErrorCode.tooFewPositionalArgumentsError,
-                messageFormat,
-                ArgumentInfo.numRequiredPositionalArguments,
-                currentPositionalArgIndex);
-        }
-
-        static if (ArgumentInfo.named.length > 0)
-        {
-            if (requiredNamedArgHasNotBeenFoundBitArray.count > 0
-                && errorHandler.shouldRecord(ErrorCode.missingNamedArgumentsError))
-            {
-                import std.array;
-
-                // May want to return the whole thing here, but I think the first thing
-                // in the pattern should be the most descriptive anyway so should be encouraged.
-                string getPattern(size_t index)
-                {
-                    return ArgumentInfo.named[index].name;
-                }
-
-                auto failMessageBuilder = appender!string("The following required named arguments were not found: ");
-                auto notFoundArgumentIndexes = requiredNamedArgHasNotBeenFoundBitArray.bitsSet;
-                failMessageBuilder ~= getPattern(notFoundArgumentIndexes.front);
-                notFoundArgumentIndexes.popFront();
-
-                foreach (notFoundArgumentIndex; notFoundArgumentIndexes)
-                {
-                    failMessageBuilder ~= ", ";
-                    failMessageBuilder ~= getPattern(notFoundArgumentIndex);
-                }
-
-                errorHandler.format(
-                    ErrorCode.missingNamedArgumentsError,
-                    failMessageBuilder[]);
-                errorCounter++;
-            }
-        }
-
-        return typeof(return)(errorCounter, command);
+        return typeof(return)(context.errorCounter, command);
     }
 }
 
