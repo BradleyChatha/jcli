@@ -94,14 +94,14 @@ struct CommandParsingContext(size_t numBitsInStorage)
         size_t[bitStorageSize] requiredNamedArgHasNotBeenFoundBitArrayStorage = 0;
         size_t[bitStorageSize] namedArgHasBeenFoundBitArrayStorage = 0;
         
-        const @nogc nothrow pure @trusted:
+        const @nogc nothrow pure:
 
-        BitArray requiredNamedArgHasNotBeenFoundBitArray()
+        BitArray requiredNamedArgHasNotBeenFoundBitArray() @trusted
         {
             return BitArray(cast(void[]) requiredNamedArgHasNotBeenFoundBitArrayStorage[], numBitsInStorage);
         }
 
-        BitArray namedArgHasBeenFoundBitArray()
+        BitArray namedArgHasBeenFoundBitArray() @trusted
         {
             return BitArray(cast(void[]) namedArgHasBeenFoundBitArrayStorage[], numBitsInStorage);
         }
@@ -116,6 +116,7 @@ void resetNamedArgumentArrayStorage
 (
     ref scope Context context
 )
+    @nogc nothrow pure @trusted
 {
     static if (size > 0)
     {
@@ -552,36 +553,35 @@ void maybeReportParseErrorsFromFinalContext
     }
 }
 
-template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgument!())
+
+/// For now, I opt to keep the parts separate, because then
+/// the code is more parametrizable. Currently, it's not totally 
+/// clear which parts of this are needed separately.
+template parseCommand(CommandType, alias bindArgument = jcli.argbinder.bindArgument!())
 {
-    alias ArgumentInfo = jcli.introspect.CommandArgumentsInfo!CommandType;
-    alias Result       = ParseResult!CommandType;
+    alias ArgumentInfo  = jcli.introspect.CommandArgumentsInfo!CommandType;
+    alias Result        = ParseResult!CommandType;
+    alias _parseCommand = .parseCommand!(CommandType, bindArgument);
 
     static import std.stdio;
-    ParseResult!CommandType parse(scope string[] args)
+    ParseResult!CommandType parseCommand(scope string[] args)
     {
         scope auto dummy = DefaultParseErrorHandler();
-        return parse(args, dummy);
+        return _parseCommand(args, dummy);
     }
 
-    ParseResult!CommandType parse
-    (
-        TErrorHandler
-    )
+    ParseResult!CommandType parseCommand(TErrorHandler)
     (
         scope string[] args,
         ref scope TErrorHandler errorHandler
     )
     {
         scope auto parser = argTokenizer(args);
-        return parse(parser, errorHandler);
+        return _parseCommand(parser, errorHandler);
     }
 
-    ParseResult!CommandType parse
+    ParseResult!CommandType parseCommand
     (
-        // TODO:
-        // Perhaps this should be a delegate?
-        // But then it will have to take a var arg array, which is fine.
         TErrorHandler,
         TArgTokenizer : ArgTokenizer!T, T
     )
@@ -648,7 +648,7 @@ version(unittest)
         auto parse(scope string[] args)
         {
             output.clear();
-            return CommandParser!Struct.parse(args, output);
+            return parseCommand!Struct(args, output);
         }
     }
 }
@@ -1164,7 +1164,7 @@ unittest
     static auto parse(scope string[] args, ref TestErrorHandler handler)
     {
         handler.clear();
-        return CommandParser!S.parse(args, handler);
+        return parseCommand!S(args, handler);
     }
     auto handler = TestErrorHandler(ErrorCode.none, appender!(ErrorCode[]));
 

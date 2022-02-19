@@ -217,9 +217,8 @@ final class CommandLineInterface(Modules...)
     {
         return (Tokenizer parser) 
         {
-            alias CommandParser = jcli.commandparser.CommandParser!(CommandT, bindArgument);
-            static DefaultParseErrorHandler dummy = DefaultParseErrorHandler();
-            auto result = CommandParser.parse(parser, dummy);
+            scope auto dummy = DefaultParseErrorHandler();
+            auto result = parseCommand!(CommandT, bindArgument)(parser, dummy);
 
             if(!result.isOk) // Error is already printed
                 return -1;
