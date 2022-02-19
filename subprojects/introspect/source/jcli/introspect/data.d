@@ -20,7 +20,6 @@ struct CommandGeneralInfo(CommandUdaT)
     }
     
     ref inout(string) description() inout nothrow @nogc pure @safe { return uda.description; }
-
 }
 
 struct ArgumentCommonInfo
@@ -538,7 +537,9 @@ import std.meta;
 // NOTE:
 // Passing the udas as a sequence works, but trying to get them within the function does not.
 // Apparently, it may work if we mark the function static, but afaik that's a compiler bug.
-ArgFlags foldArgumentFlags(udas...)()
+// Another NOTE:
+// We still need the static here?? wtf?
+static ArgFlags foldArgumentFlags(udas...)()
 {
     ArgFlags result;
     ArgConfig[] highLevelFlags;
@@ -644,7 +645,8 @@ ArgFlags inferOptionalityAndValidate(FieldType)(ArgFlags initialFlags, FieldType
 // makes the compiler complain.
 enum defaultValueOf(alias field) = __traits(child, __traits(parent, field).init, field);
 
-template getCommonArgumentInfo(alias field, ArgFlags initialFlags)
+// Gives some basic information associated with the given argument field.
+public template getCommonArgumentInfo(alias field, ArgFlags initialFlags = ArgFlags.none)
 {
     enum flagsBeforeInference = initialFlags | foldArgumentFlags!(__traits(getAttributes, field));
     enum flagsAfterInference  = inferOptionalityAndValidate!(typeof(field))(
