@@ -215,6 +215,8 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
                 //      == Kind._positionalArgumentBit | Kind.valueBit
                 case Kind.namedArgumentValueOrOrphanArgument:
                 case Kind.positionalArgument:
+                // TODO: imo orphan arguments should not be treated like positional ones.
+                case Kind.orphanArgumentBit:
                 {
                     InnerSwitch: switch (currentPositionalArgIndex)
                     {
