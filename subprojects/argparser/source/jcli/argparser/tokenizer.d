@@ -1,4 +1,4 @@
-module jcli.argparser.parser;
+module jcli.argparser.tokenizer;
 
 import std.range;
 
@@ -23,16 +23,20 @@ struct ArgToken
         /// The bit! Indicating whether it contains a value.
         valueBit = 32,
         /// The bit indicating the argument value may correspond to a named argument
-        _namedArgumentValueBit = 1,
+        namedArgumentValueBit = 1,
         /// The bit indicating the argument value may correspond to a positional argument
-        _positionalArgumentBit = 2,
+        positionalArgumentBit = 2,
+        /// The bit indicating the argument value may correspond to an orphan argument.
+        /// We call an argument orphan when it appears after a named argument name.
+        /// Example: not_orphan -arg_name maybe_orphan definitely_orphan
+        orphanArgumentBit = 4,
         /// The right part of -a=b, -a="b", --stuff=b or --stuff="b".
-        namedArgumentValue = valueBit | _namedArgumentValueBit,
+        namedArgumentValue = valueBit | namedArgumentValueBit,
         /// --stuff value
-        namedArgumentValueOrPositionalArgument = valueBit | _namedArgumentValueBit | _positionalArgumentBit,
+        namedArgumentValueOrOrphanArgument = valueBit | namedArgumentValueBit | orphanArgumentBit,
         /// Arguments that appear before any named arguments.
         /// value --stuff not_this_one
-        positionalArgument = valueBit | _positionalArgumentBit,
+        positionalArgument = valueBit | positionalArgumentBit,
         
         /// The bit! indicating that an error has occured.
         errorBit = 48,
@@ -86,17 +90,22 @@ struct ArgToken
     }
 }
 
+// for now, scoped to module, but we may want it to be public, it is useful.
+package (jcli)
+{
+    import jcli.core.utils : FlagsHelpers;
+    mixin FlagsHelpers!(ArgToken.Kind);
+}
+
 struct ArgTokenizer(TRange)
     if (isInputRange!TRange 
         && is(ElementType!TRange == string))
 {
-    alias ElementType = ArgToken;
-
     private
     {
         TRange _range;
         bool _empty = false;
-        ElementType _front = ElementType.init;
+        ArgToken _front = ArgToken.init;
         size_t _positionWithinCurrentString = 0;
         bool _hasParsedAnyNamedArguments = false;
     }
@@ -133,7 +142,7 @@ struct ArgTokenizer(TRange)
     }
 
     /// ditto
-    private ElementType _popFrontInternal()
+    private ArgToken _popFrontInternal()
     {
         assert(!empty);
 
@@ -174,10 +183,10 @@ struct ArgTokenizer(TRange)
             // }
         }
 
-        alias Kind = ElementType.Kind;
+        alias Kind = ArgToken.Kind;
         Kind previousKind = _front.kind;
 
-        ElementType parseArgumentName()
+        ArgToken parseArgumentName()
         {
             // This function assumes the current character is a dash
             // Note to devs: if you want the logic after that, extract another local function.
@@ -191,7 +200,7 @@ struct ArgTokenizer(TRange)
                 const fullSlice  = getCurrentFullSlice();
                 const valueSlice = "";
                 popFrontAndReset();
-                return ElementType(Kind.error_singleDash, fullSlice, valueSlice);
+                return ArgToken(Kind.error_singleDash, fullSlice, valueSlice);
             }
             // Double dash.
             else if (getCurrentCharacter() == '-')
@@ -211,7 +220,7 @@ struct ArgTokenizer(TRange)
                 const fullSlice  = getCurrentFullSlice();
                 const valueSlice = fullSlice;
                 popFrontAndReset();
-                return ElementType(Kind.twoDashesDelimiter, fullSlice, valueSlice);
+                return ArgToken(Kind.twoDashesDelimiter, fullSlice, valueSlice);
             }
 
             // If there is a space, at that point it must have been split already.
@@ -223,7 +232,7 @@ struct ArgTokenizer(TRange)
                 const fullSlice  = currentSlice[_positionWithinCurrentString .. $];
                 const valueSlice = fullSlice;
                 popFrontAndReset();
-                return ElementType(kind, fullSlice, valueSlice);
+                return ArgToken(kind, fullSlice, valueSlice);
             }
 
             if (getCurrentCharacter() == '-')
@@ -233,7 +242,7 @@ struct ArgTokenizer(TRange)
                 const fullSlice  = getCurrentFullSlice();
                 const valueSlice = fullSlice;
                 popFrontAndReset();
-                return ElementType(kind, fullSlice, valueSlice);
+                return ArgToken(kind, fullSlice, valueSlice);
             }
 
             // Even though in the struct definition it is called "value slice",
@@ -253,7 +262,7 @@ struct ArgTokenizer(TRange)
                     const fullSlice = getCurrentFullSlice();
                     const nameSlice = getCurrentNameSlice();
                     _positionWithinCurrentString++;
-                    return ElementType(potentialNamedArgumentKind, fullSlice, nameSlice);
+                    return ArgToken(potentialNamedArgumentKind, fullSlice, nameSlice);
                 }
                 import std.ascii : isWhite;
                 if (!isWhite(ch))
@@ -273,7 +282,7 @@ struct ArgTokenizer(TRange)
                     popFrontAndReset();
                 }
 
-                return ElementType(potentialNamedArgumentKind, fullSlice, nameSlice);
+                return ArgToken(potentialNamedArgumentKind, fullSlice, nameSlice);
             }
         }
 
@@ -297,7 +306,7 @@ struct ArgTokenizer(TRange)
                     const fullSlice  = "";
                     const valueSlice = "";
                     popFrontAndReset();
-                    return ElementType(kind, fullSlice, valueSlice);
+                    return ArgToken(kind, fullSlice, valueSlice);
                 }
 
                 if (getCurrentCharacter() == '"')
@@ -311,7 +320,7 @@ struct ArgTokenizer(TRange)
                         const fullSlice  = getCurrentFullSlice();
                         const valueSlice = fullSlice;
                         popFrontAndReset();
-                        return ElementType(kind, fullSlice, valueSlice);
+                        return ArgToken(kind, fullSlice, valueSlice);
                     }
 
                     const valueStartIndex = _positionWithinCurrentString;
@@ -328,7 +337,7 @@ struct ArgTokenizer(TRange)
                         const fullSlice  = currentSlice[initialPosition .. $];
                         const valueSlice = currentSlice[valueStartIndex .. $];
                         popFrontAndReset();
-                        return ElementType(kind, fullSlice, valueSlice);
+                        return ArgToken(kind, fullSlice, valueSlice);
                     }
 
                     indexOfQuote += valueStartIndex;
@@ -340,7 +349,7 @@ struct ArgTokenizer(TRange)
                         const fullSlice  = currentSlice[initialPosition .. $];
                         const valueSlice = currentSlice[valueStartIndex .. $];
                         popFrontAndReset();
-                        return ElementType(kind, fullSlice, valueSlice);
+                        return ArgToken(kind, fullSlice, valueSlice);
                     }
 
                     // `--arg="..."`
@@ -349,7 +358,7 @@ struct ArgTokenizer(TRange)
                         const fullSlice  = currentSlice[initialPosition .. $];
                         const valueSlice = currentSlice[valueStartIndex .. indexOfQuote];
                         popFrontAndReset();
-                        return ElementType(kind, fullSlice, valueSlice);
+                        return ArgToken(kind, fullSlice, valueSlice);
                     }
                 }
 
@@ -374,7 +383,7 @@ struct ArgTokenizer(TRange)
                     }();
 
                     popFrontAndReset();
-                    return ElementType(kind, fullSlice, valueSlice);
+                    return ArgToken(kind, fullSlice, valueSlice);
                 }
             }
 
@@ -385,13 +394,13 @@ struct ArgTokenizer(TRange)
 
             // Otherwise the entire string is just an argument value like the "value" below.
             // ["--name", "value"].
-            // We don't care whether it was quoted on not in the source, we just return the whole thing.
+            // We don't care whether it was quoted or not in the source, we just return the whole thing.
             {
-                const kind       = Kind.namedArgumentValueOrPositionalArgument;
+                const kind       = Kind.namedArgumentValueOrOrphanArgument;
                 const fullSlice  = currentSlice;
                 const valueSlice = currentSlice;
                 _range.popFront();
-                return ElementType(kind, fullSlice, valueSlice);
+                return ArgToken(kind, fullSlice, valueSlice);
             }
         }
         // is not a named arg (technically these checks are not needed, but let's do it just in case).
@@ -416,12 +425,12 @@ struct ArgTokenizer(TRange)
                 // --arg "ba ba ba"
                 // We see it unqouted, so we just return the value
                 const kind = _hasParsedAnyNamedArguments
-                    ? Kind.namedArgumentValueOrPositionalArgument
+                    ? Kind.namedArgumentValueOrOrphanArgument
                     : Kind.positionalArgument;
                 const fullSlice  = currentSlice;
                 const valueSlice = currentSlice;
                 _range.popFront();
-                return ElementType(kind, fullSlice, valueSlice);
+                return ArgToken(kind, fullSlice, valueSlice);
             }
 
         }
@@ -451,14 +460,14 @@ unittest
         auto args = ["--hello", "world"];
         assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--hello", "hello"),
-            ArgToken(Kind.namedArgumentValueOrPositionalArgument, "world", "world"),
+            ArgToken(Kind.namedArgumentValueOrOrphanArgument, "world", "world"),
         ]));
     }
     {
         auto args = ["-hello", "world"];
         assert(equal(argTokenizer(args), [
             ArgToken(Kind.shortNamedArgumentName, "-hello", "hello"),
-            ArgToken(Kind.namedArgumentValueOrPositionalArgument, "world", "world"),
+            ArgToken(Kind.namedArgumentValueOrOrphanArgument, "world", "world"),
         ]));
     }
     {
@@ -553,22 +562,22 @@ unittest
         ]));
     }
     {
-        auto args = ["a", "--a", "a", "-a=a"];
+        auto args = ["a", "--b", "c", "-d=e"];
         assert(equal(argTokenizer(args), [
             ArgToken(Kind.positionalArgument, "a", "a"),
 
-            ArgToken(Kind.fullNamedArgumentName, "--a", "a"),
-            ArgToken(Kind.namedArgumentValueOrPositionalArgument, "a", "a"),
+            ArgToken(Kind.fullNamedArgumentName, "--b", "b"),
+            ArgToken(Kind.namedArgumentValueOrOrphanArgument, "c", "c"),
             
-            ArgToken(Kind.shortNamedArgumentName, "-a", "a"),
-            ArgToken(Kind.namedArgumentValue, "a", "a"),
+            ArgToken(Kind.shortNamedArgumentName, "-d", "d"),
+            ArgToken(Kind.namedArgumentValue, "e", "e"),
         ]));
     }
     {
         auto args = ["--a", "Штука"];
         assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--a", "a"),
-            ArgToken(Kind.namedArgumentValueOrPositionalArgument, "Штука", "Штука"),
+            ArgToken(Kind.namedArgumentValueOrOrphanArgument, "Штука", "Штука"),
         ]));
     }
     {
@@ -582,7 +591,7 @@ unittest
         auto args = ["--a", "物事"];
         assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--a", "a"),
-            ArgToken(Kind.namedArgumentValueOrPositionalArgument, "物事", "物事"),
+            ArgToken(Kind.namedArgumentValueOrOrphanArgument, "物事", "物事"),
         ]));
     }
     

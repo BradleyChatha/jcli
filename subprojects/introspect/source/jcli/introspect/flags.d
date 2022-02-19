@@ -252,38 +252,22 @@ string getArgumentConfigFlagsIncompatibilityValidationMessage(ArgConfig[] flagsT
 }
 
 
+import jcli.core.utils : FlagsHelpers;
+mixin FlagsHelpers!ArgFlags;
 
 @safe nothrow @nogc pure const
+unittest
 {
-    bool doesNotHave(ArgFlags a, ArgFlags b)
+    with (ArgFlags)
     {
-        return (a & b) != b;
-    }
-    bool has(ArgFlags a, ArgFlags b)
-    {
-        return (a & b) == b;
-    }
-    bool hasEither(ArgFlags a, ArgFlags b)
-    {
-        return (a & b) != 0;
-    }
-    bool doesNotHaveEither(ArgFlags a, ArgFlags b)
-    {
-        return (a & b) == 0;
-    }
-    unittest
-    {
-        with (ArgFlags)
-        {
-            ArgFlags a = _aggregateBit | _caseInsensitiveBit;
-            ArgFlags b = _canRedefineBit;
-            assert(doesNotHave(a, b));  
-            assert(doesNotHave(a, b | _caseInsensitiveBit));  
-            assert(has(a, _caseInsensitiveBit));  
-            assert(hasEither(a, b | _caseInsensitiveBit));
-            assert(hasEither(a, _caseInsensitiveBit)); 
-            assert(doesNotHaveEither(a, b));
-        }
+        ArgFlags a = _aggregateBit | _caseInsensitiveBit;
+        ArgFlags b = _canRedefineBit;
+        assert(doesNotHave(a, b));  
+        assert(doesNotHave(a, b | _caseInsensitiveBit));  
+        assert(has(a, _caseInsensitiveBit));  
+        assert(hasEither(a, b | _caseInsensitiveBit));
+        assert(hasEither(a, _caseInsensitiveBit)); 
+        assert(doesNotHaveEither(a, b));
     }
 }
 

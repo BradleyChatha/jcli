@@ -213,7 +213,7 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
 
                 // (currentArgToken.kind & (Kind._positionalArgumentBit | Kind.valueBit))
                 //      == Kind._positionalArgumentBit | Kind.valueBit
-                case Kind.namedArgumentValueOrPositionalArgument:
+                case Kind.namedArgumentValueOrOrphanArgument:
                 case Kind.positionalArgument:
                 {
                     InnerSwitch: switch (currentPositionalArgIndex)
@@ -309,33 +309,59 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
                             {
                                 // Default to setting the field to true, since it's defined.
                                 // The only scenario where it should be false is if `--arg false` is used.
+                                // TODO: 
+                                // Allow custom flag values with a UDA.
+                                // parseAsFlag should not be restricted to bool, ideally.
                                 command.getArgumentFieldRef!namedArgInfo = true;
 
                                 if (tokenizer.empty)
                                     break OuterLoop;
 
                                 auto nextArgToken = tokenizer.front;
-                                if (!(nextArgToken.kind & Kind.valueBit))
+                                if (nextArgToken.kind.doesNotHave(Kind.valueBit))
                                     continue OuterLoop;
 
                                 // Providing a value to a bool is optional, so to avoid producing an unwanted
                                 // error, we need to white list the allowed values if it's not explicitly
                                 // marked as the argument's value.
-                                if(nextArgToken.kind == Kind.namedArgumentValueOrPositionalArgument
-                                && nextArgToken.valueSlice != "true" 
-                                && nextArgToken.valueSlice != "false")
-                                    continue OuterLoop;
+                                //
+                                // Actually, no! This does not work, because custom converters exist.
+                                // Imagine the user specified that bool to have a switch converter, aka on/off.
+                                // We try and convert, we just swallow the error if it does not succeed.
+                                //  
+                                // If we want to not allocate the extra error string here, we could
+                                // forward the error handler to the binder, maybe??
+                                //
+                                // if(nextArgToken.kind == Kind.namedArgumentValueOrOrphanArgument)
+                                    // continue OuterLoop;
 
                                 auto bindResult = bindArgument!namedArgInfo(command, nextArgToken.valueSlice);
+
+                                // So there are 3 possibilities:
+                                // 1. the value was compatible with the converter, and we got true or false.
                                 if (bindResult.isOk)
                                 {
                                     tokenizer.popFront();
                                     continue OuterLoop;
                                 }
-                                else if (bindResult.isError)
+
+                                // 2. the value was not compatible with the converter, and we got an error.
+                                // bindResult.isError is always true here.
+                                else if (
+                                    // so here we check if it had definitely been for this argument.
+                                    // aka this will be true when `--arg=kek` is passed, but not when `--arg kek` is passed.
+                                    nextArgToken.kind.doesNotHave(Kind.orphanArgumentBit))
                                 {
                                     recordBindError(bindResult);
                                     tokenizer.popFront();
+                                    continue OuterLoop;
+                                }
+
+                                // 3. It's an error, but the value can be interpreted as another sort of argument.
+                                // For now, we consider orphan arguments to be just positional arguments, but not for long.
+                                // `--arg kek` would get to this point and ignore the `kek`.
+                                else
+                                {
                                     continue OuterLoop;
                                 }
                             }
@@ -385,7 +411,7 @@ template CommandParser(CommandType, alias bindArgument = jcli.argbinder.bindArgu
                                 }
 
                                 auto nextArgToken = tokenizer.front;
-                                if ((nextArgToken.kind & Kind._namedArgumentValueBit) == 0)
+                                if ((nextArgToken.kind & Kind.namedArgumentValueBit) == 0)
                                 {
                                     recordError(
                                         ErrorCode.noValueForNamedArgumentError,
