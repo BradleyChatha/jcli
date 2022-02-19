@@ -541,8 +541,14 @@ import std.meta;
 ArgFlags foldArgumentFlags(udas...)()
 {
     ArgFlags result;
+    ArgConfig[] highLevelFlags;
+
     static foreach (uda; udas)
     {
+        static if (is(typeof(uda) == ArgConfig))
+        {
+            highLevelFlags ~= uda;
+        }
         static if (is(typeof(uda) : ArgFlags))
         {
             static assert(uda.doesNotHaveEither(
@@ -552,6 +558,13 @@ ArgFlags foldArgumentFlags(udas...)()
             result |= uda;
         }
     }
+
+    // Validate only the high level flag combinations.
+    {
+        string validationMessage = getArgumentConfigFlagsIncompatibilityValidationMessage(highLevelFlags);
+        assert(validationMessage is null, validationMessage);
+    }
+
     return result;
 }
 

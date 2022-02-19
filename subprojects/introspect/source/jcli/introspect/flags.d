@@ -160,14 +160,14 @@ bool areArgumentFlagsValid(ArgFlags flags) pure @safe
 //     return jcli.core.utils.toFlagsString(flags);
 // }
 
+alias ArgFlagsInfo = _ArgFlagsInfo!(ArgFlags);
+
+import jcli.core.utils : toFlagsString;
+import std.bitmanip : bitsSet;        
+import std.conv : to;
+
 string getArgumentFlagsValidationMessage(ArgFlags flags) pure @safe
 {
-    import std.bitmanip : bitsSet;        
-    import std.conv : to;
-    import jcli.core.utils;
-
-    alias ArgFlagsInfo = _ArgFlagsInfo!(ArgFlags);
-    
     foreach (size_t index; bitsSet(flags))
     {
         const currentFlag = cast(ArgFlags)(1 << index);
@@ -212,6 +212,47 @@ string getArgumentFlagsValidationMessage(ArgFlags flags) pure @safe
 
     return null;
 }
+
+/// Returns the validation message that describes in what way
+/// any pairs of flags were incompatible.
+/// We only do compile-time assertions, which is why this function 
+/// just concatenates strings to return the error message (basically, it shouldn't matter).
+string getArgumentConfigFlagsIncompatibilityValidationMessage(ArgConfig[] flagsToTest)
+{
+    foreach (index, f1; flagsToTest)
+    {
+        foreach (f2; flagsToTest[index + 1 .. $])
+        {
+            if (f1 == f2)
+                continue;
+
+            foreach (bitIndex; bitsSet(f1))
+            {
+                auto incompatibleForThisBit = ArgFlagsInfo.incompatible[bitIndex];
+
+                if (incompatibleForThisBit & f1)
+                {
+                    return "The high-level config flag " ~ f1.to!string
+                        ~ " is invalid, the low level parts are incompatible. The bit "
+                        ~ (cast(ArgFlags)(1 << bitIndex)).to!string
+                        ~ " is incompatible with " ~ incompatibleForThisBit.toFlagsString;
+                }
+
+                auto problematicFlags = cast(ArgFlags) (incompatibleForThisBit & f2);
+                if (problematicFlags)
+                {
+                    return "The high-level config flag " ~ f1.to!string
+                        ~ " is incompatible with " ~ f2.to!string
+                        ~ ". The problematic flags are " ~ problematicFlags.toFlagsString;
+                }
+            }
+        }
+    }
+    return null;
+}
+
+
+
 @safe nothrow @nogc pure const
 {
     bool doesNotHave(ArgFlags a, ArgFlags b)
@@ -246,6 +287,8 @@ string getArgumentFlagsValidationMessage(ArgFlags flags) pure @safe
     }
 }
 
+
+
 private template _ArgFlagsInfo(Flags)
 {
     immutable Flags[argFlagCount] incompatible        = getFlagsInfo!IncompatibleWithAnyOf;
@@ -255,7 +298,6 @@ private template _ArgFlagsInfo(Flags)
 
     enum argFlagCount = 
     (){
-        import std.bitmanip : bitsSet;
         import std.algorithm;
         import std.range;
         return Flags.max.bitsSet.array[$ - 1] + 1;
@@ -265,7 +307,6 @@ private template _ArgFlagsInfo(Flags)
     {
         Flags[argFlagCount] result;
 
-        import std.bitmanip : bitsSet; 
         static foreach (memberName; __traits(allMembers, Flags))
         {{
             size_t index = __traits(getMember, Flags, memberName).bitsSet.front;
