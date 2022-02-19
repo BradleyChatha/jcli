@@ -37,6 +37,8 @@ struct ArgToken
         /// Arguments that appear before any named arguments.
         /// value --stuff not_this_one
         positionalArgument = valueBit | positionalArgumentBit,
+        /// 
+        orphanArgument = valueBit | orphanArgumentBit,
         
         /// The bit! indicating that an error has occured.
         errorBit = 48,
@@ -107,7 +109,6 @@ struct ArgTokenizer(TRange)
         bool _empty = false;
         ArgToken _front = ArgToken.init;
         size_t _positionWithinCurrentString = 0;
-        bool _hasParsedAnyNamedArguments = false;
     }
 
     @safe pure @nogc:
@@ -296,8 +297,6 @@ struct ArgTokenizer(TRange)
             // For simplicity, let's say we only allow quoting with "" and not with ^^ or any other nonsense.
             if (isRHSOfEqual)
             {
-                assert(_hasParsedAnyNamedArguments);
-
                 // `--arg=`
                 if (_positionWithinCurrentString == currentSlice.length)
                 {
@@ -403,38 +402,52 @@ struct ArgTokenizer(TRange)
                 return ArgToken(kind, fullSlice, valueSlice);
             }
         }
-        // is not a named arg (technically these checks are not needed, but let's do it just in case).
-        else if (
-            // covers all special cases
-            previousKind < Kind.valueBit
+
         
-            || (previousKind & (Kind.errorBit | Kind.valueBit)) > 0)
+        // It is not a named arg (technically these checks are not needed, but let's do it just in case).
+        assert(
+            // Covers all special cases, like the first argument
+            previousKind < Kind.valueBit
+            || previousKind.hasEither(Kind.errorBit | Kind.valueBit));
+
+        assert(_positionWithinCurrentString == 0, "??");
+
+        if (getCurrentCharacter() == '-')
         {
-            assert(_positionWithinCurrentString == 0, "??");
-
-            if (getCurrentCharacter() == '-')
-            {
-                _hasParsedAnyNamedArguments = true;
-                return parseArgumentName();
-            }
-
-            {
-                // If it's not a named arg, then it's just a value like this
-                // --arg value
-                // or like this
-                // --arg "ba ba ba"
-                // We see it unqouted, so we just return the value
-                const kind = _hasParsedAnyNamedArguments
-                    ? Kind.namedArgumentValueOrOrphanArgument
-                    : Kind.positionalArgument;
-                const fullSlice  = currentSlice;
-                const valueSlice = currentSlice;
-                _range.popFront();
-                return ArgToken(kind, fullSlice, valueSlice);
-            }
-
+            return parseArgumentName();
         }
-        else assert(false, "??");
+
+        {
+            // If it's not a named arg, then it's just a value like this
+            // --arg value
+            // or like this
+            // --arg "ba ba ba"
+            // We see it unqouted, so we just return the value
+            const kind = 
+            (){
+                // No input yet
+                if (previousKind == Kind.none)
+                    return Kind.positionalArgument;
+
+                // Say, if the input is malformatted, we consider everythin after that orphans,
+                // I guess this is pretty reasonable.
+                if (previousKind.has(Kind.errorBit))
+                    return Kind.orphanArgument;
+
+                if (previousKind.has(Kind.argumentNameBit))
+                    return Kind.namedArgumentValueOrOrphanArgument;
+
+                // Just to be sure nothing went wrong.
+                assert(previousKind.has(Kind.valueBit));
+
+                // Copy the positional or the orphan bit of the previous argument.
+                return previousKind & ~Kind.namedArgumentValueBit;
+            }();
+            const fullSlice  = currentSlice;
+            const valueSlice = currentSlice;
+            _range.popFront();
+            return ArgToken(kind, fullSlice, valueSlice);
+        }
     }
 }
 
@@ -463,11 +476,20 @@ unittest
             ArgToken(Kind.namedArgumentValueOrOrphanArgument, "world", "world"),
         ]));
     }
+    
     {
         auto args = ["-hello", "world"];
         assert(equal(argTokenizer(args), [
             ArgToken(Kind.shortNamedArgumentName, "-hello", "hello"),
             ArgToken(Kind.namedArgumentValueOrOrphanArgument, "world", "world"),
+        ]));
+    }
+    {
+        auto args = ["--hello", "world", "world2"];
+        assert(equal(argTokenizer(args), [
+            ArgToken(Kind.fullNamedArgumentName, "--hello", "hello"),
+            ArgToken(Kind.namedArgumentValueOrOrphanArgument, "world", "world"),
+            ArgToken(Kind.orphanArgument, "world2", "world2"),
         ]));
     }
     {
