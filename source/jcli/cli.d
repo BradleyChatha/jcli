@@ -6,22 +6,25 @@ import jcli.introspect;
 import std.algorithm;
 import std.stdio : writefln, writeln;
 import std.array;
+import std.traits;
+import std.meta;
 
 struct MatchAndExecuteResult
 {
     int exitCode;
-    bool executedAll;
+    bool allExecuted;
 }
 
-enum MatchAndExecuteResult
+enum MatchAndExecuteErrorCode
 {
     theBit = 128,
     intermediateErrors = theBit | 1,
     firstTokenNotCommand = theBit | 2,
     unmatchedThing = theBit | 3,
-    caughtException = theBit | 4
+    caughtException = theBit | 4,
+    unmatchedCommandName = theBit | 5
 }
-private alias ErrorCode = MatchAndExecuteResult;
+private alias ErrorCode = MatchAndExecuteErrorCode;
 
 ///
 template matchAndExecuteAccrossModules(Modules...)
@@ -35,6 +38,21 @@ template matchAndExecuteAccrossModules(Modules...)
 template matchAndExecute(alias bindArgument, CommandTypes...)
 {
     private alias _matchAndExecute = .matchAndExecute!(bindArgument, CommandTypes);
+
+    /// Forwards to `MatchAndExecuteTypeContext!Types.matchAndExecute`.
+    MatchAndExecuteResult matchAndExecute
+    (
+        Tokenizer : ArgTokenizer!T, T,
+        TErrorHandler
+    )
+    (
+        scope ref Tokenizer tokenizer,
+        scope ref TErrorHandler errorHandler
+    )
+    {
+        return MatchAndExecuteTypeContext!(bindArgument, CommandTypes)
+            .matchAndExecute(tokenizer, errorHandler);
+    }
 
     /// Resolves the invoked command by parsing the arguments array,
     /// executes the `onExecute` method of any intermediary command groups,
@@ -55,20 +73,6 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
         auto handler = DefaultParseErrorHandler();
         return _matchAndExecute(tokenizer, handler);
     }
-    
-    /// Forwards to `MatchAndExecuteTypeContext!Types.matchAndExecute`.
-    MatchAndExecuteResult matchAndExecute
-    (
-        Tokenizer : ArgTokenizer!T, T,
-        TErrorHandler
-    )
-    (
-        scope ref Tokenizer tokenizer,
-        scope ref TErrorHandler errorHandler
-    )
-    {
-        return MatchAndExecuteTypeContext!CommandTypes.matchAndExecute(tokenizer, errorHandler);
-    }
 }
 
 // TODO: better name
@@ -81,7 +85,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         static foreach (Type; Types)
         {
             import std.algorithm.comparison : max;
-            result = max(result, CommandInfo!Type.Argument.named.length);
+            result = max(result, CommandInfo!Type.Arguments.named.length);
         }
         return result;
     }();
@@ -105,13 +109,12 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         tokenizer.popFront();
 
         ParsingContext parsingContext;
-        Result result;
 
-        outermostSwitch: switch (firstToken.nameSlice)
+        switch (firstToken.nameSlice)
         {
             static foreach (RootType; Graph.RootTypes)
             {
-                static foreach (possibleName; CommandInfo!RootType.general.pattern)
+                static foreach (possibleName; CommandInfo!RootType.general.uda.pattern)
                 {
                     case possibleName:
                 }
@@ -120,14 +123,16 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                     resetNamedArgumentArrayStorage!RootType(parsingContext);
 
                     // This has executed all commands, inlcuding this one, recursively
-                    result = matchNextTokenLoopAndExecute(
+                    // Maybe print the rest of the arguments, might be helpful idk.
+                    return matchNextTokenLoopAndExecute(
                         parsingContext, tokenizer, command, errorHandler);
-                    break outermostSwitch;
                 }
             }
+            default:
+            {
+                return Result(cast(int) ErrorCode.unmatchedCommandName, false);
+            }
         }
-        // Maybe print the rest of the arguments, might be helpful idk.
-        return result;
     }
 
     ///
@@ -146,6 +151,12 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     {
         alias CommandInfo = jcli.introspect.CommandInfo!CurrentCommandType;
         alias ArgumentInfo = CommandInfo.Arguments;
+
+        auto consumeSingle()
+        { 
+            return consumeSingleArgumentIntoCommand!bindArgument(
+                parsingContext, command, tokenizer, errorHandler);
+        }
         
         // Matched the given command.
         while (tokenizer.empty)
@@ -153,7 +164,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             const currentToken = tokenizer.front;
             if (currentToken.kind.has(ArgToken.Kind.valueBit) 
                 && currentToken.kind.hasEither(
-                    ArgToken.Kind._positionalArgumentBit | ArgToken.Kind._orphanArgumentBit))
+                    ArgToken.Kind.positionalArgumentBit | ArgToken.Kind.orphanArgumentBit))
             {
                 // 3 posibilities
                 // 1. Not all required positional arguments have been read, in which case we read that.
@@ -162,23 +173,21 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 // 3. All possibile positional args have been read, so just match the name.
                 if (parsingContext.currentPositionalArgIndex < ArgumentInfo.numRequiredPositionalArguments)
                 {
-                    const _ = consumeSingleArgumentIntoCommand(
-                        context, command, tokenizer, errorHandler);
+                    const _ = consumeSingle();
                 }
                 else if (parsingContext.currentPositionalArgIndex < ArgumentInfo.positional.length)
                 {
                     {
-                        auto r = executeRecursively(command);
+                        auto r = tryExecuteRecursively(parsingContext, tokenizer, command, errorHandler);
                         if (r.matched)
                             return r.result;
                     }
 
-                    const _ = consumeSingleArgumentIntoCommand(
-                        context, command, tokenizer, errorHandler);
+                    const _ = consumeSingle();
                 }
                 else
                 {
-                    auto r = executeRecursively(command);
+                    auto r = tryExecuteRecursively(parsingContext, tokenizer, command, errorHandler);
                     if (r.matched)
                         return r.result;
 
@@ -189,15 +198,14 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             }
             else
             {
-                const _ = consumeSingleArgumentIntoCommand(
-                    context, command, tokenizer, errorHandler);
+                const _ = consumeSingle();
             }
         }
 
-        maybeReportParseErrorsFromFinalContext!ArgumentInfo(context, errorHandler);
+        maybeReportParseErrorsFromFinalContext!ArgumentInfo(parsingContext, errorHandler);
 
         // In essence, we're the leaf node here, so we have to execute ourselves.
-        if (context.errorCounter == 0)
+        if (parsingContext.errorCounter == 0)
         {
             const r = executeCommand(command);
             return Result(r, true);
@@ -226,13 +234,15 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         ref scope TErrorHandler errorHandler
     )
     {
+        alias ArgumentsInfo = CommandInfo!ParentCommandType.Arguments;
+
         // Returns 0 if should continue doing stuff.
         int prepareToExecute()
         {
             tokenizer.popFront();
             
-            maybeReportParseErrorsFromFinalContext!ParentCommandType(context, errorHandler);
-            if (errorHandler.errorCounter > 0)
+            maybeReportParseErrorsFromFinalContext!ArgumentsInfo(parsingContext, errorHandler);
+            if (parsingContext.errorCounter > 0)
             {
                 // TODO: 
                 // report that a subcommand was matched, but the previous command
@@ -246,7 +256,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                     return exitCode;
             }
 
-            resetNamedArgumentArrayStorage!ParentCommandType(parsingContext);
+            resetNamedArgumentArrayStorage!ArgumentsInfo(parsingContext);
             return 0;
         }
 
@@ -256,7 +266,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             {{
                 alias Type = __traits(parent, childField);
 
-                static foreach (possibleName; CommandInfo!Type.general.pattern)
+                static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
                 {
                     case possibleName:
                 }
@@ -266,18 +276,20 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                         if (r != 0)
                         {
                             const match = true;
-                            const executedAll = false;
-                            return TryResult(Result(r, executedAll), match);
+                            const allExecuted = false;
+                            return TryResult(Result(r, allExecuted), match);
                         }
                     }
                     
                     auto command = Type();
                     // This method probably cannot work with dll's.
                     // With dll's we need a more dynamic approach.
-                    __traits(getMember, command, childField) = &parentCommand;
+                    __traits(child, command, childField) = &parentCommand;
 
-                    return matchNextTokenLoopAndExecute(
-                        parsingContext, tokenizer, command, errorHandler);
+                    return TryResult(
+                        matchNextTokenLoopAndExecute(
+                            parsingContext, tokenizer, command, errorHandler),
+                        true);
                 }
             }}
             default:
@@ -343,7 +355,7 @@ unittest
         static struct B
         {
             @ParentCommand
-            scope A* a;
+            A* a;
 
             int onExecute()
             {
@@ -376,7 +388,7 @@ unittest
             @ArgPositional
             string p;
 
-            int onExecute()
+            static int onExecute()
             {
                 return 1;
             }
@@ -392,10 +404,10 @@ unittest
             // (or like in an array where the elements have a fixed max size),
             // and call the actual function via an adapter that would cast and call.
             @ParentCommand
-            scope A* a;
+            A* a;
 
 
-            int onExecute()
+            static int onExecute()
             {
                 return 2;
             }
@@ -415,13 +427,18 @@ unittest
             auto result = exec0(["A"]);
             assert(!result.allExecuted);
             assert(result.exitCode == ErrorCode.unmatchedThing);
-            assert(errorHandle.hasError(CommandParsingErrorCode.tooFewPositionalArgumentsError));
+            assert(errorHandler.hasError(CommandParsingErrorCode.tooFewPositionalArgumentsError));
         }
         {
             // The sad thing is that it does not return the executed command rn.
             auto result = exec0(["A", "B"]);
             assert(result.allExecuted);
-            assert(result.exitCode == 2);
+            assert(result.exitCode == A.onExecute);
+        }
+        {
+            auto result = exec0(["A", "1", "B"]);
+            assert(result.allExecuted);
+            assert(result.exitCode == B.onExecute);
         }
     }
 }

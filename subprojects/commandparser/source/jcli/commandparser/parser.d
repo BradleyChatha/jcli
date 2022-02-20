@@ -114,7 +114,7 @@ struct CommandParsingContext(size_t numBitsInStorage)
 
 void resetNamedArgumentArrayStorage
 (
-    CommandType,
+    alias ArgumentsInfo,
     Context : CommandParsingContext!size, size_t size
 )
 (
@@ -126,7 +126,7 @@ void resetNamedArgumentArrayStorage
     {
         context.requiredNamedArgHasNotBeenFoundBitArrayStorage = 0;
         
-        static foreach (index, arg; CommandArgumentsInfo!CommandType.named)
+        static foreach (index, arg; ArgumentsInfo.named)
         {
             static if (arg.flags.has(ArgFlags._requiredBit))
             {
@@ -595,7 +595,7 @@ template parseCommand(CommandType, alias bindArgument = jcli.argbinder.bindArgum
         auto command = CommandType();
 
         CommandParsingContext!(ArgumentsInfo.named.length) context; 
-        resetNamedArgumentArrayStorage!CommandType(context);
+        resetNamedArgumentArrayStorage!ArgumentsInfo(context);
 
         while (!tokenizer.empty)
         {
@@ -626,12 +626,12 @@ version(unittest)
 
         void format(T...)(ErrorCode errorCode, T args)
         {
-            errorCodes ~= errorCode;
+            errorCodes |= errorCode;
         }
 
         bool hasError(ErrorCode errorCode)
         {
-            return (ErrorCode & errorCode) == errorCode;
+            return (errorCodes & errorCode) == errorCode;
         }
 
         void clear()
@@ -652,12 +652,12 @@ version(unittest)
 
         void format(T...)(ErrorCode errorCode, T args)
         {
-            errorCodes ~= errorCode;
+            errorCodes |= errorCode;
         }
 
         bool hasError(ErrorCode errorCode)
         {
-            return (ErrorCode & errorCode) == errorCode;
+            return (errorCodes & errorCode) == errorCode;
         }
 
         void clear()
@@ -679,13 +679,13 @@ version(unittest)
         import std.format : formattedWrite;
         void format(T...)(ErrorCode errorCode, T args)
         {
-            errorCodes ~= errorCode;
+            errorCodes |= errorCode;
             formattedWrite(output, args, "\n");
         }
 
         bool hasError(ErrorCode errorCode)
         {
-            return (ErrorCode & errorCode) == errorCode;
+            return (errorCodes & errorCode) == errorCode;
         }
 
         void clear()
@@ -695,7 +695,7 @@ version(unittest)
         }
     }
 
-    ErrorCodeHandler createIgnoreSetErrorHandler(ErrorCode ignored)
+    IgnoreSetErrorHandler createIgnoreSetErrorHandler(ErrorCode ignored)
     {
         return typeof(return)(ignored, ErrorCode.none);
     }
@@ -1041,7 +1041,7 @@ unittest
 
     {
         const result = parse(["-implicit", "positional"]);
-        assert(result.isOk, output.result.data);
+        assert(result.isOk);
     }
 }
 
@@ -1208,7 +1208,7 @@ unittest
         int a;
     }
 
-    static auto parse(scope string[] args, ref TestErrorHandler handler)
+    static auto parse(scope string[] args, ref IgnoreSetErrorHandler handler)
     {
         handler.clear();
         return parseCommand!S(args, handler);

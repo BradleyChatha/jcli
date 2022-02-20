@@ -59,10 +59,13 @@ template TypeGraph(Types...)
                 static if (is(typeof(field) : T*, T))
                 {
                     static if (hasUDA!(field, ParentCommand))
-                    {
-                        childrenGraph[typeToIndex[escapedName!T]] ~= 
-                            Node(outerIndex, fieldIndex);
-                    }
+                    {{
+                        const name = escapedName!T;
+                        if (auto index = name in typeToIndex)
+                            childrenGraph[*index] ~= Node(outerIndex, fieldIndex);
+                        else
+                            assert(false, name ~ " not found among types.");
+                    }}
                 }
             }
         }
@@ -71,7 +74,7 @@ template TypeGraph(Types...)
         bool[Types.length] isNotRootCache;
         foreach (parentIndex, children; childrenGraph)
         {
-            foreach (childNode; childrenGraph)
+            foreach (childNode; children)
                 isNotRootCache[childNode.childIndex] = true;
         }
 
@@ -81,7 +84,7 @@ template TypeGraph(Types...)
             // TODO: use bit array?
             bool[Types.length] visited = void;
 
-            void isCyclic(size_t index)
+            bool isCyclic(size_t index)
             {
                 if (visited[index])
                     return true;
@@ -200,9 +203,9 @@ unittest
     {
         alias Types = AliasSeq!(A, B, C);
         alias G = TypeGraph!Types;
-        static assert(__traits(isSame, G.getChildCommandFieldsOf!(A, Types)[0], B.a));
-        static assert(__traits(isSame, G.getChildCommandFieldsOf!(B, Types)[0], C.b));
-        static assert(G.getChildCommandFieldsOf!(C, Types).length == 0);
+        static assert(__traits(isSame, G.getChildCommandFieldsOf!A[0], B.a));
+        static assert(__traits(isSame, G.getChildCommandFieldsOf!B[0], C.b));
+        static assert(G.getChildCommandFieldsOf!C.length == 0);
     }
 }
 
