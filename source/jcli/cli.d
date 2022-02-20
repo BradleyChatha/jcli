@@ -1,10 +1,453 @@
 module jcli.cli;
 
 import jcli;
+import jcli.introspect;
 
 import std.algorithm;
 import std.stdio : writefln, writeln;
 import std.array;
+
+struct MatchAndExecuteResult
+{
+    int exitCode;
+    bool executedAll;
+}
+
+enum MatchAndExecuteResult
+{
+    theBit = 128,
+    intermediateErrors = theBit | 1,
+    firstTokenNotCommand = theBit | 2,
+    unmatchedThing = theBit | 3,
+    caughtException = theBit | 4
+}
+private alias ErrorCode = MatchAndExecuteResult;
+
+///
+template matchAndExecuteAccrossModules(Modules...)
+{
+    alias bind = bindArgumentAcrossModules!Modules;
+    alias Types = AllCommandsOf!Modules;
+    alias matchAndExecuteAccrossModules = matchAndExecute!(bind, Types);
+}
+
+/// Constructs the graph of the given command types, ...
+template matchAndExecute(alias bindArgument, CommandTypes...)
+{
+    private alias _matchAndExecute = .matchAndExecute!(bindArgument, CommandTypes);
+
+    /// Resolves the invoked command by parsing the arguments array,
+    /// executes the `onExecute` method of any intermediary command groups,
+    /// Returns the result of the execution, and whether there were errors.
+    MatchAndExecuteResult matchAndExecute(scope string[] args)
+    {
+        auto tokenizer = argTokenizer(args);
+        return _matchAndExecute(tokenizer);
+    }
+    
+    /// ditto
+    /// Uses the default error handler. 
+    MatchAndExecuteResult matchAndExecute(Tokenizer : ArgTokenizer!T, T)
+    (
+        scope ref Tokenizer tokenizer
+    )
+    {
+        auto handler = DefaultParseErrorHandler();
+        return _matchAndExecute(tokenizer, handler);
+    }
+    
+    /// Forwards to `MatchAndExecuteTypeContext!Types.matchAndExecute`.
+    MatchAndExecuteResult matchAndExecute
+    (
+        Tokenizer : ArgTokenizer!T, T,
+        TErrorHandler
+    )
+    (
+        scope ref Tokenizer tokenizer,
+        scope ref TErrorHandler errorHandler
+    )
+    {
+        return MatchAndExecuteTypeContext!CommandTypes.matchAndExecute(tokenizer, errorHandler);
+    }
+}
+
+// TODO: better name
+template MatchAndExecuteTypeContext(alias bindArgument, Types...)
+{
+    alias Graph = TypeGraph!Types;
+    enum maxNamedArgCount = 
+    (){
+        size_t result = 0;
+        static foreach (Type; Types)
+        {
+            import std.algorithm.comparison : max;
+            result = max(result, CommandInfo!Type.Argument.named.length);
+        }
+        return result;
+    }();
+    alias ParsingContext = CommandParsingContext!maxNamedArgCount;
+    alias Result = MatchAndExecuteResult;
+
+    ///
+    Result matchAndExecute
+    (
+        Tokenizer : ArgTokenizer!TRange, TRange,
+        TErrorHandler,
+    )
+    (
+        scope ref Tokenizer tokenizer,
+        scope ref TErrorHandler errorHandler
+    )
+    {
+        ArgToken firstToken = tokenizer.front;
+        if (firstToken.kind.has(ArgToken.Kind.valueBit))
+            return Result(cast(int) ErrorCode.firstTokenNotCommand, false);
+        tokenizer.popFront();
+
+        ParsingContext parsingContext;
+        Result result;
+
+        outermostSwitch: switch (firstToken.nameSlice)
+        {
+            static foreach (RootType; Graph.RootTypes)
+            {
+                static foreach (possibleName; CommandInfo!RootType.general.pattern)
+                {
+                    case possibleName:
+                }
+                {
+                    auto command = RootType();
+                    resetNamedArgumentArrayStorage!RootType(parsingContext);
+
+                    // This has executed all commands, inlcuding this one, recursively
+                    result = matchNextTokenLoopAndExecute(
+                        parsingContext, tokenizer, command, errorHandler);
+                    break outermostSwitch;
+                }
+            }
+        }
+        // Maybe print the rest of the arguments, might be helpful idk.
+        return result;
+    }
+
+    ///
+    Result matchNextTokenLoopAndExecute
+    (
+        CurrentCommandType,
+        Tokenizer : ArgTokenizer!TRange, TRange,
+        TErrorHandler
+    )
+    (
+        ref scope ParsingContext parsingContext,
+        ref scope Tokenizer tokenizer,
+        ref scope CurrentCommandType command,
+        ref scope TErrorHandler errorHandler
+    )
+    {
+        alias CommandInfo = jcli.introspect.CommandInfo!CurrentCommandType;
+        alias ArgumentInfo = CommandInfo.Arguments;
+        
+        // Matched the given command.
+        while (tokenizer.empty)
+        {
+            const currentToken = tokenizer.front;
+            if (currentToken.kind.has(ArgToken.Kind.valueBit) 
+                && currentToken.kind.hasEither(
+                    ArgToken.Kind._positionalArgumentBit | ArgToken.Kind._orphanArgumentBit))
+            {
+                // 3 posibilities
+                // 1. Not all required positional arguments have been read, in which case we read that.
+                // 2. All required positional arguments have been read, but there are still optional ones,
+                //    in which case we try to match command first before reading on.
+                // 3. All possibile positional args have been read, so just match the name.
+                if (parsingContext.currentPositionalArgIndex < ArgumentInfo.numRequiredPositionalArguments)
+                {
+                    const _ = consumeSingleArgumentIntoCommand(
+                        context, command, tokenizer, errorHandler);
+                }
+                else if (parsingContext.currentPositionalArgIndex < ArgumentInfo.positional.length)
+                {
+                    {
+                        auto r = executeRecursively(command);
+                        if (r.matched)
+                            return r.result;
+                    }
+
+                    const _ = consumeSingleArgumentIntoCommand(
+                        context, command, tokenizer, errorHandler);
+                }
+                else
+                {
+                    auto r = executeRecursively(command);
+                    if (r.matched)
+                        return r.result;
+
+                    // There is an extra unmatched argument thing.
+                    writeln("Unmatched thing", tokenizer.front.fullSlice, ", not implemented fully.");
+                    return Result(cast(int) ErrorCode.unmatchedThing, false);
+                }
+            }
+            else
+            {
+                const _ = consumeSingleArgumentIntoCommand(
+                    context, command, tokenizer, errorHandler);
+            }
+        }
+
+        maybeReportParseErrorsFromFinalContext!ArgumentInfo(context, errorHandler);
+
+        // In essence, we're the leaf node here, so we have to execute ourselves.
+        if (context.errorCounter == 0)
+        {
+            const r = executeCommand(command);
+            return Result(r, true);
+        }
+
+        return Result(cast(int) ErrorCode.intermediateErrors, false);
+    }
+
+    struct TryResult
+    {
+        Result result;
+        bool matched;
+    }
+
+    ///
+    TryResult tryExecuteRecursively
+    (
+        ParentCommandType,
+        Tokenizer : ArgTokenizer!TRange, TRange,
+        TErrorHandler
+    )
+    (
+        ref scope ParsingContext parsingContext,
+        ref scope Tokenizer tokenizer,
+        ref scope ParentCommandType parentCommand,
+        ref scope TErrorHandler errorHandler
+    )
+    {
+        // Returns 0 if should continue doing stuff.
+        int prepareToExecute()
+        {
+            tokenizer.popFront();
+            
+            maybeReportParseErrorsFromFinalContext!ParentCommandType(context, errorHandler);
+            if (errorHandler.errorCounter > 0)
+            {
+                // TODO: 
+                // report that a subcommand was matched, but the previous command
+                // was not initilialized correctly.
+                return cast(int) ErrorCode.intermediateErrors;
+            }
+
+            {
+                int exitCode = executeCommand(parentCommand);
+                if (exitCode != 0)
+                    return exitCode;
+            }
+
+            resetNamedArgumentArrayStorage!ParentCommandType(parsingContext);
+            return 0;
+        }
+
+        switch (tokenizer.front.nameSlice)
+        {
+            static foreach (childField; Graph.getChildCommandFieldsOf!ParentCommandType)
+            {{
+                alias Type = __traits(parent, childField);
+
+                static foreach (possibleName; CommandInfo!Type.general.pattern)
+                {
+                    case possibleName:
+                }
+                {                    
+                    {
+                        int r = prepareToExecute();
+                        if (r != 0)
+                        {
+                            const match = true;
+                            const executedAll = false;
+                            return TryResult(Result(r, executedAll), match);
+                        }
+                    }
+                    
+                    auto command = Type();
+                    // This method probably cannot work with dll's.
+                    // With dll's we need a more dynamic approach.
+                    __traits(getMember, command, childField) = &parentCommand;
+
+                    return matchNextTokenLoopAndExecute(
+                        parsingContext, tokenizer, command, errorHandler);
+                }
+            }}
+            default:
+            {
+                TryResult returnValue;
+                returnValue.matched = false;
+                return returnValue;
+            }
+        }
+    }
+}
+unittest
+{
+    alias bindArgument = jcli.argbinder.bindArgument!();
+    auto exec(Types...)(scope string[] args)
+    {
+        return matchAndExecute!(bindArgument, Types)(args);
+    }
+
+    {
+        @Command
+        static struct A
+        {
+            int onExecute()
+            {
+                return 1;
+            }
+        }
+
+        alias Types = AliasSeq!A;
+        auto result = exec!Types(["A"]);
+        assert(result.allExecuted);
+        assert(result.exitCode == 1);
+    }
+    {
+        @Command("other")
+        static struct A
+        {
+            int onExecute()
+            {
+                return 1;
+            }
+        }
+
+        alias Types = AliasSeq!A;
+        auto result = exec!Types(["other"]);
+        assert(result.allExecuted);
+        assert(result.exitCode == 1);
+    }
+
+    // With a parent
+    {
+        @Command
+        static struct A
+        {
+            int onExecute()
+            {
+                return 1;
+            }
+        }
+        
+        @Command
+        static struct B
+        {
+            @ParentCommand
+            scope A* a;
+
+            int onExecute()
+            {
+                return 2;
+            }
+        }
+
+        alias Types = AliasSeq!(A, B);
+        alias exec0 = exec!Types;
+        {
+            auto result = exec0(["A"]);
+            assert(result.allExecuted);
+            assert(result.exitCode == 1);
+        }
+        {
+            auto result = exec0(["A", "B"]);
+            assert(result.allExecuted);
+            assert(result.exitCode == 2);
+        }
+    }
+}
+unittest
+{
+    alias bindArgument = jcli.argbinder.bindArgument!();
+    // Parent with intermediate arguments
+    {
+        @Command
+        static struct A
+        {
+            @ArgPositional
+            string p;
+
+            int onExecute()
+            {
+                return 1;
+            }
+        }
+        
+        @Command
+        static struct B
+        {
+            // The pointer things as is are weird.
+            // We should split up the execution functions.
+            // It would return intermediate matched objects.
+            // You could then put them in a Variant array
+            // (or like in an array where the elements have a fixed max size),
+            // and call the actual function via an adapter that would cast and call.
+            @ParentCommand
+            scope A* a;
+
+
+            int onExecute()
+            {
+                return 2;
+            }
+        }
+
+        import std.algorithm;
+
+        alias Types = AliasSeq!(A, B);
+        auto errorHandler = createErrorCodeHandler();
+        auto exec0(scope string[] args)
+        {
+            auto tokenizer = argTokenizer(args);
+            return matchAndExecute!(bindArgument, Types)(tokenizer, errorHandler);
+        }
+
+        {
+            auto result = exec0(["A"]);
+            assert(!result.allExecuted);
+            assert(result.exitCode == ErrorCode.unmatchedThing);
+            assert(errorHandle.hasError(CommandParsingErrorCode.tooFewPositionalArgumentsError));
+        }
+        {
+            // The sad thing is that it does not return the executed command rn.
+            auto result = exec0(["A", "B"]);
+            assert(result.allExecuted);
+            assert(result.exitCode == 2);
+        }
+    }
+}
+
+
+int executeCommand(T)(ref scope T command)
+{
+    try
+    {
+        static if (is(typeof(command.onExecute) : int))
+        {
+            return command.onExecute();
+        }
+        else
+        {
+            command.onExecute();
+            return 0;
+        }
+    }
+    catch (Exception exc)
+    {
+        // for now, just print it
+        writeln(exc);
+        return cast(int) ErrorCode.caughtException;
+    }
+}
 
 // Needs a complete rework.
 final class CommandLineInterface(Modules...)

@@ -481,7 +481,7 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
 
 void maybeReportParseErrorsFromFinalContext
 (
-    CommandType,
+    alias ArgumentInfo,
     Context : CommandParsingContext!numBitsInStorage, size_t numBitsInStorage,
     TErrorHandler
 )
@@ -490,8 +490,6 @@ void maybeReportParseErrorsFromFinalContext
     ref scope TErrorHandler errorHandler
 )
 {
-    alias ArgumentInfo = jcli.introspect.CommandArgumentsInfo!CommandType;
-
     if (context.currentPositionalArgIndex < ArgumentInfo.numRequiredPositionalArguments)
     {
         enum messageFormat =
@@ -563,7 +561,7 @@ void maybeReportParseErrorsFromFinalContext
 /// clear which parts of this are needed separately.
 template parseCommand(CommandType, alias bindArgument = jcli.argbinder.bindArgument!())
 {
-    alias ArgumentInfo  = jcli.introspect.CommandArgumentsInfo!CommandType;
+    alias ArgumentsInfo = jcli.introspect.CommandArgumentsInfo!CommandType;
     alias Result        = ParseResult!CommandType;
     alias _parseCommand = .parseCommand!(CommandType, bindArgument);
 
@@ -596,7 +594,7 @@ template parseCommand(CommandType, alias bindArgument = jcli.argbinder.bindArgum
     {
         auto command = CommandType();
 
-        CommandParsingContext!(ArgumentInfo.named.length) context; 
+        CommandParsingContext!(ArgumentsInfo.named.length) context; 
         resetNamedArgumentArrayStorage!CommandType(context);
 
         while (!tokenizer.empty)
@@ -605,7 +603,7 @@ template parseCommand(CommandType, alias bindArgument = jcli.argbinder.bindArgum
                 context, command, tokenizer, errorHandler);
         }
 
-        maybeReportParseErrorsFromFinalContext!CommandType(context, errorHandler);
+        maybeReportParseErrorsFromFinalContext!ArgumentsInfo(context, errorHandler);
 
         return typeof(return)(context.errorCounter, command);
     }
@@ -617,10 +615,61 @@ version(unittest)
     import std.algorithm;
     import std.array;
 
-    struct InMemoryErrorOutput
+    struct ErrorCodeHandler
     {
-        Appender!(ErrorCode[]) errorCodes;
-        Appender!(char[]) result;
+        ErrorCode errorCodes;
+
+        bool shouldRecord(ErrorCode errorCode)
+        {
+            return true;
+        }
+
+        void format(T...)(ErrorCode errorCode, T args)
+        {
+            errorCodes ~= errorCode;
+        }
+
+        bool hasError(ErrorCode errorCode)
+        {
+            return (ErrorCode & errorCode) == errorCode;
+        }
+
+        void clear()
+        {
+            errorCodes = ErrorCode.none;
+        }
+    }
+
+    struct IgnoreSetErrorHandler
+    {
+        ErrorCode ignoredErrorCodes;
+        ErrorCode errorCodes;
+
+        bool shouldRecord(ErrorCode errorCode)
+        {
+            return (errorCode & ignoredErrorCodes) == 0;
+        }
+
+        void format(T...)(ErrorCode errorCode, T args)
+        {
+            errorCodes ~= errorCode;
+        }
+
+        bool hasError(ErrorCode errorCode)
+        {
+            return (ErrorCode & errorCode) == errorCode;
+        }
+
+        void clear()
+        {
+            errorCodes = ErrorCode.none;
+        }
+    }
+
+    struct InMemoryErrorHandler
+    {
+        ErrorCode errorCodes;
+        Appender!(char[]) output;
 
         bool shouldRecord(ErrorCode errorCode)
         {
@@ -631,24 +680,39 @@ version(unittest)
         void format(T...)(ErrorCode errorCode, T args)
         {
             errorCodes ~= errorCode;
-            formattedWrite(result, args, "\n");
+            formattedWrite(output, args, "\n");
+        }
+
+        bool hasError(ErrorCode errorCode)
+        {
+            return (ErrorCode & errorCode) == errorCode;
         }
 
         void clear()
         {
-            errorCodes.clear();
-            result.clear();
+            errorCodes = ErrorCode.none;
+            output.clear();
         }
     }
 
-    InMemoryErrorOutput createSink()
+    ErrorCodeHandler createIgnoreSetErrorHandler(ErrorCode ignored)
     {
-        return InMemoryErrorOutput(appender!(ErrorCode[]), appender!(char[]));
+        return typeof(return)(ignored, ErrorCode.none);
+    }
+
+    ErrorCodeHandler createErrorCodeHandler()
+    {
+        return typeof(return)(ErrorCode.none);
+    }
+
+    InMemoryErrorHandler createInMemoryErrorHandler()
+    {
+        return typeof(return)(ErrorCode.none, appender!(char[]));
     }
 
     mixin template ParseBoilerplate(Struct)
     {
-        InMemoryErrorOutput output = createSink();
+        ErrorCodeHandler output = createErrorCodeHandler();
         auto parse(scope string[] args)
         {
             output.clear();
@@ -673,23 +737,23 @@ unittest
         const result = parse(["b"]);
         assert(result.isOk);
         assert(result.value.a == "b");
-        assert(output.errorCodes[].length == 0);
+        assert(output.errorCodes == 0);
     }
     {
         const result = parse(["-a", "b"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.unknownNamedArgumentError));
+        assert(output.hasError(ErrorCode.unknownNamedArgumentError));
     }
     {
         const result = parse(["a", "b"]);
         assert(result.isError);
         assert(result.value.a == "a");
-        assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
+        assert(output.hasError(ErrorCode.tooManyPositionalArgumentsError));
     }
     {
         const result = parse([]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.tooFewPositionalArgumentsError));
+        assert(output.hasError(ErrorCode.tooFewPositionalArgumentsError));
     }
 }
 
@@ -712,28 +776,28 @@ unittest
     {
         const result = parse([]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
+        assert(output.hasError(ErrorCode.missingNamedArgumentsError));
     }
     {
         const result = parse(["-a"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.noValueForNamedArgumentError));
+        assert(output.hasError(ErrorCode.noValueForNamedArgumentError));
     }
     {
         const result = parse(["a"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
+        assert(output.hasError(ErrorCode.missingNamedArgumentsError));
     }
     {
         const result = parse(["-a", "b", "-a", "c"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
+        assert(output.hasError(ErrorCode.duplicateNamedArgumentError));
     }
     {
         const result = parse(["-b"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
-        assert(output.errorCodes[].canFind(ErrorCode.unknownNamedArgumentError));
+        assert(output.hasError(ErrorCode.missingNamedArgumentsError));
+        assert(output.hasError(ErrorCode.unknownNamedArgumentError));
     }
 }
 
@@ -772,12 +836,12 @@ unittest
     {
         const result = parse(["-a"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.noValueForNamedArgumentError));
+        assert(output.hasError(ErrorCode.noValueForNamedArgumentError));
     }
     {
         const result = parse(["-a", "b", "-a", "c"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
+        assert(output.hasError(ErrorCode.duplicateNamedArgumentError));
     }
 }
 
@@ -800,12 +864,12 @@ unittest
     {
         const result = parse([]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
+        assert(output.hasError(ErrorCode.missingNamedArgumentsError));
     }
     {
         const result = parse(["-a"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.noValueForNamedArgumentError));
+        assert(output.hasError(ErrorCode.noValueForNamedArgumentError));
     }
     {
         const result = parse(["-a", "b", "-a", "c"]);
@@ -861,7 +925,7 @@ unittest
     {
         const result = parse([]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.missingNamedArgumentsError));
+        assert(output.hasError(ErrorCode.missingNamedArgumentsError));
     }
     {
         const result = parse(["-a", "-a"]);
@@ -873,25 +937,25 @@ unittest
         // Since "-a" does not expect a value, it should be treated as a positional argument.
         const result = parse(["-a", "b"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
+        assert(output.hasError(ErrorCode.tooManyPositionalArgumentsError));
     }
     {
         // Here, "b" is without a doubt a named argument value, so it produces a different error.
         const result = parse(["-a=b"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.countArgumentGivenValueError));
+        assert(output.hasError(ErrorCode.countArgumentGivenValueError));
     }
     {
         // Does not imply repeatableName.
         const result = parse(["-aaa"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.unknownNamedArgumentError));
+        assert(output.hasError(ErrorCode.unknownNamedArgumentError));
     }
     {
         // Still not allowed even with a number.
         const result = parse(["-a=3"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.countArgumentGivenValueError));
+        assert(output.hasError(ErrorCode.countArgumentGivenValueError));
     }
 }
 
@@ -947,17 +1011,17 @@ unittest
     {
         const result = parse(["-a", "stuff"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
+        assert(output.hasError(ErrorCode.tooManyPositionalArgumentsError));
     }
     {
         const result = parse(["-a=stuff"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.bindError));
+        assert(output.hasError(ErrorCode.bindError));
     }
     {
         const result = parse(["-a", "-a"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
+        assert(output.hasError(ErrorCode.duplicateNamedArgumentError));
     }
 }
 
@@ -1012,12 +1076,12 @@ unittest
     {
         const result = parse([]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.tooFewPositionalArgumentsError));
+        assert(output.hasError(ErrorCode.tooFewPositionalArgumentsError));
     }
     {
         const result = parse(["a", "b", "c"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.tooManyPositionalArgumentsError));
+        assert(output.hasError(ErrorCode.tooManyPositionalArgumentsError));
     }
 }
 
@@ -1049,7 +1113,7 @@ unittest
     {
         const result = parse([]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.tooFewPositionalArgumentsError));
+        assert(output.hasError(ErrorCode.tooFewPositionalArgumentsError));
     }
     {
         const result = parse(["a", "b", "c"]);
@@ -1060,7 +1124,7 @@ unittest
     {
         const result = parse(["a", "b", "-c"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.unknownNamedArgumentError));
+        assert(output.hasError(ErrorCode.unknownNamedArgumentError));
     }
 }
 
@@ -1132,7 +1196,7 @@ unittest
     {
         const result = parse(["-aaa", "-a"]);
         assert(result.isError);
-        assert(output.errorCodes[].canFind(ErrorCode.duplicateNamedArgumentError));
+        assert(output.hasError(ErrorCode.duplicateNamedArgumentError));
     }
 }
 
@@ -1143,37 +1207,15 @@ unittest
         @ArgNamed
         int a;
     }
-    
-    struct TestErrorHandler
-    {
-        ErrorCode ignoredErrorCodes;
-        Appender!(ErrorCode[]) errorCodes;
-
-        bool shouldRecord(ErrorCode errorCode)
-        {
-            return (errorCode & ignoredErrorCodes) == 0;
-        }
-
-        void format(T...)(ErrorCode errorCode, T args)
-        {
-            errorCodes ~= errorCode;
-        }
-
-        void clear()
-        {
-            errorCodes.clear();
-        }
-    }
 
     static auto parse(scope string[] args, ref TestErrorHandler handler)
     {
         handler.clear();
         return parseCommand!S(args, handler);
     }
-    auto handler = TestErrorHandler(ErrorCode.none, appender!(ErrorCode[]));
 
     {
-        handler.ignoredErrorCodes = ErrorCode.duplicateNamedArgumentError;
+        auto handler = createIgnoreSetErrorHandler(ErrorCode.duplicateNamedArgumentError);
         const result = parse(["-a=2", "-a=3"], handler);
         assert(result.isOk);
         assert(result.value.a == 3);

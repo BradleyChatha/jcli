@@ -31,7 +31,7 @@ template escapedName(T)
 }
 
 
-private template Graph(Types...)
+template TypeGraph(Types...)
 {
     // Note:
     // I'm realying on the idea that name lookup in scopes is linear in time to
@@ -50,8 +50,7 @@ private template Graph(Types...)
             size_t fieldIndex;
         }
 
-        Node[][] childrenGraph;
-        childrenGraph = new Node[][](Types.length);
+        Node[][Types.length] childrenGraph;
 
         foreach (outerIndex, Type; Types)
         {
@@ -67,9 +66,66 @@ private template Graph(Types...)
                 }
             }
         }
+
+        // TODO: is bit array worth it?
+        bool[Types.length] isNotRootCache;
+        foreach (parentIndex, children; childrenGraph)
+        {
+            foreach (childNode; childrenGraph)
+                isNotRootCache[childNode.childIndex] = true;
+        }
+
+        {
+            // Check for cicles in the graph.
+            // Cicles will stifle the compiler (but I'm not sure).
+            // TODO: use bit array?
+            bool[Types.length] visited = void;
+
+            void isCyclic(size_t index)
+            {
+                if (visited[index])
+                    return true;
+                
+                visited[index] = true;
+                foreach (childNode; childrenGraph[index])
+                {
+                    if (isCyclic(childNode.childIndex))
+                        return true;
+                }
+                return false;
+            }
+
+            foreach (parentIndex, isNotRoot; isNotRootCache)
+            {
+                if (isNotRoot)
+                    continue;
+                visited = 0;
+                if (isCyclic(parentIndex))
+                {
+                    // TODO: report more info here.
+                    assert(false, "The command graph contains a cycle");
+                }
+            }
+        }
 		
         import std.array;
         auto ret = appender!string;
+
+        ret ~= "alias RootTypes = AliasSeq!(";
+        {
+            size_t appendedCount = 0;
+            foreach (parentIndex, isNotRoot; isNotRootCache)
+            {
+                if (isNotRoot)
+                    continue;
+                if (appendedCount > 0)
+                    ret ~= ", ";
+                
+                import std.format : formattedWrite;
+                formattedWrite(ret, "Types[%d]", parentIndex);
+            }
+        }
+        ret ~= ");";
 
         foreach (parentIndex, ParentType; Types)
         {
@@ -89,16 +145,25 @@ private template Graph(Types...)
         
         return ret[];
     }());
+
+    template getChildCommandFieldsOf(T)
+    {
+        mixin("alias getChildCommandFieldsOf = " ~ escapedName!T ~ ";");
+    }
+
+    alias Parent(alias f) = __traits(parent, f);
+    
+    // for now, just static map, but a different idea is to just store the info
+    // (the type index and the field index) and then static map for both fields and types.
+    alias getChildTypes(T) = staticMap!(Parent, getChildCommandFieldsOf!T);
 }
 
 
 /// ParentCommandFieldSymbols must be already filtered to have at least
 /// one member marked with ParentCommand.
-template getChildCommandFieldsOf(T, Types...)
-{
-    // It's a non-quadratic implementation that I came up with.
-    alias G = Graph!Types;
-    mixin("alias getChildCommandFieldsOf = G." ~ escapedName!T ~ ";");
+// template getChildCommandFieldsOf(T, Types...)
+// {
+    // alias G = Graph!Types;
  
     //
     // I'm keeping the old reflections for the sake of food for thought:
@@ -125,7 +190,7 @@ template getChildCommandFieldsOf(T, Types...)
     //     //     RemainingCommandFieldSymbols = AliasSeq!(RemainingCommands, field);
     //     // }
     // }
-}
+// }
 unittest
 {
     static struct A {}
@@ -134,9 +199,32 @@ unittest
 
     {
         alias Types = AliasSeq!(A, B, C);
-        static assert(__traits(isSame, getChildCommandFieldsOf!(A, Types)[0], B.a));
-        static assert(__traits(isSame, getChildCommandFieldsOf!(B, Types)[0], C.b));
-        static assert(getChildCommandFieldsOf!(C, Types).length == 0);
+        alias G = TypeGraph!Types;
+        static assert(__traits(isSame, G.getChildCommandFieldsOf!(A, Types)[0], B.a));
+        static assert(__traits(isSame, G.getChildCommandFieldsOf!(B, Types)[0], C.b));
+        static assert(G.getChildCommandFieldsOf!(C, Types).length == 0);
+    }
+}
+
+template AllCommandsOf(Modules...)
+{
+    // enum isCommand(string memberName) = hasUDA!(__traits(getMember, Module, memberName), Command)
+    //     || hasUDA!(__traits(getMember, Module, memberName), CommandDefault);
+    // alias AllCommandsOf = Filter!(isCommand, Modules);
+    
+    // TODO:
+    // This is quadratic, I'm pretty sure.
+    // You can do better with templates by splitting in half (there are functions in std.traits).
+    static foreach (Module; Modules)
+    {
+        static foreach (memberName; __traits(allMembers, Module))
+        {   
+            static if (hasUDA!(__traits(getMember, Module, memberName), Command)
+                || hasUDA!(__traits(getMember, Module, memberName), CommandDefault))
+            {
+                AllCommandsOf = AliasSeq!(AllCommandsOf, __traits(getMember, Module, memberName));
+            }
+        }
     }
 }
 

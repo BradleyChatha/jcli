@@ -649,7 +649,7 @@ enum defaultValueOf(alias field) = __traits(child, __traits(parent, field).init,
 public template getCommonArgumentInfo(alias field, ArgFlags initialFlags = ArgFlags.none)
 {
     enum flagsBeforeInference = initialFlags | foldArgumentFlags!(__traits(getAttributes, field));
-    enum flagsAfterInference  = inferOptionalityAndValidate!(typeof(field))(
+    enum flagsAfterInference = inferOptionalityAndValidate!(typeof(field))(
         flagsBeforeInference, defaultValueOf!field);
     
     alias groups = getUDAs!(field, ArgGroup);
