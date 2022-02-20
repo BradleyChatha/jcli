@@ -73,7 +73,7 @@ enum MatchAndExecuteErrorCode
     firstTokenNotCommand = theBit | 2,
     unmatchedThing = theBit | 3,
     caughtException = theBit | 4,
-    unmatchedCommandName = theBit | 5
+    unmatchedCommandName = theBit | 5,
 }
 private alias ErrorCode = MatchAndExecuteErrorCode;
 
@@ -125,6 +125,71 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
         return _matchAndExecute(tokenizer, handler);
     }
 }
+
+enum SpecialThings
+{
+    none = 0,
+    help = 1
+}
+
+SpecialThings tryMatchSpecialThings(Tokenizer : ArgTokenizer!TRange, TRange)
+(
+    ref scope Tokenizer tokenizer
+)
+{
+    alias Kind = ArgToken.Kind;
+    const currentToken = tokenizer.front;
+
+    outerSwitch: switch (currentToken.kind)
+    {
+        case Kind.fullNamedArgumentName:
+        case Kind.shortNamedArgumentName:
+        {
+            switch (currentToken.nameSlice)
+            {
+                case "help":
+                case "h":
+                {
+                    tokenizer.popFront();
+                    
+                    // TODO: handle this better
+                    if (tokenizer.front.kind == Kind.namedArgumentValue)
+                    {
+                        writeln("Please, do not give `help` a value.");
+                        tokenizer.popFront();
+                    }
+
+                    return SpecialThings.help;
+                }
+                default:
+                    break outerSwitch;
+            }
+        }
+
+        case Kind.orphanArgument:
+        case Kind.positionalArgument:
+        {
+            switch (currentToken.nameSlice)
+            {
+                case "/?":
+                case "/help":
+                case "/h":
+                {
+                    tokenizer.popFront();
+                    return SpecialThings.help;
+                }
+                default:
+                    break outerSwitch;
+            }
+        }
+
+        default:
+            break;
+    }
+
+    return SpecialThings.none;
+}
+
 
 // TODO: better name
 template MatchAndExecuteTypeContext(alias bindArgument, Types...)
@@ -212,7 +277,22 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         // Matched the given command.
         while (!tokenizer.empty)
         {
+            final switch (tryMatchSpecialThings(tokenizer))
+            {
+                case SpecialThings.help:
+                {
+                    writeln("Help message goes here?");
+                    continue;
+                }
+
+                case SpecialThings.none:
+                {
+                    break;
+                }
+            }
+
             const currentToken = tokenizer.front;
+
             if (currentToken.kind.has(ArgToken.Kind.valueBit) 
                 && currentToken.kind.hasEither(
                     ArgToken.Kind.positionalArgumentBit | ArgToken.Kind.orphanArgumentBit))
