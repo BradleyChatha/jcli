@@ -15,8 +15,21 @@ enum ParentCommand;
 import std.traits;
 import std.meta;
 
-import std.string : replace;
-private enum escapedName(T) = fullyQualifiedName!T.replace(".", "_").replace("!", "__");
+template escapedName(T)
+{
+    import std.string : replace;
+    import std.conv : to;
+    import std.path : baseName;
+
+    // The idea here is to minimize collisions between type symbols.
+    enum location = __traits(getLocation, T);
+    enum escapedName = (baseName(location[0]) ~ fullyQualifiedName!T)
+            .replace(".", "_")
+            .replace(" ", "_")
+            .replace("!", "_")
+        ~ location[2].to!string;
+}
+
 
 private template Graph(Types...)
 {
