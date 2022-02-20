@@ -8,6 +8,9 @@ import std.traits;
 import std.range : ElementType;
 
 enum Binder;
+
+// Note: these have to be types, because you cannot 
+// pattern-match templates in an is expression.
 struct UseConverter(alias _conversionFunction)
 { 
     alias conversionFunction = _conversionFunction;
@@ -28,9 +31,12 @@ template bindArgument(Binders...)
 {
     static foreach (Binder; Binders)
     {
-        static assert(Parameters!Binder.length == 1
-            && is(Parameters!Binder[0] : string),
-            "The binder " ~ Binder.stringof ~ " cannot be invoked with a string argument.");
+        static if (is(typeof(&Binder)))
+        {
+            static assert(Parameters!Binder.length == 1
+                && is(Parameters!Binder[0] : string),
+                "The binder " ~ Binder.stringof ~ " cannot be invoked with a string argument.");
+        }
     }
 
     Result bindArgument
@@ -200,7 +206,6 @@ unittest
             @(UseConverter!((string b) => ok("nope")))
             int a;
         }
-        static assert(getUDAs!(S.a, UseConverter).length == 1);
         enum a = getCommonArgumentInfo!(S.a);
         static assert(!__traits(compiles, bind!(a, S)));
     }
@@ -218,6 +223,20 @@ unittest
             assert(result.isOk);
             assert(s.a == "1lol");
         }
+    }
+}
+unittest
+{
+    alias Dummy = ArgNamed;
+    {
+        static ResultOf!T test(T)(string arg) { return ok(T.init); }
+        struct S
+        {
+            @Dummy
+            string a;
+        }
+        // Currently, validation is not done for temples at all.
+        static assert(__traits(compiles, bindArgument!(test)));
     }
 }
 unittest

@@ -106,6 +106,10 @@ struct CommandParsingContext(size_t numBitsInStorage)
             return BitArray(cast(void[]) namedArgHasBeenFoundBitArrayStorage[], numBitsInStorage);
         }
     }
+    else
+    {
+        enum size_t bitStorageSize = 0;
+    }
 }
 
 void resetNamedArgumentArrayStorage
