@@ -229,20 +229,6 @@ unittest
 {
     alias Dummy = ArgNamed;
     {
-        static ResultOf!T test(T)(string arg) { return ok(T.init); }
-        struct S
-        {
-            @Dummy
-            string a;
-        }
-        // Currently, validation is not done for temples at all.
-        static assert(__traits(compiles, bindArgument!(test)));
-    }
-}
-unittest
-{
-    alias Dummy = ArgNamed;
-    {
 
         struct S
         {
@@ -264,7 +250,16 @@ unittest
             static assert(!__traits(compiles, bindArgument!(binder)));
         }
     }
-    
+    {
+        static ResultOf!T test(T)(string arg) { return ok(T.init); }
+        struct S
+        {
+            @Dummy
+            string a;
+        }
+        // Currently, validation is not done for temples at all.
+        static assert(__traits(compiles, bindArgument!(test)));
+    }
 }
 
 template bindArgumentAcrossModules(Modules...)
