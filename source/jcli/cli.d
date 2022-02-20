@@ -9,6 +9,57 @@ import std.array;
 import std.traits;
 import std.meta;
 
+
+int executeCommand(T)(ref scope T command)
+{
+    try
+    {
+        static if (is(typeof(command.onExecute()) : int))
+        {
+            return command.onExecute();
+        }
+        else
+        {
+            command.onExecute();
+            return 0;
+        }
+    }
+    catch (Exception exc)
+    {
+        // for now, just print it
+        writeln(exc);
+        return cast(int) ErrorCode.caughtException;
+    }
+}
+unittest
+{
+    {
+        static struct A
+        {
+            int onExecute() { return 1; }
+        }
+        auto a = A();
+        assert(executeCommand(a) == 1);
+    }
+    {
+        static struct A
+        {
+            static int onExecute() { return 1; }
+        }
+        auto a = A();
+        assert(executeCommand(a) == 1);
+    }
+    {
+        static struct A
+        {
+            void onExecute() {}
+        }
+        auto a = A();
+        assert(executeCommand(a) == 0);
+    }
+}
+
+
 struct MatchAndExecuteResult
 {
     int exitCode;
@@ -104,7 +155,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     )
     {
         ArgToken firstToken = tokenizer.front;
-        if (firstToken.kind.has(ArgToken.Kind.valueBit))
+        if (firstToken.kind.doesNotHave(ArgToken.Kind.valueBit))
             return Result(cast(int) ErrorCode.firstTokenNotCommand, false);
         tokenizer.popFront();
 
@@ -159,7 +210,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         }
         
         // Matched the given command.
-        while (tokenizer.empty)
+        while (!tokenizer.empty)
         {
             const currentToken = tokenizer.front;
             if (currentToken.kind.has(ArgToken.Kind.valueBit) 
@@ -192,7 +243,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                         return r.result;
 
                     // There is an extra unmatched argument thing.
-                    writeln("Unmatched thing", tokenizer.front.fullSlice, ", not implemented fully.");
+                    writeln("Unmatched thing ", tokenizer.front.fullSlice, ", not implemented fully.");
                     return Result(cast(int) ErrorCode.unmatchedThing, false);
                 }
             }
@@ -319,10 +370,19 @@ unittest
             }
         }
 
+        static assert(CommandInfo!A.general.uda.pattern[0] == "A");
+
         alias Types = AliasSeq!A;
-        auto result = exec!Types(["A"]);
-        assert(result.allExecuted);
-        assert(result.exitCode == 1);
+        {
+            auto result = exec!Types([]);
+            assert(!result.allExecuted);
+            assert(result.exitCode == cast(int) ErrorCode.firstTokenNotCommand);
+        }
+        {
+            auto result = exec!Types(["A"]);
+            assert(result.allExecuted);
+            assert(result.exitCode == 1);
+        }
     }
     {
         @Command("other")
@@ -347,7 +407,7 @@ unittest
         {
             int onExecute()
             {
-                return 1;
+                return 0;
             }
         }
         
@@ -359,7 +419,7 @@ unittest
 
             int onExecute()
             {
-                return 2;
+                return 1;
             }
         }
 
@@ -368,12 +428,12 @@ unittest
         {
             auto result = exec0(["A"]);
             assert(result.allExecuted);
-            assert(result.exitCode == 1);
+            assert(result.exitCode == 0);
         }
         {
             auto result = exec0(["A", "B"]);
             assert(result.allExecuted);
-            assert(result.exitCode == 2);
+            assert(result.exitCode == 1);
         }
     }
 }
@@ -390,7 +450,7 @@ unittest
 
             static int onExecute()
             {
-                return 1;
+                return 0;
             }
         }
         
@@ -409,7 +469,7 @@ unittest
 
             static int onExecute()
             {
-                return 2;
+                return 1;
             }
         }
 
@@ -426,45 +486,23 @@ unittest
         {
             auto result = exec0(["A"]);
             assert(!result.allExecuted);
-            assert(result.exitCode == ErrorCode.unmatchedThing);
+            assert(result.exitCode == ErrorCode.intermediateErrors);
             assert(errorHandler.hasError(CommandParsingErrorCode.tooFewPositionalArgumentsError));
         }
         {
             // The sad thing is that it does not return the executed command rn.
             auto result = exec0(["A", "B"]);
             assert(result.allExecuted);
-            assert(result.exitCode == A.onExecute);
+            assert(result.exitCode == 0);
         }
         {
             auto result = exec0(["A", "1", "B"]);
             assert(result.allExecuted);
-            assert(result.exitCode == B.onExecute);
+            assert(result.exitCode == 1);
         }
     }
 }
 
-
-int executeCommand(T)(ref scope T command)
-{
-    try
-    {
-        static if (is(typeof(command.onExecute) : int))
-        {
-            return command.onExecute();
-        }
-        else
-        {
-            command.onExecute();
-            return 0;
-        }
-    }
-    catch (Exception exc)
-    {
-        // for now, just print it
-        writeln(exc);
-        return cast(int) ErrorCode.caughtException;
-    }
-}
 
 // Needs a complete rework.
 final class CommandLineInterface(Modules...)

@@ -136,6 +136,7 @@ struct ArgTokenizer(TRange)
     {
         if (_range.empty)
         {
+            assert(!_empty);
             _empty = true;
             return;
         }
