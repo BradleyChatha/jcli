@@ -9,26 +9,30 @@ import std.array;
 import std.traits;
 import std.meta;
 
+struct ExecuteCommandResult
+{
+    int exitCode;
+    /// is null if no exception occured
+    Exception exception;
+}
 
-int executeCommand(T)(ref scope T command)
+ExecuteCommandResult executeCommand(T)(auto ref scope T command)
 {
     try
     {
         static if (is(typeof(command.onExecute()) : int))
         {
-            return command.onExecute();
+            return typeof(return)(command.onExecute(), null);
         }
         else
         {
             command.onExecute();
-            return 0;
+            return typeof(return)(0, null);
         }
     }
     catch (Exception exc)
     {
-        // for now, just print it
-        writeln(exc);
-        return cast(int) ErrorCode.caughtException;
+        return typeof(return)(0, exc);
     }
 }
 unittest
@@ -39,7 +43,9 @@ unittest
             int onExecute() { return 1; }
         }
         auto a = A();
-        assert(executeCommand(a) == 1);
+        auto result = executeCommand(a);
+        assert(result.exitCode == 1);
+        assert(result.exception is null);
     }
     {
         static struct A
@@ -47,7 +53,9 @@ unittest
             static int onExecute() { return 1; }
         }
         auto a = A();
-        assert(executeCommand(a) == 1);
+        auto result = executeCommand(a);
+        assert(result.exitCode == 1);
+        assert(result.exception is null);
     }
     {
         static struct A
@@ -55,28 +63,20 @@ unittest
             void onExecute() {}
         }
         auto a = A();
-        assert(executeCommand(a) == 0);
+        auto result = executeCommand(a);
+        assert(result.exitCode == 0);
+        assert(result.exception is null);
+    }
+    {
+        static struct A
+        {
+            void onExecute() { throw new Exception("Hello"); }
+        }
+        auto a = A();
+        auto result = executeCommand(a);
+        assert(result.exception !is null);
     }
 }
-
-
-struct MatchAndExecuteResult
-{
-    int exitCode;
-    bool allExecuted;
-}
-
-enum MatchAndExecuteErrorCode
-{
-    theBit = 128,
-    intermediateErrors = theBit | 1,
-    firstTokenNotCommand = theBit | 2,
-    unmatchedThing = theBit | 3,
-    caughtException = theBit | 4,
-    unmatchedCommandName = theBit | 5,
-}
-private alias ErrorCode = MatchAndExecuteErrorCode;
-
 
 enum MatchAndExecuteState
 {
@@ -84,44 +84,62 @@ enum MatchAndExecuteState
     initial = 0,
 
     /// ArgToken.Kind the error_ things.
-    tokenizerError = 1, 
+    tokenizerError, 
     
     /// ?, ConsumeSingleArgumentResultKind.
-    commandParsingError = 2, 
+    commandParsingError,
+    
+    /// transitions: -- parse & match -->matched|beforeFinalExecute|unmatched
+    matchedRootCommand, 
+
+    /// It's matched the next command by name.
+    /// transitions: -- executePrevious -->intermediateExecutionResult
+    matchedNextCommand, 
+
+    /// When it does onExecute on parent command.
+    /// transitions: -> matched|beforeFinalExecute|unmatched
+    intermediateExecutionResult,
+
+    /// Means it's consumed all of the arguments it can or should
+    /// and right now it's a the point where it would execute the last thing.
+    /// transitions: -> finalExecutionResult
+    beforeFinalExecute,
+
+    /// If this bit is set, any state after it will give invalid.
+    terminalStateBit = 16,
+    
+    /// MatchAndExecuteErrorCode
+    firstTokenNotCommand = terminalStateBit | 0,
 
     /// Misuse of the API.
-    invalid = 3,
-    
+    invalid = terminalStateBit | 1,
+
     /// Aka help SpecialThings.
     /// `help`: 
     /// May come up at any point. It means the current command asked for a help message.
     /// The help may be asked for at the top level, before any command has been matched.
     /// In that case, the command index will be -1.
-    specialThing = 4, 
-    
-    /// When it does onExecute on parent command.
-    /// transitions: intermediateExitCode -> matched|unmatched
-    intermediateExitCode = 5, 
-    
-    /// It's read the command from arguments, but hasn't executed it.
-    /// transitions: singleCommandParsingDone -> intermediateExitCode|finalExitCode
-    singleCommandParsingDone = 6, 
-    
-    /// It's matched the next command by name.
-    /// transitions: matchedNextCommand -> singleParsingDone
-    matchedNextCommand = 7, 
-    
-    /// It's not matched the next command, and there are extra unused arguments.
-    /// notMatchedNextCommand -> specialThing|doneWithoutExecuting
-    notMatchedNextCommand = 8,
+    specialThing = terminalStateBit | 2, 
 
-    /// Happends in case a command was not matched, and no special thing
+
+    /// It's not matched the next command, and there are extra unused arguments.
+    /// notMatchedNextCommand -> doneWithoutExecuting|specialThing
+    notMatchedNextCommand = terminalStateBit | 3,
+
+    ///
+    notMatchedRootCommand = terminalStateBit | 4,
+
+    /// Happens in case a command was not matched, and no special thing
     /// was found after that.
-    doneWithoutExecuting = 9,
+    ///  transitions: -> invalid
+    doneWithoutExecuting = terminalStateBit | 5,
     
     /// It's executed a terminal command (the tokenizer was empty).
-    finalExitCode = 10,
+    ///  transitions: -> invalid
+    finalExecutionResult = terminalStateBit | 6,
 }
+
+private alias State = MatchAndExecuteState;
 
 ///
 template matchAndExecuteAccrossModules(Modules...)
@@ -236,6 +254,42 @@ SpecialThings tryMatchSpecialThings(Tokenizer : ArgTokenizer!TRange, TRange)
     return SpecialThings.none;
 }
 
+struct MatchAndExecuteContext
+{
+    State _state;
+    int _currentCommandTypeIndex;
+
+    union
+    {
+        ArgToken.Kind _tokenizerError;
+        ConsumeSingleArgumentResultKind _commandParsingErrorKind;
+        SpecialThings _specialThing;
+
+        ExecuteCommandResult _executeCommandResult;
+
+        struct
+        {
+            int _previousCommandTypeIndex;
+            string _matchedName;
+        }
+        string _notMatchedName;
+    }
+
+    // TODO: maybe store them inline
+    // TODO: calculate the max path length in the graph and set that as max size.
+    void*[] _storage;
+
+    // void* latestCommand()
+    // {
+    //     assert(_currentCommandTypeGraphNode != -1);
+    //     return _storage[$ - 1];
+    // }
+
+
+    const pure @safe nothrow @nogc:
+
+    State state() { return _state; }
+}
 
 // TODO: better name
 template MatchAndExecuteTypeContext(alias bindArgument, Types...)
@@ -252,16 +306,389 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         return result;
     }();
     alias ParsingContext = CommandParsingContext!maxNamedArgCount;
-    alias Result = MatchAndExecuteResult;
+    alias Context = MatchAndExecuteContext;
 
-    struct Context
+    private void addCommand(int typeIndex)(scope ref Context context)
     {
-        ParsingContext parsingContext;
+        alias Type = Types[typeIndex];
+        // TODO: maybe add something fancier here later 
+        auto t = new Type();
+        context._storage ~= cast(void*) t;
+        context._currentCommandTypeIndex = typeIndex;
+    }
 
+    private auto getLatestCommand(int typeIndex)(scope ref Context context)
+    {
+        assert(context._storage.length > 0);
+        assert(typeIndex == context._currentCommandTypeIndex);
+        alias Type = Types[typeIndex];
+        return cast(Type*) context._storage[$ - 1];
+    }
+
+    // Frame issues make us do the mixins.
+    private string get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
+        string variableName, string funcName, string currentTypeIndexName, int a = __LINE__)
+    {
+        import std.conv : to;
+        string labelName = `__stuff` ~ a.to!string;
+
+        return labelName ~ `: switch (` ~ currentTypeIndexName ~ `)
+        {
+            static foreach (_typeIndex, CurrentType; Types)
+            {
+                case cast(int) _typeIndex:
+                {
+                    ` ~ funcName ~ `!(cast(int) _typeIndex)();
+                    ` ~ variableName ~ ` = true;
+                    break ` ~ labelName ~ `;
+                }
+            }
+            default:
+            {
+                ` ~ variableName ~ ` = false;
+                break `  ~ labelName ~ `;
+            }
+        }`;
+    }
+
+    // private bool tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex(alias templatedFunc)(int currentTypeIndex)
+    // {
+    //     switch (currentTypeIndex)
+    //     {
+    //         static foreach (typeIndex, CurrentType; Types)
+    //         {
+    //             case cast(int) typeIndex:
+    //             {
+    //                 templatedFunc!(cast(int) typeIndex)();
+    //                 return true;
+    //             }
+    //         }
+    //         default:
+    //             return false;
+    //     }
+    // }
+
+    // Again, frame issues.
+    private string tryMatchCommandByNameMixinText(
+        string resultVariableName,
+        string commandNameVariableName,
+        string typeIndexVariableName,
+        string functionVariableName,
+        int a = __LINE__)
+    {
+        import std.conv : to;
+        string labelName = `__stuff` ~ a.to!string;
+
+        return `{` ~ labelName ~ `: switch (` ~ commandNameVariableName ~ `)
+        {
+            default:
+            {
+                ` ~ resultVariableName ~ ` = false;
+                break `  ~ labelName ~ `;
+            }
+            static foreach (_childNodeIndex, _childNode; Graph.Nodes[` ~ typeIndexVariableName ~ `])
+            {{
+                alias Type = Types[_childNode.childIndex];
+                static foreach (_possibleName; jcli.introspect.CommandInfo!Type.general.uda.pattern)
+                {
+                    case _possibleName:
+                    {
+                        ` ~ functionVariableName ~ `!_childNode(_possibleName);
+                        ` ~ resultVariableName ~ ` = true;
+                        break `  ~ labelName ~ `;
+                    }
+                }
+                
+            }}
+        }}`;
+    }
+
+    /// `handlerTemplate` must take a template parameter of the type Node matched. 
+    /// returns false if the handler was not called.
+    private bool tryMatchCommandByName(size_t parentTypeIndex, alias handlerTemplate)(string commandName)
+    {
+        switch (commandName)
+        {
+            default:
+                return false;
+            static foreach (childNodeIndex, childNode; Graph.Nodes[parentTypeIndex])
+            {{
+                alias Type = Types[childNode.childIndex];
+                static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
+                {
+                    case possibleName:
+                    {
+                        handlerTemplate!childNode(possibleName);
+                        return true;
+                    }
+                }
+            }}
+        }
     }
 
     ///
-    Result matchAndExecute
+    void advanceState
+    (
+        Tokenizer : ArgTokenizer!TRange, TRange,
+        TErrorHandler
+    )
+    (
+        scope ref Context context,
+        scope ref ParsingContext parsingContext,
+        scope ref Tokenizer tokenizer,
+        scope ref TErrorHandler errorHandler
+    )
+    {
+        if (context._state & State.terminalStateBit)
+        {
+            context._state = State.invalid;
+            return;
+        }
+
+        bool tryMatchSpecialThingsAndResetContextAccordingly()
+        {
+            final switch (tryMatchSpecialThings(tokenizer))
+            {
+                case SpecialThings.help:
+                {
+                    context._specialThing = SpecialThings.help;
+                    context._state = State.specialThing;
+                    return true;
+                }
+
+                case SpecialThings.none:
+                {
+                    break;
+                }
+            }
+            return false;
+        }
+
+        switch (context._state)
+        {
+            default:
+                assert(0);
+
+            case State.initial:
+            {
+                if (tryMatchSpecialThingsAndResetContextAccordingly())
+                    return;
+
+                ArgToken firstToken = tokenizer.front;
+                if (firstToken.kind.doesNotHave(ArgToken.Kind.valueBit))
+                {
+                    context._state = State.firstTokenNotCommand;
+                    return;
+                }
+                tokenizer.popFront();
+
+                switch (firstToken.nameSlice)
+                {
+                    default:
+                    {
+                        context._state = State.notMatchedRootCommand;
+                        return;
+                    }
+                    static foreach (rootTypeIndex; Graph.rootTypeIndices)
+                    {{
+                        alias Type = Types[rootTypeIndex];
+
+                        void doStuff()
+                        {
+                            addCommand!(cast(int) rootTypeIndex)(context);
+                            context._state = State.matchedRootCommand;
+                            resetNamedArgumentArrayStorage!Type(parsingContext);
+                        }
+
+                        static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
+                        {
+                            case possibleName:
+                            {
+                                doStuff();
+                                context._matchedName = possibleName;
+                                return;
+                            }
+                        }
+                    }}
+                }
+            }
+
+            // Already added, executed, and set up the command, just initialize the latest command.
+            case State.matchedRootCommand:
+            case State.intermediateExecutionResult:
+            {
+                void fillLatestCommand(size_t typeIndex)()
+                {
+                    alias Type = Types[typeIndex];
+                    alias CommandInfo = jcli.introspect.CommandInfo!Type;
+                    alias ArgumentInfo = CommandInfo.Arguments;
+
+                    Type* command = getLatestCommand!typeIndex(context);
+
+                    bool maybeMatchNextCommandNameAndResetState(string nameSlice)
+                    {
+                        void nameMatchedHandler(TypeGraphNode node)(string matchedName)
+                        {
+                            addCommand!(node.childIndex)(context);
+                            context._matchedName = matchedName;
+                        }
+                        bool didMatchCommand;
+                        mixin(tryMatchCommandByNameMixinText(
+                            "didMatchCommand",
+                            "nameSlice",
+                            "typeIndex",
+                            "nameMatchedHandler"));
+                        
+                        // monkyyy's frame issues at play
+                        // bool didMatchCommand = tryMatchCommandByName!(typeIndex, nameMatchedHandler)(nameSlice));
+
+                        if (didMatchCommand)
+                        {
+                            maybeReportParseErrorsFromFinalContext!ArgumentInfo(parsingContext, errorHandler);
+                            resetNamedArgumentArrayStorage!Type(parsingContext);
+                            tokenizer.resetWithRemainingRange();
+                            
+                            context._state = State.matchedNextCommand;
+                            // Save the previous so we can call the onExecute at a later step.
+                            context._previousCommandTypeIndex = typeIndex;
+                            return true;
+                        }
+                        return false;
+                    }
+                    
+                    // Matched the given command.
+                    while (!tokenizer.empty)
+                    {
+                        if (tryMatchSpecialThingsAndResetContextAccordingly())
+                            return;
+
+                        const currentToken = tokenizer.front;
+
+                        // Should be handled via the error handler.
+                        // if (currentToken.kind.has(ArgToken.Kind.errorBit))
+                        // {
+                        //     context._state = State.tokenizerError;
+                        //     return;
+                        // }
+                        auto consumeSingle()
+                        { 
+                            return consumeSingleArgumentIntoCommand!bindArgument(
+                                parsingContext, *command, tokenizer, errorHandler);
+                        }
+
+                        if (currentToken.kind.has(ArgToken.Kind.valueBit) 
+                            && currentToken.kind.hasEither(
+                                ArgToken.Kind.positionalArgumentBit | ArgToken.Kind.orphanArgumentBit))
+                        {
+                            // 3 posibilities
+                            // 1. Not all required positional arguments have been read, in which case we read that.
+                            // 2. All required positional arguments have been read, but there are still optional ones,
+                            //    in which case we try to match command first before reading on.
+                            // 3. All possibile positional args have been read, so just match the name.
+                            if (parsingContext.currentPositionalArgIndex < ArgumentInfo.numRequiredPositionalArguments)
+                            {
+                                const _ = consumeSingle();
+                            }
+                            else if (parsingContext.currentPositionalArgIndex < ArgumentInfo.positional.length
+                                || ArgumentInfo.takesOverflow)
+                            {
+                                // match, add
+                                if (maybeMatchNextCommandNameAndResetState(currentToken.nameSlice))
+                                    return;
+                                const _ = consumeSingle();
+                            }
+                            else
+                            {
+                                // match, add
+                                if (!maybeMatchNextCommandNameAndResetState(currentToken.nameSlice))
+                                {
+                                    context._state = State.notMatchedNextCommand;
+                                    context._notMatchedName = currentToken.nameSlice;
+                                }
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            const _ = consumeSingle();
+                        }
+                    }
+
+                    maybeReportParseErrorsFromFinalContext!ArgumentInfo(parsingContext, errorHandler);
+
+                    if (parsingContext.errorCounter > 0)
+                    {
+                        context._state = State.commandParsingError;
+                        // context._commandParsingErrorKind =
+                        return;
+                    }
+
+                    context._state = State.beforeFinalExecute;
+                }
+
+                bool matched;
+                enum mixinString = get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
+                    "matched", "fillLatestCommand", "context._currentCommandTypeIndex");
+                mixin(mixinString);
+
+                // monkyyy's frame issues at play.
+                // bool matched = tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex!fillLatestCommand(
+                //     context._currentCommandTypeIndex);
+
+                assert(matched);
+                return;
+            }
+
+            // Already added the command, but haven't executed the previous one 
+            // or reset the context for the latest one.
+            case State.matchedNextCommand:
+            {
+                void executeNextToLast(size_t typeIndex)()
+                {
+                    alias Type = Types[typeIndex];
+                    auto command = cast(Type*) context._storage[$ - 2];
+                    auto result = executeCommand(*command);
+                    context._state = State.intermediateExecutionResult;
+                    context._executeCommandResult = result;
+                }
+
+                bool didHandlerExecute;
+                enum mixinString = get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
+                    "didHandlerExecute", "executeNextToLast", "context._previousCommandTypeIndex");
+                mixin(mixinString);
+
+                assert(didHandlerExecute);
+                return;
+            }
+
+            case State.beforeFinalExecute:
+            {
+                void executeLast(size_t typeIndex)()
+                {
+                    auto command = getLatestCommand!typeIndex(context);
+                    auto result = executeCommand(*command);
+                    context._state = State.finalExecutionResult;
+                    context._executeCommandResult = result;
+                }
+                
+                bool didHandlerExecute;
+                enum mixinString = get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
+                    "didHandlerExecute", "executeLast", "context._currentCommandTypeIndex");
+                mixin(mixinString);
+
+                // bool didHandlerExecute = tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex!executeLast(
+                //     context._currentCommandTypeIndex);
+                // assert(didHandlerExecute);
+
+                assert(didHandlerExecute);
+
+                return;
+            }
+        }
+    }
+
+    ///
+    Context matchAndExecute
     (
         Tokenizer : ArgTokenizer!TRange, TRange,
         TErrorHandler,
@@ -271,254 +698,49 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         scope ref TErrorHandler errorHandler
     )
     {
-        ArgToken firstToken = tokenizer.front;
-        if (firstToken.kind.doesNotHave(ArgToken.Kind.valueBit))
-            return Result(cast(int) ErrorCode.firstTokenNotCommand, false);
-        tokenizer.popFront();
-
-        ParsingContext parsingContext;
-
-        switch (firstToken.nameSlice)
+        Context context;
+        while (!(context._state & State.terminalStateBit))
         {
-            static foreach (RootType; Graph.RootTypes)
-            {
-                static foreach (possibleName; CommandInfo!RootType.general.uda.pattern)
-                {
-                    case possibleName:
-                }
-                {
-                    auto command = RootType();
-                    resetNamedArgumentArrayStorage!RootType(parsingContext);
-
-                    // This has executed all commands, inlcuding this one, recursively
-                    // Maybe print the rest of the arguments, might be helpful idk.
-                    return matchNextTokenLoopAndExecute(
-                        parsingContext, tokenizer, command, errorHandler);
-                }
-            }
-            default:
-            {
-                return Result(cast(int) ErrorCode.unmatchedCommandName, false);
-            }
+            advanceState(context, tokenizer, errorHandler);
         }
-    }
-
-    ///
-    Result matchNextTokenLoopAndExecute
-    (
-        CurrentCommandType,
-        Tokenizer : ArgTokenizer!TRange, TRange,
-        TErrorHandler
-    )
-    (
-        ref scope ParsingContext parsingContext,
-        ref scope Tokenizer tokenizer,
-        ref scope CurrentCommandType command,
-        ref scope TErrorHandler errorHandler
-    )
-    {
-        alias CommandInfo = jcli.introspect.CommandInfo!CurrentCommandType;
-        alias ArgumentInfo = CommandInfo.Arguments;
-
-        auto consumeSingle()
-        { 
-            return consumeSingleArgumentIntoCommand!bindArgument(
-                parsingContext, command, tokenizer, errorHandler);
-        }
-        
-        // Matched the given command.
-        while (!tokenizer.empty)
-        {
-            final switch (tryMatchSpecialThings(tokenizer))
-            {
-                case SpecialThings.help:
-                {
-                    writeln("Help message goes here?");
-                    continue;
-                }
-
-                case SpecialThings.none:
-                {
-                    break;
-                }
-            }
-
-            const currentToken = tokenizer.front;
-
-            if (currentToken.kind.has(ArgToken.Kind.valueBit) 
-                && currentToken.kind.hasEither(
-                    ArgToken.Kind.positionalArgumentBit | ArgToken.Kind.orphanArgumentBit))
-            {
-                // 3 posibilities
-                // 1. Not all required positional arguments have been read, in which case we read that.
-                // 2. All required positional arguments have been read, but there are still optional ones,
-                //    in which case we try to match command first before reading on.
-                // 3. All possibile positional args have been read, so just match the name.
-                if (parsingContext.currentPositionalArgIndex < ArgumentInfo.numRequiredPositionalArguments)
-                {
-                    const _ = consumeSingle();
-                }
-                else if (parsingContext.currentPositionalArgIndex < ArgumentInfo.positional.length
-                    || ArgumentInfo.takesOverflow)
-                {
-                    {
-                        auto r = tryExecuteRecursively(parsingContext, tokenizer, command, errorHandler);
-                        if (r.matched)
-                            return r.result;
-                    }
-
-                    const _ = consumeSingle();
-                }
-                else
-                {
-                    auto r = tryExecuteRecursively(parsingContext, tokenizer, command, errorHandler);
-                    if (r.matched)
-                        return r.result;
-
-                    // There is an extra unmatched argument thing.
-                    writeln("Unmatched thing ", tokenizer.front.fullSlice, ", not implemented fully.");
-                    return Result(cast(int) ErrorCode.unmatchedThing, false);
-                }
-            }
-            else
-            {
-                const _ = consumeSingle();
-            }
-        }
-
-        maybeReportParseErrorsFromFinalContext!ArgumentInfo(parsingContext, errorHandler);
-
-        // In essence, we're the leaf node here, so we have to execute ourselves.
-        if (parsingContext.errorCounter == 0)
-        {
-            const r = executeCommand(command);
-            return Result(r, true);
-        }
-
-        return Result(cast(int) ErrorCode.intermediateErrors, false);
-    }
-
-    struct TryResult
-    {
-        Result result;
-        bool matched;
-    }
-
-    ///
-    TryResult tryExecuteRecursively
-    (
-        ParentCommandType,
-        Tokenizer : ArgTokenizer!TRange, TRange,
-        TErrorHandler
-    )
-    (
-        ref scope ParsingContext parsingContext,
-        ref scope Tokenizer tokenizer,
-        ref scope ParentCommandType parentCommand,
-        ref scope TErrorHandler errorHandler
-    )
-    {
-        alias ArgumentsInfo = CommandInfo!ParentCommandType.Arguments;
-
-        // Returns 0 if should continue doing stuff.
-        int prepareToExecute()
-        {
-            tokenizer.popFront();
-            
-            maybeReportParseErrorsFromFinalContext!ArgumentsInfo(parsingContext, errorHandler);
-            if (parsingContext.errorCounter > 0)
-            {
-                // TODO: 
-                // report that a subcommand was matched, but the previous command
-                // was not initilialized correctly.
-                return cast(int) ErrorCode.intermediateErrors;
-            }
-
-            {
-                int exitCode = executeCommand(parentCommand);
-                if (exitCode != 0)
-                    return exitCode;
-            }
-
-            resetNamedArgumentArrayStorage!ArgumentsInfo(parsingContext);
-            return 0;
-        }
-
-        switch (tokenizer.front.nameSlice)
-        {
-            static foreach (childField; Graph.getChildCommandFieldsOf!ParentCommandType)
-            {{
-                alias Type = __traits(parent, childField);
-
-                static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
-                {
-                    case possibleName:
-                }
-                {                    
-                    {
-                        int r = prepareToExecute();
-                        if (r != 0)
-                        {
-                            const match = true;
-                            const allExecuted = false;
-                            return TryResult(Result(r, allExecuted), match);
-                        }
-                    }
-                    
-                    auto command = Type();
-                    // This method probably cannot work with dll's.
-                    // With dll's we need a more dynamic approach.
-                    __traits(child, command, childField) = &parentCommand;
-
-                    return TryResult(
-                        matchNextTokenLoopAndExecute(
-                            parsingContext, tokenizer, command, errorHandler),
-                        true);
-                }
-            }}
-            default:
-            {
-                TryResult returnValue;
-                returnValue.matched = false;
-                return returnValue;
-            }
-        }
+        return context;
     }
 }
-unittest
+
+struct SimpleMatchAndExecuteHelper(Types...)
 {
     alias bindArgument = jcli.argbinder.bindArgument!();
-    auto exec(Types...)(scope string[] args)
+    alias TypeContext = MatchAndExecuteTypeContext!(bindArgument, Types);
+
+    MatchAndExecuteContext context;
+    TypeContext.ParsingContext parsingContext;
+    ArgTokenizer!(string[]) tokenizer;
+    ErrorCodeHandler errorHandler;
+
+
+    this(string[] args)
     {
-        return matchAndExecute!(bindArgument, Types)(args);
+        tokenizer = argTokenizer(args);
+        parsingContext = TypeContext.ParsingContext();
+        context = MatchAndExecuteContext();
+        errorHandler = createErrorCodeHandler();
+    }
+
+    void advance()
+    {
+        TypeContext.advanceState(context, parsingContext, tokenizer, errorHandler);
+    }
+}
+
+unittest
+{
+    auto createHelper(Types...)(string[] args)
+    {
+        return SimpleMatchAndExecuteHelper!Types(args);
     }
 
     {
         @Command
-        static struct A
-        {
-            int onExecute()
-            {
-                return 1;
-            }
-        }
-
-        static assert(CommandInfo!A.general.uda.pattern[0] == "A");
-
-        alias Types = AliasSeq!A;
-        {
-            auto result = exec!Types([]);
-            assert(!result.allExecuted);
-            assert(result.exitCode == cast(int) ErrorCode.firstTokenNotCommand);
-        }
-        {
-            auto result = exec!Types(["A"]);
-            assert(result.allExecuted);
-            assert(result.exitCode == 1);
-        }
-    }
-    {
-        @Command("other")
         static struct A
         {
             int onExecute()
@@ -528,77 +750,99 @@ unittest
         }
 
         alias Types = AliasSeq!A;
-        auto result = exec!Types(["other"]);
-        assert(result.allExecuted);
-        assert(result.exitCode == 1);
+        alias createHelper0 = createHelper!Types;
+
+        with (createHelper([]))
+        {
+            assert(context.state == State.initial);
+            advance();
+            assert(context.state == State.firstTokenNotCommand);
+        }
+        with (createHelper0(["A"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._matchedName == "A");
+            assert(context._storage.length == 1);
+            // The position of A within Types.
+            assert(context._currentCommandTypeIndex == 0);
+
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == 1);
+        }
+        with (createHelper0(["B"]))
+        {
+            advance();
+            assert(context.state == State.notMatchedRootCommand);
+        }
+        with (createHelper(["A", "-a="]))
+        {
+            advance();
+            writeln(context);
+            assert(context.state == State.matchedRootCommand);
+
+            advance();
+
+            writeln(context);
+            // Currently the these errors get minimally reported.
+            assert(context.state == State.commandParsingError);
+        }
+        with (createHelper0(["A", "b"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._matchedName == "A");
+            assert(context._storage.length == 1);
+            // The position of A within Types.
+            assert(context._currentCommandTypeIndex == 0);
+
+            // It parses until it finds the next command.
+            // A does not get executed here.
+            // A gets executed in a separate step.
+            advance();
+            // TODO: This should display something else, if there are no commands.
+            assert(context.state == State.notMatchedNextCommand);
+            assert(context._notMatchedName == "b");
+        }
+        with (createHelper0(["A", "A"]))
+        {
+            advance();
+
+            advance();
+            // Should not match itself
+            assert(context.state == State.notMatchedNextCommand);
+            assert(context._notMatchedName == "A");
+        }
+        with (createHelper0(["-h"]))
+        {
+            advance();
+            assert(context.state == State.specialThing);
+            assert(context._specialThing == SpecialThings.help);
+        }
+        with (createHelper0(["A", "-h"]))
+        {
+            advance();
+            advance();
+            assert(context.state == State.specialThing);
+            assert(context._specialThing == SpecialThings.help);
+        }
+        with (createHelper0(["-flag"]))
+        {
+            advance();
+            assert(context.state == State.commandParsingError);
+            assert(errorHandler.hasError(CommandParsingErrorCode.unknownNamedArgumentError));
+        }
     }
-
-    // With a parent
-    {
-        @Command
-        static struct A
-        {
-            int onExecute()
-            {
-                return 0;
-            }
-        }
-        
-        @Command
-        static struct B
-        {
-            @ParentCommand
-            A* a;
-
-            int onExecute()
-            {
-                return 1;
-            }
-        }
-
-        alias Types = AliasSeq!(A, B);
-        alias exec0 = exec!Types;
-        {
-            auto result = exec0(["A"]);
-            assert(result.allExecuted);
-            assert(result.exitCode == 0);
-        }
-        {
-            auto result = exec0(["A", "B"]);
-            assert(result.allExecuted);
-            assert(result.exitCode == 1);
-        }
-    }
-}
-unittest
-{
-    alias bindArgument = jcli.argbinder.bindArgument!();
-    // Parent with intermediate arguments
     {
         @Command
         static struct A
         {
             @ArgPositional
-            string p;
-
-            static int onExecute()
-            {
-                return 0;
-            }
-        }
-        
-        @Command
-        static struct B
-        {
-            // The pointer things as is are weird.
-            // We should split up the execution functions.
-            // It would return intermediate matched objects.
-            // You could then put them in a Variant array
-            // (or like in an array where the elements have a fixed max size),
-            // and call the actual function via an adapter that would cast and call.
-            @ParentCommand
-            A* a;
-
+            string b = "op";
 
             static int onExecute()
             {
@@ -606,36 +850,374 @@ unittest
             }
         }
 
-        import std.algorithm;
+        alias Types = AliasSeq!(A);
+        alias createHelper0 = createHelper!Types;
 
-        alias Types = AliasSeq!(A, B);
-        auto errorHandler = createErrorCodeHandler();
-        auto exec0(scope string[] args)
+        with (createHelper0(["A"]))
         {
-            auto tokenizer = argTokenizer(args);
-            return matchAndExecute!(bindArgument, Types)(tokenizer, errorHandler);
-        }
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            auto a = cast(A*) context._storage[$ - 1];
 
-        {
-            auto result = exec0(["A"]);
-            assert(!result.allExecuted);
-            assert(result.exitCode == ErrorCode.intermediateErrors);
-            assert(errorHandler.hasError(CommandParsingErrorCode.tooFewPositionalArgumentsError));
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+            assert(a.b == "op");
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
         }
+        with (createHelper0(["A", "other"]))
         {
-            // The sad thing is that it does not return the executed command rn.
-            auto result = exec0(["A", "B"]);
-            assert(result.allExecuted);
-            assert(result.exitCode == 0);
-        }
-        {
-            auto result = exec0(["A", "1", "B"]);
-            assert(result.allExecuted);
-            assert(result.exitCode == 1);
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            auto a = cast(A*) context._storage[$ - 1];
+
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+            assert(a.b == "other");
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
         }
     }
-}
+    {
+        @Command
+        static struct A
+        {
+            static int onExecute()
+            {
+                return 1;
+            }
+        }
 
+        @Command
+        static struct B
+        {
+            static int onExecute()
+            {
+                return 2;
+            }
+        }
+
+        alias Types = AliasSeq!(A, B);
+        enum AIndex = 0;
+        enum BIndex = 1;
+
+        alias createHelper0 = createHelper!Types;
+
+        with (createHelper0(["A"]))
+        {
+            advance();
+            assert(context._currentCommandTypeIndex == AIndex);
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
+        }
+        with (createHelper0(["B"]))
+        {
+            advance();
+            assert(context._currentCommandTypeIndex == BIndex);
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == B.onExecute);
+        }
+    }
+    {
+        @Command
+        static struct A
+        {
+            static int onExecute()
+            {
+                return 1;
+            }
+        }
+        @Command
+        static struct B
+        {
+            @ParentCommand
+            A* a;
+
+            static int onExecute()
+            {
+                return 2;
+            }
+        }
+
+        alias Types = AliasSeq!(A, B);
+        alias createHelper0 = createHelper!Types;
+
+        with (createHelper0(["A"]))
+        {
+            advance();
+
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
+        }
+        with (createHelper0(["B"]))
+        {
+            advance();
+            assert(context.state == State.notMatchedRootCommand);
+        }
+        with (createHelper0(["A", "B"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+
+            advance();
+            assert(context.state == State.matchedNextCommand);
+            assert(context._matchedName == "B");
+
+            advance();
+            assert(context.state == State.intermediateExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
+            
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == B.onExecute);
+        }
+        with (createHelper0(["A", "/h", "B"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+
+            advance();
+            assert(context.state == State.specialThing);
+            assert(context._specialThing == SpecialThings.help);
+
+            assert(tokenizer.front.valueSlice == "B");
+        }
+        with (createHelper0(["A", "C"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+
+            advance();
+            assert(context.state == State.notMatchedNextCommand);
+        }
+    }
+    {
+        @Command
+        static struct A
+        {
+            @ArgPositional
+            string str = "op";
+
+            static int onExecute()
+            {
+                return 1;
+            }
+        }
+        @Command
+        static struct B
+        {
+            @ParentCommand
+            A* a;
+
+            static int onExecute()
+            {
+                return 2;
+            }
+        }
+
+        alias Types = AliasSeq!(A, B);
+        alias createHelper0 = createHelper!Types;
+
+        with (createHelper0(["A"]))
+        {
+            advance();
+
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
+
+            assert((cast(A*) context._storage[$ - 1]).str == "op");
+        }
+        with (createHelper0(["A", "B"]))
+        {
+            advance();
+
+            advance();
+            assert(context.state == State.matchedNextCommand);
+            assert(context._matchedName == "B");
+        }
+        with (createHelper0(["A", "ok"]))
+        {
+            advance();
+
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+            assert((cast(A*) context._storage[$ - 1]).str == "ok");
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
+        }
+        with (createHelper0(["A", "ok", "B"]))
+        {
+            advance();
+
+            advance();
+            assert(context.state == State.matchedNextCommand);
+            assert(context._previousCommandTypeIndex == 0);
+            assert((cast(A*) context._storage[$ - 2]).str == "ok");
+            assert(context._currentCommandTypeIndex == 1);
+
+            advance();
+            assert(context.state == State.intermediateExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
+            
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == B.onExecute);
+        }
+        with (createHelper0(["A", "ok", "B", "kek"]))
+        {
+            advance();
+            advance();
+
+            advance();
+            assert(context.state == State.intermediateExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
+            
+            advance();
+            assert(context.state == State.commandParsingError);
+            assert(errorHandler.hasError(CommandParsingErrorCode.tooManyPositionalArgumentsError));
+        }
+    }
+    {
+        @Command
+        static struct A
+        {
+            @ArgOverflow
+            string[] overflow;
+
+            static int onExecute()
+            {
+                return 1;
+            }
+        }
+        @Command
+        static struct B
+        {
+            @ParentCommand
+            A* a;
+
+            static int onExecute()
+            {
+                return 2;
+            }
+        }
+
+        alias Types = AliasSeq!(A, B);
+        alias createHelper0 = createHelper!Types;
+
+        with (createHelper0(["A"]))
+        {
+            advance();
+
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
+        }
+        with (createHelper0(["A", "a"]))
+        {
+            advance();
+
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+            assert(context._executeCommandResult.exitCode == A.onExecute);
+
+            assert((cast(A*) context._storage[$ - 1]).overflow == ["a"]);
+        }
+        with (createHelper0(["A", "B"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            advance();
+            assert(context.state == State.matchedNextCommand);
+            advance();
+            assert(context.state == State.intermediateExecutionResult);
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+            advance();
+            assert(context.state == State.finalExecutionResult);
+
+            assert((cast(A*) context._storage[$ - 2]).overflow == []);
+        }
+        with (createHelper0(["A", "b", "B"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            advance();
+            assert(context.state == State.matchedNextCommand);
+            advance();
+            assert(context.state == State.intermediateExecutionResult);
+            advance();
+            assert(context.state == State.beforeFinalExecute);
+            advance();
+            assert(context.state == State.finalExecutionResult);
+
+            assert((cast(A*) context._storage[$ - 2]).overflow == ["b"]);
+        }
+    }
+    {
+        @Command("name1|name2")
+        static struct A
+        {
+            static int onExecute()
+            {
+                return 1;
+            }
+        }
+
+        alias Types = AliasSeq!(A);
+        alias createHelper0 = createHelper!Types;
+
+        with (createHelper0(["A"]))
+        {
+            advance();
+            assert(context.state == State.notMatchedRootCommand);
+        }
+        with (createHelper0(["name1"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._matchedName == "name1");
+        }
+        with (createHelper0(["name2"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._matchedName == "name2");
+        }
+        // TODO: 
+        // Partial matches option, autoresolve option.
+        // Propagate it with the context.
+    }
+}
 
 // Needs a complete rework.
 final class CommandLineInterface(Modules...)

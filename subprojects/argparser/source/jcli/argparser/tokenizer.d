@@ -112,6 +112,17 @@ struct ArgTokenizer(TRange)
     }
 
     @safe pure @nogc:
+
+    /// Resets the internal state, such that the orphan arguments become considered positional again.
+    void resetWithRemainingRange()
+    {
+        alias Kind = ArgToken.Kind;
+
+        if (_front.kind == Kind.namedArgumentValue)
+            popFront();
+        if (_front.kind.has(Kind.orphanArgument))
+            _front.kind = Kind.positionalArgument;
+    }
     
     ArgToken front() const nothrow pure @safe
     {

@@ -30,26 +30,26 @@ template escapedName(T)
         ~ location[2].to!string;
 }
 
+struct TypeGraphNode
+{
+    int childIndex;
+    int fieldIndex;
+}
 
 template TypeGraph(Types...)
 {
+    alias Node = TypeGraphNode;
+
     // Note:
     // I'm realying on the idea that name lookup in scopes is linear in time to
     // essentially have a fake compile time AA.
     // Normal AA's are not allowed to be used at compile time rn. 
     // (E.g. `immutable int[int] example = [1: 2]` does not compile).
-    mixin(
-    (){
+    private string getGraphMixinText()
+    {
         size_t[string] typeToIndex;
         static foreach (index, Type; Types)
             typeToIndex[escapedName!Type] = index;
-
-        static struct Node
-        {
-            size_t childIndex;
-            size_t fieldIndex;
-        }
-
         Node[][Types.length] childrenGraph;
 
         foreach (outerIndex, Type; Types)
@@ -62,7 +62,7 @@ template TypeGraph(Types...)
                     {{
                         const name = escapedName!T;
                         if (auto index = name in typeToIndex)
-                            childrenGraph[*index] ~= Node(outerIndex, fieldIndex);
+                            childrenGraph[*index] ~= Node(cast(int) outerIndex, cast(int) fieldIndex);
                         else
                             assert(false, name ~ " not found among types.");
                     }}
@@ -112,53 +112,117 @@ template TypeGraph(Types...)
         }
 		
         import std.array;
+        import std.format;
+        import std.algorithm;
+
         auto ret = appender!string;
 
-        ret ~= "alias RootTypes = AliasSeq!(";
         {
-            size_t appendedCount = 0;
-            foreach (parentIndex, isNotRoot; isNotRootCache)
-            {
-                if (isNotRoot)
-                    continue;
-                if (appendedCount > 0)
-                    ret ~= ", ";
-                
-                import std.format : formattedWrite;
-                formattedWrite(ret, "Types[%d]", parentIndex);
-            }
+            ret ~= "template Mappings() {";
+            foreach (key, index; typeToIndex)
+                formattedWrite(ret, "enum size_t %s = %d;", key, index);
+            ret ~= "}";
         }
-        ret ~= ");";
 
-        foreach (parentIndex, ParentType; Types)
         {
-            ret ~= "alias " ~ escapedName!ParentType ~ " = AliasSeq!(";
+            auto rootTypeIndices = appender!string;
+            auto rootTypes = appender!string;
 
-            foreach (childIndexIndex, childNode; childrenGraph[parentIndex])
+            rootTypeIndices ~= "immutable size_t[] rootTypeIndices = [";
+            rootTypes ~= "alias RootTypes = AliasSeq!(";
             {
-                if (childIndexIndex > 0)
-                    ret ~= ", ";
-                import std.format : formattedWrite;
-                formattedWrite(ret, "Types[%d].tupleof[%d]", 
-                    childNode.childIndex, childNode.fieldIndex);
+                size_t appendedCount = 0;
+                foreach (nodeIndex, isNotRoot; isNotRootCache)
+                {
+                    if (isNotRoot)
+                        continue;
+                    if (appendedCount > 0)
+                    {
+                        rootTypeIndices ~= ", ";
+                        rootTypes ~= ", ";
+                    }
+                    appendedCount++;
+                    
+                    import std.format : formattedWrite;
+                    formattedWrite(rootTypeIndices, "%d", nodeIndex);
+                    formattedWrite(rootTypes, "Types[%d]", nodeIndex);
+                }
+            }
+            rootTypeIndices ~= "];";
+            rootTypes ~= ");";
+
+            ret ~= rootTypeIndices[];
+            ret ~= "\n";
+            ret ~= rootTypes[];
+            ret ~= "\n";
+        }
+        {
+            formattedWrite(ret, "immutable Node[][] Nodes = %s;\n", childrenGraph);
+        }
+        {
+            formattedWrite(ret, "immutable bool[] IsNodeRoot = %s;\n", isNotRootCache[].map!"!a");
+        }
+        {
+
+            auto types = appender!string;
+            auto fields = appender!string;
+
+            foreach (parentIndex, ParentType; Types)
+            {
+                types ~= "alias " ~ escapedName!ParentType ~ " = AliasSeq!(";
+                fields ~= "alias " ~ escapedName!ParentType ~ " = AliasSeq!(";
+
+                foreach (childIndexIndex, childNode; childrenGraph[parentIndex])
+                {
+                    if (childIndexIndex > 0)
+                    {
+                        types ~= ", ";
+                        fields ~= ", ";
+                    }
+
+                    import std.format : formattedWrite;
+
+                    formattedWrite(fields, "Types[%d].tupleof[%d]", 
+                        childNode.childIndex, childNode.fieldIndex);
+
+                    formattedWrite(types, "Types[%d]", 
+                        childNode.childIndex);
+                }
+
+                types ~= ");\n";
+                fields ~= ");\n";
             }
 
-            ret ~= ");";
+            ret ~= "template Commands() {\n";
+            ret ~= types[];
+            ret ~= "\n}\n";
+
+            ret ~= "template Fields() {\n";
+            ret ~= fields[];
+            ret ~= "\n}\n";
         }
         
         return ret[];
-    }());
+    }
+
+    // pragma(msg, getGraphMixinText());
+
+    mixin(getGraphMixinText());
+
+    template getNodesOf(T)
+    {
+        mixin("alias getNodesOf = Nodes[Mappings!()." ~ escapedName!T ~ "];");
+    }
+
+    template getChildTypes(T)
+    {
+        mixin("alias getChildTypes = Commands!()." ~ escapedName!T ~ ";");
+    }
 
     template getChildCommandFieldsOf(T)
     {
-        mixin("alias getChildCommandFieldsOf = " ~ escapedName!T ~ ";");
+        mixin("alias getChildCommandFieldsOf = Fields!()." ~ escapedName!T ~ ";");
     }
-
-    alias Parent(alias f) = __traits(parent, f);
-    
-    // for now, just static map, but a different idea is to just store the info
-    // (the type index and the field index) and then static map for both fields and types.
-    alias getChildTypes(T) = staticMap!(Parent, getChildCommandFieldsOf!T);
 }
 
 
