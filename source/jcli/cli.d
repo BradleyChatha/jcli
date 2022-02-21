@@ -367,7 +367,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     //             return false;
     //     }
     // }
-    
+
     ///
     void advanceState
     (
@@ -475,6 +475,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
                         // This one HAS to stay inlined. Otherwise you get frame issues.
                         // See the older code: https://github.com/BradleyChatha/jcli/blob/511a02fe8dcd2913333f463ab5ad60d56fdb7f89/source/jcli/cli.d#L371-L430
+                        // TODO: Add better match logic here.
                         matchSwitch: switch (nameSlice)
                         {
                             default:
