@@ -231,6 +231,7 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
                 ErrorCode.argumentParserError,
                 "An error has occured in the parser: %s",
                 currentArgToken.kind.stringof);
+            tokenizer.popFront();
             return ResultKind.ok;
         }
 
@@ -444,6 +445,7 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
                                 nextArgToken.valueSlice);
 
                             // Don't skip it, because it might be the name of another option.
+                            // TODO: What do we do here tho??
                             // tokenizer.popFront();
                             
                             return ResultKind.ok;

@@ -89,7 +89,7 @@ enum MatchAndExecuteState
     /// ?, ConsumeSingleArgumentResultKind.
     commandParsingError,
     
-    /// transitions: -- parse & match -->matched|beforeFinalExecute|unmatched
+    /// transitions: -- parse & match -->matched|beforeFinalExecution|unmatched
     matchedRootCommand, 
 
     /// It's matched the next command by name.
@@ -97,13 +97,13 @@ enum MatchAndExecuteState
     matchedNextCommand, 
 
     /// When it does onExecute on parent command.
-    /// transitions: -> matched|beforeFinalExecute|unmatched
+    /// transitions: -> matched|beforeFinalExecution|unmatched
     intermediateExecutionResult,
 
     /// Means it's consumed all of the arguments it can or should
     /// and right now it's a the point where it would execute the last thing.
     /// transitions: -> finalExecutionResult
-    beforeFinalExecute,
+    beforeFinalExecution,
 
     /// If this bit is set, any state after it will give invalid.
     terminalStateBit = 16,
@@ -217,11 +217,11 @@ SpecialThings tryMatchSpecialThings(Tokenizer : ArgTokenizer!TRange, TRange)
                     tokenizer.popFront();
                     
                     // TODO: handle this better
-                    if (tokenizer.front.kind == Kind.namedArgumentValue)
-                    {
-                        writeln("Please, do not give `help` a value.");
-                        tokenizer.popFront();
-                    }
+                    // if (tokenizer.front.kind == Kind.namedArgumentValue)
+                    // {
+                    //     writeln("Please, do not give `help` a value.");
+                    //     tokenizer.popFront();
+                    // }
 
                     return SpecialThings.help;
                 }
@@ -486,6 +486,8 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 {
                     default:
                     {
+                        // writeln("not matched input ", firstToken.nameSlice,
+                        //     " the number of possible things is ", Graph.rootTypeIndices.length);
                         context._state = State.notMatchedRootCommand;
                         return;
                     }
@@ -576,7 +578,15 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                                 parsingContext, *command, tokenizer, errorHandler);
                         }
 
-                        if (currentToken.kind.has(ArgToken.Kind.valueBit) 
+                        if (currentToken.kind.has(ArgToken.Kind.errorBit))
+                        {
+                            // TODO: error handler integration not sure yet??
+                            context._state = State.tokenizerError;
+                            // context._tokenizerError = currentToken.kind;
+                            return;
+                        }
+
+                        else if (currentToken.kind.has(ArgToken.Kind.valueBit) 
                             && currentToken.kind.hasEither(
                                 ArgToken.Kind.positionalArgumentBit | ArgToken.Kind.orphanArgumentBit))
                         {
@@ -594,7 +604,10 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                             {
                                 // match, add
                                 if (maybeMatchNextCommandNameAndResetState(currentToken.nameSlice))
+                                {
+                                    tokenizer.popFront();
                                     return;
+                                }
                                 const _ = consumeSingle();
                             }
                             else
@@ -605,6 +618,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                                     context._state = State.notMatchedNextCommand;
                                     context._notMatchedName = currentToken.nameSlice;
                                 }
+                                tokenizer.popFront();
                                 return;
                             }
                         }
@@ -623,7 +637,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                         return;
                     }
 
-                    context._state = State.beforeFinalExecute;
+                    context._state = State.beforeFinalExecution;
                 }
 
                 bool matched;
@@ -661,7 +675,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 return;
             }
 
-            case State.beforeFinalExecute:
+            case State.beforeFinalExecution:
             {
                 void executeLast(size_t typeIndex)()
                 {
@@ -734,7 +748,7 @@ struct SimpleMatchAndExecuteHelper(Types...)
 
 unittest
 {
-    auto createHelper(Types...)(string[] args)
+    auto createHelperThing(Types...)(string[] args)
     {
         return SimpleMatchAndExecuteHelper!Types(args);
     }
@@ -750,7 +764,7 @@ unittest
         }
 
         alias Types = AliasSeq!A;
-        alias createHelper0 = createHelper!Types;
+        alias createHelper = createHelperThing!Types;
 
         with (createHelper([]))
         {
@@ -758,7 +772,7 @@ unittest
             advance();
             assert(context.state == State.firstTokenNotCommand);
         }
-        with (createHelper0(["A"]))
+        with (createHelper(["A"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
@@ -768,13 +782,13 @@ unittest
             assert(context._currentCommandTypeIndex == 0);
 
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
 
             advance();
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == 1);
         }
-        with (createHelper0(["B"]))
+        with (createHelper(["B"]))
         {
             advance();
             assert(context.state == State.notMatchedRootCommand);
@@ -782,16 +796,16 @@ unittest
         with (createHelper(["A", "-a="]))
         {
             advance();
-            writeln(context);
             assert(context.state == State.matchedRootCommand);
 
             advance();
 
-            writeln(context);
-            // Currently the these errors get minimally reported.
-            assert(context.state == State.commandParsingError);
+            // Currently the these errors get minimally reported ???
+            // this this is a bit of wtf and not fully done.
+            assert(context.state == State.tokenizerError);
+            assert(tokenizer.front.kind == ArgToken.Kind.error_noValueForNamedArgument);
         }
-        with (createHelper0(["A", "b"]))
+        with (createHelper(["A", "b"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
@@ -808,7 +822,7 @@ unittest
             assert(context.state == State.notMatchedNextCommand);
             assert(context._notMatchedName == "b");
         }
-        with (createHelper0(["A", "A"]))
+        with (createHelper(["A", "A"]))
         {
             advance();
 
@@ -817,21 +831,22 @@ unittest
             assert(context.state == State.notMatchedNextCommand);
             assert(context._notMatchedName == "A");
         }
-        with (createHelper0(["-h"]))
+        with (createHelper(["-h"]))
         {
             advance();
             assert(context.state == State.specialThing);
             assert(context._specialThing == SpecialThings.help);
         }
-        with (createHelper0(["A", "-h"]))
+        with (createHelper(["A", "-h"]))
         {
             advance();
             advance();
             assert(context.state == State.specialThing);
             assert(context._specialThing == SpecialThings.help);
         }
-        with (createHelper0(["-flag"]))
+        with (createHelper(["A", "-flag"]))
         {
+            advance();
             advance();
             assert(context.state == State.commandParsingError);
             assert(errorHandler.hasError(CommandParsingErrorCode.unknownNamedArgumentError));
@@ -851,30 +866,30 @@ unittest
         }
 
         alias Types = AliasSeq!(A);
-        alias createHelper0 = createHelper!Types;
+        alias createHelper = createHelperThing!Types;
 
-        with (createHelper0(["A"]))
+        with (createHelper(["A"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
             auto a = cast(A*) context._storage[$ - 1];
 
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
             assert(a.b == "op");
 
             advance();
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == A.onExecute);
         }
-        with (createHelper0(["A", "other"]))
+        with (createHelper(["A", "other"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
             auto a = cast(A*) context._storage[$ - 1];
 
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
             assert(a.b == "other");
 
             advance();
@@ -905,21 +920,27 @@ unittest
         enum AIndex = 0;
         enum BIndex = 1;
 
-        alias createHelper0 = createHelper!Types;
+        alias createHelper = createHelperThing!Types;
 
-        with (createHelper0(["A"]))
+        with (createHelper(["A"]))
         {
             advance();
             assert(context._currentCommandTypeIndex == AIndex);
 
             advance();
+            assert(context.state == State.beforeFinalExecution);
+
+            advance();
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == A.onExecute);
         }
-        with (createHelper0(["B"]))
+        with (createHelper(["B"]))
         {
             advance();
             assert(context._currentCommandTypeIndex == BIndex);
+
+            advance();
+            assert(context.state == State.beforeFinalExecution);
 
             advance();
             assert(context.state == State.finalExecutionResult);
@@ -948,25 +969,25 @@ unittest
         }
 
         alias Types = AliasSeq!(A, B);
-        alias createHelper0 = createHelper!Types;
+        alias createHelper = createHelperThing!Types;
 
-        with (createHelper0(["A"]))
+        with (createHelper(["A"]))
         {
             advance();
 
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
 
             advance();
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == A.onExecute);
         }
-        with (createHelper0(["B"]))
+        with (createHelper(["B"]))
         {
             advance();
             assert(context.state == State.notMatchedRootCommand);
         }
-        with (createHelper0(["A", "B"]))
+        with (createHelper(["A", "B"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
@@ -980,13 +1001,13 @@ unittest
             assert(context._executeCommandResult.exitCode == A.onExecute);
             
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
 
             advance();
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == B.onExecute);
         }
-        with (createHelper0(["A", "/h", "B"]))
+        with (createHelper(["A", "/h", "B"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
@@ -997,7 +1018,7 @@ unittest
 
             assert(tokenizer.front.valueSlice == "B");
         }
-        with (createHelper0(["A", "C"]))
+        with (createHelper(["A", "C"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
@@ -1031,14 +1052,14 @@ unittest
         }
 
         alias Types = AliasSeq!(A, B);
-        alias createHelper0 = createHelper!Types;
+        alias createHelper = createHelperThing!Types;
 
-        with (createHelper0(["A"]))
+        with (createHelper(["A"]))
         {
             advance();
 
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
 
             advance();
             assert(context.state == State.finalExecutionResult);
@@ -1046,7 +1067,7 @@ unittest
 
             assert((cast(A*) context._storage[$ - 1]).str == "op");
         }
-        with (createHelper0(["A", "B"]))
+        with (createHelper(["A", "B"]))
         {
             advance();
 
@@ -1054,19 +1075,19 @@ unittest
             assert(context.state == State.matchedNextCommand);
             assert(context._matchedName == "B");
         }
-        with (createHelper0(["A", "ok"]))
+        with (createHelper(["A", "ok"]))
         {
             advance();
 
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
             assert((cast(A*) context._storage[$ - 1]).str == "ok");
 
             advance();
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == A.onExecute);
         }
-        with (createHelper0(["A", "ok", "B"]))
+        with (createHelper(["A", "ok", "B"]))
         {
             advance();
 
@@ -1081,24 +1102,94 @@ unittest
             assert(context._executeCommandResult.exitCode == A.onExecute);
             
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
 
             advance();
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == B.onExecute);
         }
-        with (createHelper0(["A", "ok", "B", "kek"]))
+        with (createHelper(["A", "ok", "B", "kek"]))
         {
             advance();
+            assert(context.state == State.matchedRootCommand);
+
             advance();
+            assert(context.state == State.matchedNextCommand);
 
             advance();
             assert(context.state == State.intermediateExecutionResult);
             assert(context._executeCommandResult.exitCode == A.onExecute);
+
+            advance();
+            assert(context.state == State.notMatchedNextCommand);
+            assert(context._notMatchedName == "kek");
+            // assert(errorHandler.hasError(CommandParsingErrorCode.tooManyPositionalArgumentsError));
+        }
+    }
+    {
+        @Command
+        static struct A
+        {
+            static int onExecute()
+            {
+                return 1;
+            }
+        }
+        @Command
+        static struct B
+        {
+            @ParentCommand
+            A* a;
+
+            @ArgPositional
+            string str = "op";
+
+            static int onExecute()
+            {
+                return 2;
+            }
+        }
+
+        alias Types = AliasSeq!(A, B);
+        alias createHelper = createHelperThing!Types;
+
+        with (createHelper(["A", "B"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+
+            advance();
+            assert(context.state == State.matchedNextCommand);
+
+            advance();
+            assert(context.state == State.intermediateExecutionResult);
+
+            advance();
+            assert(context.state == State.beforeFinalExecution);
+
+            advance();
+            assert(context.state == State.finalExecutionResult);
+
+            assert((cast(B*) context._storage[$ - 1]).str == "op");
+        }
+        with (createHelper(["A", "B", "kek"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+
+            advance();
+            assert(context.state == State.matchedNextCommand);
+
+            advance();
+            assert(context.state == State.intermediateExecutionResult);
             
             advance();
-            assert(context.state == State.commandParsingError);
-            assert(errorHandler.hasError(CommandParsingErrorCode.tooManyPositionalArgumentsError));
+            assert(context.state == State.beforeFinalExecution);
+            
+            advance();
+            assert(context.state == State.finalExecutionResult);
+
+            assert((cast(B*) context._storage[$ - 1]).str == "kek");
         }
     }
     {
@@ -1126,25 +1217,25 @@ unittest
         }
 
         alias Types = AliasSeq!(A, B);
-        alias createHelper0 = createHelper!Types;
+        alias createHelper = createHelperThing!Types;
 
-        with (createHelper0(["A"]))
+        with (createHelper(["A"]))
         {
             advance();
 
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
 
             advance();
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == A.onExecute);
         }
-        with (createHelper0(["A", "a"]))
+        with (createHelper(["A", "a"]))
         {
             advance();
 
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
 
             advance();
             assert(context.state == State.finalExecutionResult);
@@ -1152,7 +1243,7 @@ unittest
 
             assert((cast(A*) context._storage[$ - 1]).overflow == ["a"]);
         }
-        with (createHelper0(["A", "B"]))
+        with (createHelper(["A", "B"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
@@ -1161,13 +1252,13 @@ unittest
             advance();
             assert(context.state == State.intermediateExecutionResult);
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
             advance();
             assert(context.state == State.finalExecutionResult);
 
             assert((cast(A*) context._storage[$ - 2]).overflow == []);
         }
-        with (createHelper0(["A", "b", "B"]))
+        with (createHelper(["A", "b", "B"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
@@ -1176,7 +1267,7 @@ unittest
             advance();
             assert(context.state == State.intermediateExecutionResult);
             advance();
-            assert(context.state == State.beforeFinalExecute);
+            assert(context.state == State.beforeFinalExecution);
             advance();
             assert(context.state == State.finalExecutionResult);
 
@@ -1194,20 +1285,20 @@ unittest
         }
 
         alias Types = AliasSeq!(A);
-        alias createHelper0 = createHelper!Types;
+        alias createHelper = createHelperThing!Types;
 
-        with (createHelper0(["A"]))
+        with (createHelper(["A"]))
         {
             advance();
             assert(context.state == State.notMatchedRootCommand);
         }
-        with (createHelper0(["name1"]))
+        with (createHelper(["name1"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
             assert(context._matchedName == "name1");
         }
-        with (createHelper0(["name2"]))
+        with (createHelper(["name2"]))
         {
             advance();
             assert(context.state == State.matchedRootCommand);
