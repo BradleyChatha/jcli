@@ -60,6 +60,7 @@ template TypeGraph(Types...)
                 {
                     static if (hasUDA!(field, ParentCommand))
                     {{
+                        // Another idea is to use the 
                         const name = escapedName!T;
                         if (auto index = name in typeToIndex)
                             childrenGraph[*index] ~= Node(cast(int) outerIndex, cast(int) fieldIndex);
@@ -117,6 +118,7 @@ template TypeGraph(Types...)
 
         auto ret = appender!string;
 
+        static if (0)
         {
             ret ~= "template Mappings() {";
             foreach (key, index; typeToIndex)
@@ -125,11 +127,11 @@ template TypeGraph(Types...)
         }
 
         {
-            auto rootTypeIndices = appender!string;
-            auto rootTypes = appender!string;
+            // auto rootTypes = appender!string;
+            // rootTypes ~= "alias RootTypes = AliasSeq!(";
 
+            auto rootTypeIndices = appender!string;
             rootTypeIndices ~= "immutable size_t[] rootTypeIndices = [";
-            rootTypes ~= "alias RootTypes = AliasSeq!(";
             {
                 size_t appendedCount = 0;
                 foreach (nodeIndex, isNotRoot; isNotRootCache)
@@ -139,29 +141,31 @@ template TypeGraph(Types...)
                     if (appendedCount > 0)
                     {
                         rootTypeIndices ~= ", ";
-                        rootTypes ~= ", ";
+                        // rootTypes ~= ", ";
                     }
                     appendedCount++;
                     
                     formattedWrite(rootTypeIndices, "%d", nodeIndex);
-                    formattedWrite(rootTypes, "Types[%d]", nodeIndex);
+                    // formattedWrite(rootTypes, "Types[%d]", nodeIndex);
                 }
             }
             rootTypeIndices ~= "];\n";
-            rootTypes ~= ");\n";
 
             ret ~= rootTypeIndices[];
             ret ~= "\n";
-            ret ~= rootTypes[];
-            ret ~= "\n";
+
+            // rootTypes ~= ");\n";
+            // ret ~= rootTypes[];
+            // ret ~= "\n";
         }
         {
             formattedWrite(ret, "immutable Node[][] Nodes = %s;\n", childrenGraph);
         }
+
+        // Extra info, not actually used
+        static if (0)
         {
             formattedWrite(ret, "immutable bool[] IsNodeRoot = %s;\n", isNotRootCache[].map!"!a");
-        }
-        {
 
             auto types = appender!string;
             auto fields = appender!string;
@@ -206,20 +210,20 @@ template TypeGraph(Types...)
 
     mixin(getGraphMixinText());
 
-    template getNodesOf(T)
-    {
-        mixin("alias getNodesOf = Nodes[Mappings!()." ~ escapedName!T ~ "];");
-    }
+    // template getNodesOf(T)
+    // {
+    //     mixin("alias getNodesOf = Nodes[Mappings!()." ~ escapedName!T ~ "];");
+    // }
 
-    template getChildTypes(T)
-    {
-        mixin("alias getChildTypes = Commands!()." ~ escapedName!T ~ ";");
-    }
+    // template getChildTypes(T)
+    // {
+    //     mixin("alias getChildTypes = Commands!()." ~ escapedName!T ~ ";");
+    // }
 
-    template getChildCommandFieldsOf(T)
-    {
-        mixin("alias getChildCommandFieldsOf = Fields!()." ~ escapedName!T ~ ";");
-    }
+    // template getChildCommandFieldsOf(T)
+    // {
+    //     mixin("alias getChildCommandFieldsOf = Fields!()." ~ escapedName!T ~ ";");
+    // }
 }
 
 
@@ -255,20 +259,20 @@ template TypeGraph(Types...)
     //     // }
     // }
 // }
-unittest
-{
-    static struct A {}
-    static struct B { @ParentCommand A* a; }
-    static struct C { @ParentCommand B* b; }
+// unittest
+// {
+//     static struct A {}
+//     static struct B { @ParentCommand A* a; }
+//     static struct C { @ParentCommand B* b; }
 
-    {
-        alias Types = AliasSeq!(A, B, C);
-        alias G = TypeGraph!Types;
-        static assert(__traits(isSame, G.getChildCommandFieldsOf!A[0], B.a));
-        static assert(__traits(isSame, G.getChildCommandFieldsOf!B[0], C.b));
-        static assert(G.getChildCommandFieldsOf!C.length == 0);
-    }
-}
+//     {
+//         alias Types = AliasSeq!(A, B, C);
+//         alias G = TypeGraph!Types;
+//         static assert(__traits(isSame, G.getChildCommandFieldsOf!A[0], B.a));
+//         static assert(__traits(isSame, G.getChildCommandFieldsOf!B[0], C.b));
+//         static assert(G.getChildCommandFieldsOf!C.length == 0);
+//     }
+// }
 
 template AllCommandsOf(Modules...)
 {
