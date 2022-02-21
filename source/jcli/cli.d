@@ -371,39 +371,39 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     // Must use the mixin, because of fram issues.
     // Idk, maybe it could be refactored to solve it without that.
     // I could just inline it, but meh, becasue then the code gets too indented, even for my own liking.
-    private string tryMatchCommandByNameMixinText(
-        string resultVariableName,
-        string commandNameVariableName,
-        string typeIndexVariableName,
-        string functionVariableName,
-        int a = __LINE__)
-    {
-        import std.conv : to;
-        string labelName = `__stuff` ~ a.to!string;
+    // private string tryMatchCommandByNameMixinText(
+    //     string resultVariableName,
+    //     string commandNameVariableName,
+    //     string typeIndexVariableName,
+    //     string functionVariableName,
+    //     int a = __LINE__)
+    // {
+    //     import std.conv : to;
+    //     string labelName = `__stuff` ~ a.to!string;
 
-        return `{` ~ labelName ~ `: switch (` ~ commandNameVariableName ~ `)
-        {
-            default:
-            {
-                ` ~ resultVariableName ~ ` = false;
-                break `  ~ labelName ~ `;
-            }
-            static foreach (_childNodeIndex, _childNode; Graph.Nodes[` ~ typeIndexVariableName ~ `])
-            {{
-                alias Type = Types[_childNode.childIndex];
-                static foreach (_possibleName; jcli.introspect.CommandInfo!Type.general.uda.pattern)
-                {
-                    case _possibleName:
-                    {
-                        ` ~ functionVariableName ~ `!_childNode(_possibleName);
-                        ` ~ resultVariableName ~ ` = true;
-                        break `  ~ labelName ~ `;
-                    }
-                }
+    //     return `{` ~ labelName ~ `: switch (` ~ commandNameVariableName ~ `)
+    //     {
+    //         default:
+    //         {
+    //             ` ~ resultVariableName ~ ` = false;
+    //             break `  ~ labelName ~ `;
+    //         }
+    //         static foreach (_childNodeIndex, _childNode; Graph.Nodes[` ~ typeIndexVariableName ~ `])
+    //         {{
+    //             alias Type = Types[_childNode.childIndex];
+    //             static foreach (_possibleName; jcli.introspect.CommandInfo!Type.general.uda.pattern)
+    //             {
+    //                 case _possibleName:
+    //                 {
+    //                     ` ~ functionVariableName ~ `!_childNode(_possibleName);
+    //                     ` ~ resultVariableName ~ ` = true;
+    //                     break `  ~ labelName ~ `;
+    //                 }
+    //             }
                 
-            }}
-        }}`;
-    }
+    //         }}
+    //     }}`;
+    // }
 
     /// `handlerTemplate` must take a template parameter of the type Node matched. 
     /// returns false if the handler was not called.
@@ -531,31 +531,41 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
                     bool maybeMatchNextCommandNameAndResetState(string nameSlice)
                     {
-                        void nameMatchedHandler(TypeGraphNode node)(string matchedName)
-                        {
-                            addCommand!(node.childIndex)(context);
-                            context._matchedName = matchedName;
-                        }
                         bool didMatchCommand;
-                        mixin(tryMatchCommandByNameMixinText(
-                            "didMatchCommand",
-                            "nameSlice",
-                            "typeIndex",
-                            "nameMatchedHandler"));
-                        
-                        // monkyyy's frame issues at play
-                        // bool didMatchCommand = tryMatchCommandByName!(typeIndex, nameMatchedHandler)(nameSlice));
+
+                        matchSwitch: switch (nameSlice)
+                        {
+                            default:
+                            {
+                                didMatchCommand = false;
+                                break matchSwitch;
+                            }
+                            static foreach (childNodeIndex, childNode; Graph.Nodes[typeIndex])
+                            {{
+                                alias Type = Types[childNode.childIndex];
+                                static foreach (possibleName; jcli.introspect.CommandInfo!Type.general.uda.pattern)
+                                {
+                                    case possibleName:
+                                    {
+                                        addCommand!(childNode.childIndex)(context);
+                                        context._matchedName = possibleName;
+                                        didMatchCommand = true;
+                                        break matchSwitch;
+                                    }
+                                }
+                                
+                            }}
+                        }
 
                         if (didMatchCommand)
                         {
                             maybeReportParseErrorsFromFinalContext!ArgumentInfo(parsingContext, errorHandler);
                             resetNamedArgumentArrayStorage!Type(parsingContext);
                             tokenizer.resetWithRemainingRange();
-                            
                             context._state = State.matchedNextCommand;
-                            return true;
                         }
-                        return false;
+
+                        return didMatchCommand;
                     }
                     
                     // Matched the given command.
