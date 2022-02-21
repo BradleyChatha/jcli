@@ -27,7 +27,7 @@ template escapedName(T)
             .replace(".", "_")
             .replace(" ", "_")
             .replace("!", "_")
-        ~ location[2].to!string;
+        ~ location[1].to!string;
 }
 
 struct TypeGraphNode
