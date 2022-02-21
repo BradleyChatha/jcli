@@ -77,6 +77,52 @@ enum MatchAndExecuteErrorCode
 }
 private alias ErrorCode = MatchAndExecuteErrorCode;
 
+
+enum MatchAndExecuteState
+{
+    /// The initial state.
+    initial = 0,
+
+    /// ArgToken.Kind the error_ things.
+    tokenizerError = 1, 
+    
+    /// ?, ConsumeSingleArgumentResultKind.
+    commandParsingError = 2, 
+
+    /// Misuse of the API.
+    invalid = 3,
+    
+    /// Aka help SpecialThings.
+    /// `help`: 
+    /// May come up at any point. It means the current command asked for a help message.
+    /// The help may be asked for at the top level, before any command has been matched.
+    /// In that case, the command index will be -1.
+    specialThing = 4, 
+    
+    /// When it does onExecute on parent command.
+    /// transitions: intermediateExitCode -> matched|unmatched
+    intermediateExitCode = 5, 
+    
+    /// It's read the command from arguments, but hasn't executed it.
+    /// transitions: singleCommandParsingDone -> intermediateExitCode|finalExitCode
+    singleCommandParsingDone = 6, 
+    
+    /// It's matched the next command by name.
+    /// transitions: matchedNextCommand -> singleParsingDone
+    matchedNextCommand = 7, 
+    
+    /// It's not matched the next command, and there are extra unused arguments.
+    /// notMatchedNextCommand -> specialThing|doneWithoutExecuting
+    notMatchedNextCommand = 8,
+
+    /// Happends in case a command was not matched, and no special thing
+    /// was found after that.
+    doneWithoutExecuting = 9,
+    
+    /// It's executed a terminal command (the tokenizer was empty).
+    finalExitCode = 10,
+}
+
 ///
 template matchAndExecuteAccrossModules(Modules...)
 {
@@ -208,6 +254,12 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     alias ParsingContext = CommandParsingContext!maxNamedArgCount;
     alias Result = MatchAndExecuteResult;
 
+    struct Context
+    {
+        ParsingContext parsingContext;
+
+    }
+
     ///
     Result matchAndExecute
     (
@@ -306,7 +358,8 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 {
                     const _ = consumeSingle();
                 }
-                else if (parsingContext.currentPositionalArgIndex < ArgumentInfo.positional.length)
+                else if (parsingContext.currentPositionalArgIndex < ArgumentInfo.positional.length
+                    || ArgumentInfo.takesOverflow)
                 {
                     {
                         auto r = tryExecuteRecursively(parsingContext, tokenizer, command, errorHandler);
