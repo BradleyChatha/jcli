@@ -367,67 +367,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     //             return false;
     //     }
     // }
-
-    // Must use the mixin, because of fram issues.
-    // Idk, maybe it could be refactored to solve it without that.
-    // I could just inline it, but meh, becasue then the code gets too indented, even for my own liking.
-    // private string tryMatchCommandByNameMixinText(
-    //     string resultVariableName,
-    //     string commandNameVariableName,
-    //     string typeIndexVariableName,
-    //     string functionVariableName,
-    //     int a = __LINE__)
-    // {
-    //     import std.conv : to;
-    //     string labelName = `__stuff` ~ a.to!string;
-
-    //     return `{` ~ labelName ~ `: switch (` ~ commandNameVariableName ~ `)
-    //     {
-    //         default:
-    //         {
-    //             ` ~ resultVariableName ~ ` = false;
-    //             break `  ~ labelName ~ `;
-    //         }
-    //         static foreach (_childNodeIndex, _childNode; Graph.Nodes[` ~ typeIndexVariableName ~ `])
-    //         {{
-    //             alias Type = Types[_childNode.childIndex];
-    //             static foreach (_possibleName; jcli.introspect.CommandInfo!Type.general.uda.pattern)
-    //             {
-    //                 case _possibleName:
-    //                 {
-    //                     ` ~ functionVariableName ~ `!_childNode(_possibleName);
-    //                     ` ~ resultVariableName ~ ` = true;
-    //                     break `  ~ labelName ~ `;
-    //                 }
-    //             }
-                
-    //         }}
-    //     }}`;
-    // }
-
-    /// `handlerTemplate` must take a template parameter of the type Node matched. 
-    /// returns false if the handler was not called.
-    // private bool tryMatchCommandByName(size_t parentTypeIndex, alias handlerTemplate)(string commandName)
-    // {
-    //     switch (commandName)
-    //     {
-    //         default:
-    //             return false;
-    //         static foreach (childNodeIndex, childNode; Graph.Nodes[parentTypeIndex])
-    //         {{
-    //             alias Type = Types[childNode.childIndex];
-    //             static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
-    //             {
-    //                 case possibleName:
-    //                 {
-    //                     handlerTemplate!childNode(possibleName);
-    //                     return true;
-    //                 }
-    //             }
-    //         }}
-    //     }
-    // }
-
+    
     ///
     void advanceState
     (
@@ -533,6 +473,8 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                     {
                         bool didMatchCommand;
 
+                        // This one HAS to stay inlined. Otherwise you get frame issues.
+                        // See the older code: https://github.com/BradleyChatha/jcli/blob/511a02fe8dcd2913333f463ab5ad60d56fdb7f89/source/jcli/cli.d#L371-L430
                         matchSwitch: switch (nameSlice)
                         {
                             default:
