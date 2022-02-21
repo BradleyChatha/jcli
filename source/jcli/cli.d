@@ -1,13 +1,8 @@
 module jcli.cli;
 
 import jcli;
-import jcli.introspect;
 
-import std.algorithm;
 import std.stdio : writefln, writeln;
-import std.array;
-import std.traits;
-import std.meta;
 
 struct ExecuteCommandResult
 {
@@ -748,6 +743,8 @@ struct SimpleMatchAndExecuteHelper(Types...)
 
 unittest
 {
+    import std.meta;
+
     auto createHelperThing(Types...)(string[] args)
     {
         return SimpleMatchAndExecuteHelper!Types(args);
