@@ -111,9 +111,9 @@ template TypeGraph(Types...)
             }
         }
 		
-        import std.array;
-        import std.format;
-        import std.algorithm;
+        import std.array : appender;
+        import std.format : formattedWrite;
+        import std.algorithm : map;
 
         auto ret = appender!string;
 
@@ -143,13 +143,12 @@ template TypeGraph(Types...)
                     }
                     appendedCount++;
                     
-                    import std.format : formattedWrite;
                     formattedWrite(rootTypeIndices, "%d", nodeIndex);
                     formattedWrite(rootTypes, "Types[%d]", nodeIndex);
                 }
             }
-            rootTypeIndices ~= "];";
-            rootTypes ~= ");";
+            rootTypeIndices ~= "];\n";
+            rootTypes ~= ");\n";
 
             ret ~= rootTypeIndices[];
             ret ~= "\n";
@@ -180,8 +179,6 @@ template TypeGraph(Types...)
                         fields ~= ", ";
                     }
 
-                    import std.format : formattedWrite;
-
                     formattedWrite(fields, "Types[%d].tupleof[%d]", 
                         childNode.childIndex, childNode.fieldIndex);
 
@@ -193,11 +190,11 @@ template TypeGraph(Types...)
                 fields ~= ");\n";
             }
 
-            ret ~= "template Commands() {\n";
+            ret ~= "\ntemplate Commands() {\n";
             ret ~= types[];
             ret ~= "\n}\n";
 
-            ret ~= "template Fields() {\n";
+            ret ~= "\ntemplate Fields() {\n";
             ret ~= fields[];
             ret ~= "\n}\n";
         }
