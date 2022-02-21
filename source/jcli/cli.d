@@ -150,7 +150,7 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
     private alias _matchAndExecute = .matchAndExecute!(bindArgument, CommandTypes);
 
     /// Forwards to `MatchAndExecuteTypeContext!Types.matchAndExecute`.
-    MatchAndExecuteResult matchAndExecute
+    MatchAndExecuteContext matchAndExecute
     (
         Tokenizer : ArgTokenizer!T, T,
         TErrorHandler
@@ -167,7 +167,7 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
     /// Resolves the invoked command by parsing the arguments array,
     /// executes the `onExecute` method of any intermediary command groups,
     /// Returns the result of the execution, and whether there were errors.
-    MatchAndExecuteResult matchAndExecute(scope string[] args)
+    MatchAndExecuteContext matchAndExecute(scope string[] args)
     {
         auto tokenizer = argTokenizer(args);
         return _matchAndExecute(tokenizer);
@@ -175,7 +175,7 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
     
     /// ditto
     /// Uses the default error handler. 
-    MatchAndExecuteResult matchAndExecute(Tokenizer : ArgTokenizer!T, T)
+    MatchAndExecuteContext matchAndExecute(Tokenizer : ArgTokenizer!T, T)
     (
         scope ref Tokenizer tokenizer
     )
@@ -252,7 +252,6 @@ SpecialThings tryMatchSpecialThings(Tokenizer : ArgTokenizer!TRange, TRange)
 struct MatchAndExecuteContext
 {
     State _state;
-    int _currentCommandTypeIndex;
 
     union
     {
@@ -262,17 +261,18 @@ struct MatchAndExecuteContext
 
         ExecuteCommandResult _executeCommandResult;
 
-        struct
-        {
-            int _previousCommandTypeIndex;
-            string _matchedName;
-        }
+        string _matchedName;
         string _notMatchedName;
     }
 
     // TODO: maybe store them inline
     // TODO: calculate the max path length in the graph and set that as max size.
-    void*[] _storage;
+    struct StorageItem
+    {
+        int typeIndex;
+        void* commandPointer;
+    }
+    StorageItem[] _storage;
 
     // void* latestCommand()
     // {
@@ -308,16 +308,21 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         alias Type = Types[typeIndex];
         // TODO: maybe add something fancier here later 
         auto t = new Type();
-        context._storage ~= cast(void*) t;
-        context._currentCommandTypeIndex = typeIndex;
+        context._storage ~= Context.StorageItem(typeIndex, cast(void*) t);
     }
 
     private auto getLatestCommand(int typeIndex)(scope ref Context context)
     {
         assert(context._storage.length > 0);
-        assert(typeIndex == context._currentCommandTypeIndex);
+        return getCommand!typeIndex(context, cast(int) context._storage.length - 1);
+    }
+
+    private auto getCommand(int typeIndex)(scope ref Context context, int index)
+    {
+        assert(context._storage.length > index);
+        assert(typeIndex == context._storage[index].typeIndex);
         alias Type = Types[typeIndex];
-        return cast(Type*) context._storage[$ - 1];
+        return cast(Type*) context._storage[index].commandPointer;
     }
 
     // Frame issues make us do the mixins.
@@ -363,7 +368,9 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     //     }
     // }
 
-    // Again, frame issues.
+    // Must use the mixin, because of fram issues.
+    // Idk, maybe it could be refactored to solve it without that.
+    // I could just inline it, but meh, becasue then the code gets too indented, even for my own liking.
     private string tryMatchCommandByNameMixinText(
         string resultVariableName,
         string commandNameVariableName,
@@ -400,26 +407,26 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
     /// `handlerTemplate` must take a template parameter of the type Node matched. 
     /// returns false if the handler was not called.
-    private bool tryMatchCommandByName(size_t parentTypeIndex, alias handlerTemplate)(string commandName)
-    {
-        switch (commandName)
-        {
-            default:
-                return false;
-            static foreach (childNodeIndex, childNode; Graph.Nodes[parentTypeIndex])
-            {{
-                alias Type = Types[childNode.childIndex];
-                static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
-                {
-                    case possibleName:
-                    {
-                        handlerTemplate!childNode(possibleName);
-                        return true;
-                    }
-                }
-            }}
-        }
-    }
+    // private bool tryMatchCommandByName(size_t parentTypeIndex, alias handlerTemplate)(string commandName)
+    // {
+    //     switch (commandName)
+    //     {
+    //         default:
+    //             return false;
+    //         static foreach (childNodeIndex, childNode; Graph.Nodes[parentTypeIndex])
+    //         {{
+    //             alias Type = Types[childNode.childIndex];
+    //             static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
+    //             {
+    //                 case possibleName:
+    //                 {
+    //                     handlerTemplate!childNode(possibleName);
+    //                     return true;
+    //                 }
+    //             }
+    //         }}
+    //     }
+    // }
 
     ///
     void advanceState
@@ -546,8 +553,6 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                             tokenizer.resetWithRemainingRange();
                             
                             context._state = State.matchedNextCommand;
-                            // Save the previous so we can call the onExecute at a later step.
-                            context._previousCommandTypeIndex = typeIndex;
                             return true;
                         }
                         return false;
@@ -637,7 +642,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
                 bool matched;
                 enum mixinString = get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
-                    "matched", "fillLatestCommand", "context._currentCommandTypeIndex");
+                    "matched", "fillLatestCommand", "context._storage[$ - 1].typeIndex");
                 mixin(mixinString);
 
                 // monkyyy's frame issues at play.
@@ -655,7 +660,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 void executeNextToLast(size_t typeIndex)()
                 {
                     alias Type = Types[typeIndex];
-                    auto command = cast(Type*) context._storage[$ - 2];
+                    auto command = getCommand!typeIndex(context, cast(int) context._storage.length - 2);
                     auto result = executeCommand(*command);
                     context._state = State.intermediateExecutionResult;
                     context._executeCommandResult = result;
@@ -663,7 +668,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
                 bool didHandlerExecute;
                 enum mixinString = get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
-                    "didHandlerExecute", "executeNextToLast", "context._previousCommandTypeIndex");
+                    "didHandlerExecute", "executeNextToLast", "context._storage[$ - 2].typeIndex");
                 mixin(mixinString);
 
                 assert(didHandlerExecute);
@@ -674,7 +679,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             {
                 void executeLast(size_t typeIndex)()
                 {
-                    auto command = getLatestCommand!typeIndex(context);
+                    auto command = getCommand!typeIndex(context, cast(int) context._storage.length - 1);
                     auto result = executeCommand(*command);
                     context._state = State.finalExecutionResult;
                     context._executeCommandResult = result;
@@ -682,7 +687,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 
                 bool didHandlerExecute;
                 enum mixinString = get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
-                    "didHandlerExecute", "executeLast", "context._currentCommandTypeIndex");
+                    "didHandlerExecute", "executeLast", "context._storage[$ - 1].typeIndex");
                 mixin(mixinString);
 
                 // bool didHandlerExecute = tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex!executeLast(
@@ -707,10 +712,12 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         scope ref TErrorHandler errorHandler
     )
     {
+        ParsingContext parsingContext;
         Context context;
+
         while (!(context._state & State.terminalStateBit))
         {
-            advanceState(context, tokenizer, errorHandler);
+            advanceState(context, parsingContext, tokenizer, errorHandler);
         }
         return context;
     }
@@ -776,7 +783,7 @@ unittest
             assert(context._matchedName == "A");
             assert(context._storage.length == 1);
             // The position of A within Types.
-            assert(context._currentCommandTypeIndex == 0);
+            assert(context._storage[$ - 1].typeIndex == 0);
 
             advance();
             assert(context.state == State.beforeFinalExecution);
@@ -809,7 +816,7 @@ unittest
             assert(context._matchedName == "A");
             assert(context._storage.length == 1);
             // The position of A within Types.
-            assert(context._currentCommandTypeIndex == 0);
+            assert(context._storage[$ - 1].typeIndex == 0);
 
             // It parses until it finds the next command.
             // A does not get executed here.
@@ -869,7 +876,7 @@ unittest
         {
             advance();
             assert(context.state == State.matchedRootCommand);
-            auto a = cast(A*) context._storage[$ - 1];
+            auto a = cast(A*) context._storage[$ - 1].commandPointer;
 
             advance();
             assert(context.state == State.beforeFinalExecution);
@@ -883,7 +890,7 @@ unittest
         {
             advance();
             assert(context.state == State.matchedRootCommand);
-            auto a = cast(A*) context._storage[$ - 1];
+            auto a = cast(A*) context._storage[$ - 1].commandPointer;
 
             advance();
             assert(context.state == State.beforeFinalExecution);
@@ -922,7 +929,7 @@ unittest
         with (createHelper(["A"]))
         {
             advance();
-            assert(context._currentCommandTypeIndex == AIndex);
+            assert(context._storage[$ - 1].typeIndex == AIndex);
 
             advance();
             assert(context.state == State.beforeFinalExecution);
@@ -934,7 +941,7 @@ unittest
         with (createHelper(["B"]))
         {
             advance();
-            assert(context._currentCommandTypeIndex == BIndex);
+            assert(context._storage[$ - 1].typeIndex == BIndex);
 
             advance();
             assert(context.state == State.beforeFinalExecution);
@@ -1062,7 +1069,7 @@ unittest
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == A.onExecute);
 
-            assert((cast(A*) context._storage[$ - 1]).str == "op");
+            assert((cast(A*) context._storage[$ - 1].commandPointer).str == "op");
         }
         with (createHelper(["A", "B"]))
         {
@@ -1078,7 +1085,7 @@ unittest
 
             advance();
             assert(context.state == State.beforeFinalExecution);
-            assert((cast(A*) context._storage[$ - 1]).str == "ok");
+            assert((cast(A*) context._storage[$ - 1].commandPointer).str == "ok");
 
             advance();
             assert(context.state == State.finalExecutionResult);
@@ -1090,9 +1097,9 @@ unittest
 
             advance();
             assert(context.state == State.matchedNextCommand);
-            assert(context._previousCommandTypeIndex == 0);
-            assert((cast(A*) context._storage[$ - 2]).str == "ok");
-            assert(context._currentCommandTypeIndex == 1);
+            assert(context._storage[$ - 1].typeIndex == 1);
+            assert(context._storage[$ - 2].typeIndex == 0);
+            assert((cast(A*) context._storage[$ - 2].commandPointer).str == "ok");
 
             advance();
             assert(context.state == State.intermediateExecutionResult);
@@ -1167,7 +1174,7 @@ unittest
             advance();
             assert(context.state == State.finalExecutionResult);
 
-            assert((cast(B*) context._storage[$ - 1]).str == "op");
+            assert((cast(B*) context._storage[$ - 1].commandPointer).str == "op");
         }
         with (createHelper(["A", "B", "kek"]))
         {
@@ -1186,7 +1193,7 @@ unittest
             advance();
             assert(context.state == State.finalExecutionResult);
 
-            assert((cast(B*) context._storage[$ - 1]).str == "kek");
+            assert((cast(B*) context._storage[$ - 1].commandPointer).str == "kek");
         }
     }
     {
@@ -1238,7 +1245,7 @@ unittest
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == A.onExecute);
 
-            assert((cast(A*) context._storage[$ - 1]).overflow == ["a"]);
+            assert((cast(A*) context._storage[$ - 1].commandPointer).overflow == ["a"]);
         }
         with (createHelper(["A", "B"]))
         {
@@ -1253,7 +1260,7 @@ unittest
             advance();
             assert(context.state == State.finalExecutionResult);
 
-            assert((cast(A*) context._storage[$ - 2]).overflow == []);
+            assert((cast(A*) context._storage[$ - 2].commandPointer).overflow == []);
         }
         with (createHelper(["A", "b", "B"]))
         {
@@ -1268,7 +1275,7 @@ unittest
             advance();
             assert(context.state == State.finalExecutionResult);
 
-            assert((cast(A*) context._storage[$ - 2]).overflow == ["b"]);
+            assert((cast(A*) context._storage[$ - 2].commandPointer).overflow == ["b"]);
         }
     }
     {
@@ -1305,4 +1312,19 @@ unittest
         // Partial matches option, autoresolve option.
         // Propagate it with the context.
     }
+}
+unittest
+{
+    static int test;
+    @Command
+    static struct A
+    {
+        void onExecute()
+        {
+            test = 1;
+        }
+    }
+    // Just to make sure it compiles
+    matchAndExecute!(bindArgument!(), A)(["A"]);
+    assert(test == 1);
 }
