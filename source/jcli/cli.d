@@ -1132,7 +1132,9 @@ unittest
             advance();
             assert(context.state == State.finalExecutionResult);
 
-            assert((cast(B*) context._storage[$ - 1].commandPointer).str == "op");
+            auto b = cast(B*) context._storage[$ - 1].commandPointer;
+            assert(b.str == "op");
+            assert(cast(void*) b.a == context._storage[$ - 2].commandPointer);
         }
         with (createHelper(["A", "B", "kek"]))
         {
