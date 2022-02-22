@@ -83,41 +83,48 @@ enum MatchAndExecuteState
     /// The initial state.
     initial = 0,
     
-    /// transitions: -- parse & match -->matched|beforeFinalExecution|unmatched
+    /// transitions: -- parse & match -->matched | beforeFinalExecution | notMatched
     matchedRootCommand, 
 
     /// It's matched the next command by name.
     /// transitions: -- executePrevious -->intermediateExecutionResult
     matchedNextCommand, 
 
-    /// When it does onExecute on parent command.
-    /// transitions: -> matched|beforeFinalExecution|unmatched
+    /// When it does `onExecute` on parent command.
+    /// transitions: -> matched | beforeFinalExecution | notMatched
     intermediateExecutionResult,
 
     /// Means it's consumed all of the arguments it can or should
-    /// and right now it's a the point where it would execute the last thing.
+    /// and right now it's at the point where it would execute the last command.
     /// transitions: -> finalExecutionResult
     beforeFinalExecution,
 
     /// If this bit is set, any state after it will give invalid.
     terminalStateBit = 16,
     
-    /// MatchAndExecuteErrorCode
+    /// If there's no default command, but there are root-level named commands,
+    /// the first expected token kind is `argumentValue`.
+    /// This state is when the observed token kind is not that.
     firstTokenNotCommand = terminalStateBit | 0,
 
     /// Misuse of the API.
     invalid = terminalStateBit | 1,
 
-    /// Aka help SpecialThings.
+    // TODO:
+    // Do a function that would look for a help flag even after another error has occured,
+    // consuming all tokens remaining in the tokenizer.
+
+    /// Aka help, see SpecialThings.
     /// `help`: 
     /// May come up at any point. It means the current command asked for a help message.
     /// The help may be asked for at the top level, before any command has been matched.
-    /// In that case, the command index will be -1.
+    /// The actual command that requested the help is always the latest command in the
+    /// `_storage`, unless there are no matched commands, in which case the help over 
+    /// the top-level commands is being requested.
     specialThing = terminalStateBit | 2, 
 
 
     /// It's not matched the next command, and there are extra unused arguments.
-    /// notMatchedNextCommand -> specialThing
     notMatchedNextCommand = terminalStateBit | 3,
 
     ///
@@ -129,13 +136,13 @@ enum MatchAndExecuteState
     // doneWithoutExecuting = terminalStateBit | 5,
     
     /// It's executed a terminal command (the tokenizer was empty).
-    ///  transitions: -> invalid
     finalExecutionResult = terminalStateBit | 6,
 
-    /// ArgToken.Kind the error_ things.
+    /// ArgToken.Kind, the error_ things.
     tokenizerError = terminalStateBit | 7, 
     
-    /// ?, ConsumeSingleArgumentResultKind.
+    /// The errors are recorded on the handler for this one.
+    /// I'm debating whether all errors should be handled via that.
     commandParsingError = terminalStateBit | 8,
 }
 
@@ -169,8 +176,8 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
             .matchAndExecute(tokenizer, errorHandler);
     }
 
-    /// Resolves the invoked command by parsing the arguments array,
-    /// executes the `onExecute` method of any intermediary command groups,
+    /// Resolves the invoked command by parsing the arguments array.
+    /// Executes the `onExecute` method of any intermediate commands (command groups).
     /// Returns the result of the execution, and whether there were errors.
     MatchAndExecuteContext matchAndExecute(scope string[] args)
     {
@@ -179,7 +186,7 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
     }
     
     /// ditto
-    /// Uses the default error handler. 
+    /// Uses the default error handler.
     MatchAndExecuteContext matchAndExecute(Tokenizer : ArgTokenizer!T, T)
     (
         scope ref Tokenizer tokenizer
@@ -298,7 +305,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         static foreach (Type; Types)
         {
             import std.algorithm.comparison : max;
-            result = max(result, CommandInfo!Type.Arguments.named.length);
+            result = max(result, CommandArgumentsInfo!Type.named.length);
         }
         return result;
     }();
@@ -338,7 +345,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         addCommand!typeIndex(context);
         context._state = State.matchedRootCommand;
         context._matchedName = matchedName;
-        alias ArgumentInfo = CommandInfo!(Types[typeIndex]).Arguments;
+        alias ArgumentInfo = CommandArgumentsInfo!(Types[typeIndex]);
         resetNamedArgumentArrayStorage!(ArgumentInfo)(parsingContext);
     }
 
@@ -431,8 +438,9 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             case State.initial:
             {
                 // For now calculate it here, but ideally we should have a wrapper for
-                // command types. (It's not the graph, graph does not have about think of that).
-                // Also, I think no validation of duplicate default commands is done.
+                // command types. (It's not the graph, graph does not have to think about that).
+                // Also, I think no validation of duplicate default commands is done,
+                // but it shouldn't happen on this layer of things either.
                 enum defaultCommandCount =
                 (){
                     int result;
@@ -445,13 +453,12 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
                 void matchDefaultCommand()
                 {
-                    // Match the root default commands even without name
+                    // Match the root default commands, even without name.
                     static foreach (rootTypeIndex; Graph.rootTypeIndices)
                     {{
                         alias Type = Types[rootTypeIndex];
-                        alias Info = CommandInfo!Type;
 
-                        static if (Info.general.isDefault)
+                        static if (CommandInfo!Type.general.isDefault)
                         {
                             setMatchedRootCommand!(cast(int) rootTypeIndex)(
                                 context, parsingContext, "");
@@ -487,7 +494,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                             alias Type = Types[rootTypeIndex];
                             alias Info = CommandInfo!Type;
 
-                            // They don't even have this uda.
+                            // The default commands don't even have their name in the UDA.
                             static if (!Info.general.isDefault)
                             static foreach (possibleName; Info.general.uda.pattern)
                             {
@@ -521,15 +528,15 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 return;
             }
 
-            // Already added, executed, and set up the command, just initialize the latest command.
+            // Already added, executed the parent command, and set up the new command,
+            // just initialize the latest command.
             case State.matchedRootCommand:
             case State.intermediateExecutionResult:
             {
                 void fillLatestCommand(size_t typeIndex)()
                 {
                     alias Type = Types[typeIndex];
-                    alias CommandInfo = jcli.introspect.CommandInfo!Type;
-                    alias ArgumentInfo = CommandInfo.Arguments;
+                    alias ArgumentsInfo = CommandArgumentsInfo!Type;
 
                     Type* command = getLatestCommand!typeIndex(context);
 
@@ -552,7 +559,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                             static foreach (childNodeIndex, childNode; Graph.Nodes[typeIndex])
                             {{
                                 alias Type = Types[childNode.childIndex];
-                                static foreach (possibleName; jcli.introspect.CommandInfo!Type.general.uda.pattern)
+                                static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
                                 {
                                     case possibleName:
                                     {
@@ -572,8 +579,8 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
                         if (didMatchCommand)
                         {
-                            maybeReportParseErrorsFromFinalContext!ArgumentInfo(parsingContext, errorHandler);
-                            resetNamedArgumentArrayStorage!ArgumentInfo(parsingContext);
+                            maybeReportParseErrorsFromFinalContext!ArgumentsInfo(parsingContext, errorHandler);
+                            resetNamedArgumentArrayStorage!ArgumentsInfo(parsingContext);
                             tokenizer.resetWithRemainingRange();
                             context._state = State.matchedNextCommand;
                         }
@@ -599,7 +606,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                         {
                             if (currentToken.kind.has(ArgToken.Kind.errorBit))
                             {
-                                // TODO: error handler integration not sure yet??
+                                // TODO: error handler integration, not sure yet??
                                 context._state = State.tokenizerError;
                                 // context._tokenizerError = currentToken.kind;
                                 return;
@@ -607,7 +614,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                         }
 
                         // We don't bother with subcommands if the current command has no children.
-                        // Is this a hack? I'm not sure
+                        // Is this a hack? I'm not sure.
                         static if (childCommandsCount == 0)
                         {
                             const _ = consumeSingle();
@@ -623,12 +630,12 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                             // 2. All required positional arguments have been read, but there are still optional ones,
                             //    in which case we try to match command first before reading on.
                             // 3. All possibile positional args have been read, so just match the name.
-                            if (parsingContext.currentPositionalArgIndex < ArgumentInfo.numRequiredPositionalArguments)
+                            if (parsingContext.currentPositionalArgIndex < ArgumentsInfo.numRequiredPositionalArguments)
                             {
                                 const _ = consumeSingle();
                             }
-                            else if (parsingContext.currentPositionalArgIndex < ArgumentInfo.positional.length
-                                || ArgumentInfo.takesOverflow)
+                            else if (parsingContext.currentPositionalArgIndex < ArgumentsInfo.positional.length
+                                || ArgumentsInfo.takesOverflow)
                             {
                                 // match, add
                                 if (maybeMatchNextCommandNameAndResetState(currentToken.nameSlice))
@@ -656,7 +663,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                         }
                     }
 
-                    maybeReportParseErrorsFromFinalContext!ArgumentInfo(parsingContext, errorHandler);
+                    maybeReportParseErrorsFromFinalContext!ArgumentsInfo(parsingContext, errorHandler);
 
                     if (parsingContext.errorCounter > 0)
                     {
@@ -680,13 +687,15 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 return;
             }
 
-            // Already added the command, but haven't executed the previous one 
-            // or reset the context for the latest one.
+            // Already added the command, but haven't executed the previous one.
             case State.matchedNextCommand:
             {
+                // TODO:
+                // Actually, all this thing needs is the match and execute context.
+                // So, we shouldn't need that mixin, it can be easily refactored into a function,
+                // in which case we shouldn't have the frame issues.
                 void executeNextToLast(size_t typeIndex)()
                 {
-                    alias Type = Types[typeIndex];
                     auto command = getCommand!typeIndex(context, cast(int) context._storage.length - 2);
                     auto result = executeCommand(*command);
                     context._state = State.intermediateExecutionResult;
@@ -722,7 +731,6 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 // assert(didHandlerExecute);
 
                 assert(didHandlerExecute);
-
                 return;
             }
         }
@@ -755,7 +763,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
 // This is kind of what I mean by a type-safe wrapper, but it also needs getters for everything
 // that would assert if the state is right and stuff like that.
-// Currently this one is only used for tests.
+// Currently, this one is only used for tests.
 struct SimpleMatchAndExecuteHelper(Types...)
 {
     alias bindArgument = jcli.argbinder.bindArgument!();
@@ -1359,13 +1367,12 @@ unittest
             void onExecute() {}
         }
 
-        // This command is a parent command to A.
+        // This command is a child command of A.
         @Command
         static struct C
         {
             @ParentCommand
             A* a;
-
             void onExecute() {}
         }
 
@@ -1520,7 +1527,6 @@ int executeSingleCommand(TCommand)(scope string[] args)
     return executeSingleCommand!TCommand(args, defaultHandler);
 }
 
-// TODO: another wrapper that handles help, return code, etc.
 /// ditto
 int executeSingleCommand
 (
@@ -1557,7 +1563,7 @@ int executeSingleCommand
         default:
             assert(0, "Not all terminal states handled.");
 
-        // This one is only issued when matching the root command, so should never be hit.
+        // This one is only issued when matching the root command, so it should never be hit.
         case State.firstTokenNotCommand:
 
         case State.invalid:
