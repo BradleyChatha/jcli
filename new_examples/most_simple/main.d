@@ -49,7 +49,7 @@ int main(string[] args)
     // As is, this is too much detail for the user.
     auto context = matchAndExecute!(bindArgumentSimple, IsEvenCommand)(args[1 .. $]);
 
-    // TODO: should use a typesafe wrapper
+    // TODO: should use a typesafe wrapper, like SumType's match.
     if (context.state == MatchAndExecuteState.finalExecutionResult)
         return context._executeCommandResult.exitCode;
     return -1;
