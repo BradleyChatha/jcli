@@ -77,12 +77,6 @@ enum MatchAndExecuteState
 {
     /// The initial state.
     initial = 0,
-
-    /// ArgToken.Kind the error_ things.
-    tokenizerError, 
-    
-    /// ?, ConsumeSingleArgumentResultKind.
-    commandParsingError,
     
     /// transitions: -- parse & match -->matched|beforeFinalExecution|unmatched
     matchedRootCommand, 
@@ -132,6 +126,12 @@ enum MatchAndExecuteState
     /// It's executed a terminal command (the tokenizer was empty).
     ///  transitions: -> invalid
     finalExecutionResult = terminalStateBit | 6,
+
+    /// ArgToken.Kind the error_ things.
+    tokenizerError = terminalStateBit | 7, 
+    
+    /// ?, ConsumeSingleArgumentResultKind.
+    commandParsingError = terminalStateBit | 8,
 }
 
 private alias State = MatchAndExecuteState;
@@ -413,14 +413,15 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         {
             default:
                 assert(0);
-
+                
             case State.initial:
             {
                 void matchRootCommand(size_t rootTypeIndex)()
                 {
                     addCommand!(cast(int) rootTypeIndex)(context);
                     context._state = State.matchedRootCommand;
-                    resetNamedArgumentArrayStorage!(Types[rootTypeIndex])(parsingContext);
+                    alias ArgumentInfo = CommandInfo!(Types[rootTypeIndex]).Arguments;
+                    resetNamedArgumentArrayStorage!(ArgumentInfo)(parsingContext);
                 }
 
                 // For now calculate it here, but ideally we should have a wrapper for
@@ -564,7 +565,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                         if (didMatchCommand)
                         {
                             maybeReportParseErrorsFromFinalContext!ArgumentInfo(parsingContext, errorHandler);
-                            resetNamedArgumentArrayStorage!Type(parsingContext);
+                            resetNamedArgumentArrayStorage!ArgumentInfo(parsingContext);
                             tokenizer.resetWithRemainingRange();
                             context._state = State.matchedNextCommand;
                         }
@@ -1400,6 +1401,44 @@ unittest
             
             advance();
             assert(context.state == State.notMatchedNextCommand);
+        }
+    }
+    {
+        @CommandDefault
+        static struct A
+        {
+            @ArgNamed
+            string hello;
+
+            void onExecute() {}
+        }
+        
+        alias Types = AliasSeq!(A);
+        alias createHelper = createHelperThing!Types;
+        
+        with (createHelper(["-kek"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._storage[$ - 1].typeIndex == 0);
+            
+            advance();
+            assert(context.state == State.commandParsingError);
+        }
+        with (createHelper(["-hello", "kek"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._storage[$ - 1].typeIndex == 0);
+            
+            advance();
+            assert(context.state.beforeFinalExecution);
+
+            auto a = cast(A*) context._storage[$ - 1].commandPointer;
+            assert(a.hello == "kek");
+            
+            advance();
+            assert(context.state.finalExecutionResult);
         }
     }
 }

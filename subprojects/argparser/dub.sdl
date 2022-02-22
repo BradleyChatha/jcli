@@ -1,2 +1,3 @@
 name "argparser"
 targetType "library"
+dependency "jcli:core" version="*"
