@@ -65,7 +65,7 @@ Tested on Windows and Ubuntu 18.04.
 
     * Boolean flags.
 
-    * Optional arguments using the standard `Nullable` type, or by giving a field a default value.
+    * Optional arguments using the standard `Nullable` type, or by giving that field a default value.
 
     * User-Defined argument binding (string -> any_type_you_want) - blanket and per-argument.
 
