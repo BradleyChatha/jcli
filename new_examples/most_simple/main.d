@@ -22,10 +22,6 @@ struct IsEvenCommand
 
     int onExecute()
     {
-        writeln("Got arguments number = ", number, 
-            ", reverse = ", reverse, 
-            ", errorCodeIfOdd = ", errorCodeIfOdd);
-
         bool isOdd = number & 1;
         
         if (reverse)
@@ -44,18 +40,7 @@ struct IsEvenCommand
 
 int main(string[] args)
 {
-    // TODO: should be way simpler.
-    // TODO: another wrapper that handles help, return code, etc.
-    // As is, this is too much detail for the user.
-    auto context = matchAndExecute!(bindArgumentSimple, IsEvenCommand)(args[1 .. $]);
-
-    // TODO: should use a typesafe wrapper, like SumType's match.
-    if (context.state == MatchAndExecuteState.finalExecutionResult)
-        return context._executeCommandResult.exitCode;
-    return -1;
-
-    // TODO: simple API like this, which should not require any command UDA's.
-    // return executeSingleCommand!Command()
+    return executeSingleCommand!IsEvenCommand(args[1 .. $]);
 }
 
 // Or like this

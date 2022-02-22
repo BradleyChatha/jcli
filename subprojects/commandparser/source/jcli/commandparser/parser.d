@@ -229,9 +229,8 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
             // TODO: better errors
             recordError(
                 ErrorCode.argumentParserError,
-                "An error has occured in the parser: %s",
+                "An error has occured in the parser: `%s`",
                 currentArgToken.kind.stringof);
-            tokenizer.popFront();
             return ResultKind.ok;
         }
 
@@ -245,7 +244,7 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
         case Kind.namedArgumentValueOrOrphanArgument:
         case Kind.positionalArgument:
         // TODO: imo orphan arguments should not be treated like positional ones.
-        case Kind.orphanArgumentBit:
+        case Kind.orphanArgument:
         {
             InnerSwitch: switch (context.currentPositionalArgIndex)
             {
@@ -260,8 +259,8 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
                     {
                         recordError(
                             ErrorCode.tooManyPositionalArgumentsError,
-                            "Too many (%d) positional arguments detected near %s.",
-                            context.currentPositionalArgIndex,
+                            "Too many (%d) positional arguments detected near `%s`.",
+                            context.currentPositionalArgIndex + 1,
                             currentArgToken.fullSlice);
                     }
                     break InnerSwitch;
@@ -275,7 +274,7 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
                         {
                             recordError(
                                 ErrorCode.bindError,
-                                "An error occured while trying to bind the positional argument %s at index %d: "
+                                "An error occured while trying to bind the positional argument `%s` at index %d: "
                                     ~ "%s; Error code %d.",
                                 positional.identifier, positionalIndex,
                                 result.error, result.errorCode);
@@ -302,7 +301,7 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
                     {
                         recordError(
                             ErrorCode.bindError,
-                            "An error occured while trying to bind the named argument %s: "
+                            "An error occured while trying to bind the named argument `%s`: "
                                 ~ "%s; Error code %d.",
                             namedArgInfo.identifier,
                             result.error, result.errorCode);
@@ -414,7 +413,7 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
                         {
                             recordError(
                                 ErrorCode.countArgumentGivenValueError,
-                                "The count argument %s cannot be given a value, got %s.",
+                                "The count argument %s cannot be given a value, got `%s`.",
                                 namedArgInfo.name,
                                 nextArgToken.valueSlice);
                             tokenizer.popFront();
@@ -430,7 +429,7 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
                         {
                             recordError(
                                 ErrorCode.noValueForNamedArgumentError,
-                                "Expected a value for the argument %s.",
+                                "Expected a value for the argument `%s`.",
                                 namedArgInfo.name);
                             return ResultKind.ok;
                         }
@@ -440,7 +439,7 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
                         {
                             recordError(
                                 ErrorCode.noValueForNamedArgumentError,
-                                "Expected a value for the argument %s, got %s.",
+                                "Expected a value for the argument `%s`, got `%s`.",
                                 namedArgInfo.name,
                                 nextArgToken.valueSlice);
 

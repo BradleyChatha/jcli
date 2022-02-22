@@ -3,6 +3,7 @@ module jcli.cli;
 import jcli;
 
 import std.stdio : writefln, writeln;
+import std.meta : AliasSeq;
 
 struct ExecuteCommandResult
 {
@@ -19,9 +20,13 @@ ExecuteCommandResult executeCommand(T)(auto ref scope T command)
         {
             return typeof(return)(command.onExecute(), null);
         }
-        else
+        else static if (is(typeof(T.onExecute()) == void))
         {
             command.onExecute();
+            return typeof(return)(0, null);
+        }
+        else
+        {
             return typeof(return)(0, null);
         }
     }
@@ -112,7 +117,7 @@ enum MatchAndExecuteState
 
 
     /// It's not matched the next command, and there are extra unused arguments.
-    /// notMatchedNextCommand -> doneWithoutExecuting|specialThing
+    /// notMatchedNextCommand -> specialThing
     notMatchedNextCommand = terminalStateBit | 3,
 
     ///
@@ -121,7 +126,7 @@ enum MatchAndExecuteState
     /// Happens in case a command was not matched, and no special thing
     /// was found after that.
     ///  transitions: -> invalid
-    doneWithoutExecuting = terminalStateBit | 5,
+    // doneWithoutExecuting = terminalStateBit | 5,
     
     /// It's executed a terminal command (the tokenizer was empty).
     ///  transitions: -> invalid
@@ -255,12 +260,8 @@ struct MatchAndExecuteContext
 
     union
     {
-        ArgToken.Kind _tokenizerError;
-        ConsumeSingleArgumentResultKind _commandParsingErrorKind;
         SpecialThings _specialThing;
-
         ExecuteCommandResult _executeCommandResult;
-
         string _matchedName;
         string _notMatchedName;
     }
@@ -289,6 +290,7 @@ struct MatchAndExecuteContext
 // TODO: better name
 template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 {
+    // TODO: should probably take this graph as an argument
     alias Graph = TypeGraph!Types;
     enum maxNamedArgCount = 
     (){
@@ -326,6 +328,18 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         assert(typeIndex == context._storage[index].typeIndex);
         alias Type = Types[typeIndex];
         return cast(Type*) context._storage[index].commandPointer;
+    }
+
+    void setMatchedRootCommand(int typeIndex)(
+        scope ref Context context,
+        scope ref ParsingContext parsingContext,
+        string matchedName = "")
+    {
+        addCommand!typeIndex(context);
+        context._state = State.matchedRootCommand;
+        context._matchedName = matchedName;
+        alias ArgumentInfo = CommandInfo!(Types[typeIndex]).Arguments;
+        resetNamedArgumentArrayStorage!(ArgumentInfo)(parsingContext);
     }
 
     // Frame issues make us do the mixins.
@@ -413,17 +427,9 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         {
             default:
                 assert(0);
-                
+
             case State.initial:
             {
-                void matchRootCommand(size_t rootTypeIndex)()
-                {
-                    addCommand!(cast(int) rootTypeIndex)(context);
-                    context._state = State.matchedRootCommand;
-                    alias ArgumentInfo = CommandInfo!(Types[rootTypeIndex]).Arguments;
-                    resetNamedArgumentArrayStorage!(ArgumentInfo)(parsingContext);
-                }
-
                 // For now calculate it here, but ideally we should have a wrapper for
                 // command types. (It's not the graph, graph does not have about think of that).
                 // Also, I think no validation of duplicate default commands is done.
@@ -447,8 +453,8 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
                         static if (Info.general.isDefault)
                         {
-                            matchRootCommand!rootTypeIndex();
-                            context._matchedName = "";
+                            setMatchedRootCommand!(cast(int) rootTypeIndex)(
+                                context, parsingContext, "");
                         }
                     }}
                 }
@@ -487,8 +493,8 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                             {
                                 case possibleName:
                                 {
-                                    matchRootCommand!rootTypeIndex();
-                                    context._matchedName = possibleName;
+                                    setMatchedRootCommand!(cast(int) rootTypeIndex)(
+                                        context, parsingContext, possibleName);
                                     tokenizer.popFront();
                                     return;
                                 }
@@ -526,6 +532,8 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                     alias ArgumentInfo = CommandInfo.Arguments;
 
                     Type* command = getLatestCommand!typeIndex(context);
+
+                    enum childCommandsCount = Graph.Nodes[typeIndex].length;
 
                     bool maybeMatchNextCommandNameAndResetState(string nameSlice)
                     {
@@ -581,27 +589,32 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
                         const currentToken = tokenizer.front;
 
-                        // Should be handled via the error handler.
-                        // if (currentToken.kind.has(ArgToken.Kind.errorBit))
-                        // {
-                        //     context._state = State.tokenizerError;
-                        //     return;
-                        // }
                         auto consumeSingle()
                         { 
                             return consumeSingleArgumentIntoCommand!bindArgument(
                                 parsingContext, *command, tokenizer, errorHandler);
                         }
 
-                        if (currentToken.kind.has(ArgToken.Kind.errorBit))
+                        static if (0)
                         {
-                            // TODO: error handler integration not sure yet??
-                            context._state = State.tokenizerError;
-                            // context._tokenizerError = currentToken.kind;
-                            return;
+                            if (currentToken.kind.has(ArgToken.Kind.errorBit))
+                            {
+                                // TODO: error handler integration not sure yet??
+                                context._state = State.tokenizerError;
+                                // context._tokenizerError = currentToken.kind;
+                                return;
+                            }
                         }
 
-                        else if (currentToken.kind.has(ArgToken.Kind.valueBit) 
+                        // We don't bother with subcommands if the current command has no children.
+                        // Is this a hack? I'm not sure
+                        static if (childCommandsCount == 0)
+                        {
+                            const _ = consumeSingle();
+                            continue;
+                        }
+
+                        else if (currentToken.kind.has(ArgToken.Kind.valueBit)  // @suppress(dscanner.suspicious.static_if_else)
                             && currentToken.kind.hasEither(
                                 ArgToken.Kind.positionalArgumentBit | ArgToken.Kind.orphanArgumentBit))
                         {
@@ -648,7 +661,6 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                     if (parsingContext.errorCounter > 0)
                     {
                         context._state = State.commandParsingError;
-                        // context._commandParsingErrorKind =
                         return;
                     }
 
@@ -765,8 +777,6 @@ struct SimpleMatchAndExecuteHelper(Types...)
 
 unittest
 {
-    import std.meta;
-
     auto createHelperThing(Types...)(string[] args)
     {
         return SimpleMatchAndExecuteHelper!Types(args);
@@ -821,8 +831,8 @@ unittest
 
             // Currently the these errors get minimally reported ???
             // this this is a bit of wtf and not fully done.
-            assert(context.state == State.tokenizerError);
-            assert(tokenizer.front.kind == ArgToken.Kind.error_noValueForNamedArgument);
+            // assert(context.state == State.tokenizerError);
+            // assert(tokenizer.front.kind == ArgToken.Kind.error_noValueForNamedArgument);
         }
         with (createHelper(["A", "b"]))
         {
@@ -837,9 +847,8 @@ unittest
             // A does not get executed here.
             // A gets executed in a separate step.
             advance();
-            // TODO: This should display something else, if there are no commands.
-            assert(context.state == State.notMatchedNextCommand);
-            assert(context._notMatchedName == "b");
+            assert(context.state == State.commandParsingError);
+            assert(errorHandler.hasError(CommandParsingErrorCode.tooManyPositionalArgumentsError));
         }
         with (createHelper(["A", "A"]))
         {
@@ -847,8 +856,8 @@ unittest
 
             advance();
             // Should not match itself
-            assert(context.state == State.notMatchedNextCommand);
-            assert(context._notMatchedName == "A");
+            assert(context.state == State.commandParsingError);
+            assert(errorHandler.hasError(CommandParsingErrorCode.tooManyPositionalArgumentsError));
         }
         with (createHelper(["-h"]))
         {
@@ -1140,9 +1149,8 @@ unittest
             assert(context._executeCommandResult.exitCode == A.onExecute);
 
             advance();
-            assert(context.state == State.notMatchedNextCommand);
-            assert(context._notMatchedName == "kek");
-            // assert(errorHandler.hasError(CommandParsingErrorCode.tooManyPositionalArgumentsError));
+            assert(context.state == State.commandParsingError);
+            assert(errorHandler.hasError(CommandParsingErrorCode.tooManyPositionalArgumentsError));
         }
     }
     {
@@ -1441,6 +1449,47 @@ unittest
             assert(context.state.finalExecutionResult);
         }
     }
+    {
+        @Command
+        static struct A
+        {
+            @("Named")
+            string b;
+        }
+
+        alias Types = AliasSeq!(A);
+        alias createHelper = createHelperThing!Types;
+
+        with (createHelper(["A"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+
+            advance();
+            assert(context.state == State.commandParsingError);
+            assert(errorHandler.hasError(CommandParsingErrorCode.missingNamedArgumentsError));
+        }
+        with (createHelper(["A", "-b"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+
+            advance();
+            assert(context.state == State.commandParsingError);
+            assert(errorHandler.hasError(CommandParsingErrorCode.noValueForNamedArgumentError));
+        }
+        with (createHelper(["A", "-b", "c"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+
+            advance();
+            assert(context.state == State.beforeFinalExecution);
+
+            auto a = cast(A*) context._storage[$ - 1].commandPointer;
+            assert(a.b == "c");
+        }
+    }
 }
 unittest
 {
@@ -1456,4 +1505,158 @@ unittest
     // Just to make sure it compiles
     matchAndExecute!(bindArgument!(), A)(["A"]);
     assert(test == 1);
+}
+
+/// Don't forget to cut off the executable name: args = arg[1 .. $];
+int executeSingleCommand(TCommand)(scope string[] args)
+{
+    auto defaultHandler = DefaultParseErrorHandler();
+    return executeSingleCommand!TCommand(args, defaultHandler);
+}
+
+// TODO: another wrapper that handles help, return code, etc.
+/// ditto
+int executeSingleCommand
+(
+    TCommand,
+    TErrorHandler
+)
+(
+    scope string[] args,
+    ref scope TErrorHandler errorHandler
+)
+{
+    alias bindArgument = jcli.argbinder.bindArgument!();
+    alias Types = AliasSeq!(TCommand);
+    alias TypeContext = MatchAndExecuteTypeContext!(bindArgument, Types);
+
+    TypeContext.ParsingContext parsingContext;
+    MatchAndExecuteContext context;
+    auto tokenizer = argTokenizer(args);
+    
+    // This basically fools the state machine into thinking it's already matched the root command.
+    {
+        enum commandTypeIndex = 0;
+        TypeContext.setMatchedRootCommand!commandTypeIndex(context, parsingContext);
+    }
+
+    // Do the normal workflow until we reach a terminal state.
+    while (!(context._state & State.terminalStateBit))
+    {
+        TypeContext.advanceState(context, parsingContext, tokenizer, errorHandler);
+    }
+
+    switch (context._state)
+    {
+        default:
+            assert(0, "Not all terminal states handled.");
+
+        // This one is only issued when matching the root command, so should never be hit.
+        case State.firstTokenNotCommand:
+
+        case State.invalid:
+        case State.notMatchedNextCommand:
+        case State.notMatchedRootCommand:
+            assert(0, "The context came to an invalid state — internal API misuse.");
+
+        case State.specialThing:
+        {
+            switch (context._specialThing)
+            {
+                default:
+                    assert(0, "Some special thing was not been properly handled");
+
+                case SpecialThings.help:
+                {
+                    import jcli.helptext;
+                    // writeHelpText!TCommand()
+                    CommandHelpText!TCommand help;
+                    writeln(help.generate());
+                    return 0;
+                }
+            }
+        }
+        case State.finalExecutionResult:
+        {
+            if (context._executeCommandResult.exception !is null)
+            {
+                writeln(context._executeCommandResult.exception);
+                return -1;
+            }
+            return context._executeCommandResult.exitCode;
+        }
+        case State.tokenizerError:
+        case State.commandParsingError:
+        {
+            return -1;
+        }
+    }
+}
+
+unittest
+{
+    @Command("Hello")
+    static struct A
+    {
+        @ArgPositional("Error to return")
+        int err;
+
+        int onExecute() { return err; }
+    }
+
+    {
+        auto errorHandler = ErrorCodeHandler();
+        assert(executeSingleCommand!A(["11"], errorHandler) == 11);
+    }
+    {
+        auto errorHandler = ErrorCodeHandler();
+        assert(executeSingleCommand!A(["0"], errorHandler) == 0);
+    }
+    {
+        auto errorHandler = ErrorCodeHandler();
+        assert(executeSingleCommand!A([], errorHandler) != 0);
+        assert(errorHandler.hasError(CommandParsingErrorCode.tooFewPositionalArgumentsError));
+    }
+    {
+        auto errorHandler = ErrorCodeHandler();
+        assert(executeSingleCommand!A(["A"], errorHandler) != 0);
+        assert(errorHandler.hasError(CommandParsingErrorCode.bindError));
+    }
+    {
+        auto errorHandler = ErrorCodeHandler();
+        // Will print some garbage, but it's fine.
+        assert(executeSingleCommand!A(["-h"], errorHandler) == 0);
+    }
+}
+
+unittest
+{
+    @Command("Hello")
+    static struct A
+    {
+        @("Error to return")
+        int err;
+
+        int onExecute() { return err; }
+    }
+    
+    {
+        auto errorHandler = ErrorCodeHandler();
+        assert(executeSingleCommand!A(["-err", "11"], errorHandler) == 11);
+    }
+    {
+        auto errorHandler = ErrorCodeHandler();
+        assert(executeSingleCommand!A(["-err", "0"], errorHandler) == 0);
+    }
+    {
+        auto errorHandler = ErrorCodeHandler();
+        assert(executeSingleCommand!A(["-err"], errorHandler) != 0);
+        assert(errorHandler.hasError(CommandParsingErrorCode.noValueForNamedArgumentError));
+    }
+    {
+        auto errorHandler = ErrorCodeHandler();
+        assert(CommandArgumentsInfo!A.named[0].flags.has(ArgFlags._requiredBit));
+        assert(executeSingleCommand!A([], errorHandler) != 0);
+        assert(errorHandler.hasError(CommandParsingErrorCode.missingNamedArgumentsError));
+    }
 }

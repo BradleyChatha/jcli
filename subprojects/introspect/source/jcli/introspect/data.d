@@ -669,7 +669,7 @@ template getArgumentInfo(UDAType, alias field)
     {
         static if (is(uda == UDAType))
         {
-            enum getArgumentInfo = UDAType(__traits(identifier, field), "");
+            enum getArgumentInfo = UDAType.init;
         }
         else static if (is(typeof(uda) == UDAType))
         {
@@ -846,8 +846,12 @@ PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)() pure
     PositionalArgumentInfo[] result;
     static foreach (field; fieldsWithUDAOf!(TCommand, ArgPositional))
     {{
+        auto info = getArgumentInfo!(ArgPositional, field);
+        if (info.name == "")
+            info.name = __traits(identifier, field);
+        
         auto t = PositionalArgumentInfo(
-            getArgumentInfo!(ArgPositional, field),
+            info,
             getCommonArgumentInfo!(field, ArgFlags._positionalArgumentBit));
         result ~= t;
     }}
@@ -950,6 +954,8 @@ NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)() pure
         static if (hasNamed)
         {
             ArgNamed uda = getArgumentInfo!(ArgNamed, field);
+            if (uda.pattern == Pattern.init)
+                uda.pattern = Pattern([__traits(identifier, field)]);
         }
         else static if (isSimple)
         {
