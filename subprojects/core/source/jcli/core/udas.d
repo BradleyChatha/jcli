@@ -32,6 +32,13 @@ q{
         this.pattern = Pattern(pattern);
         this.description = description;
     }
+
+    // I want this constructor to exit, but its kind of weird to do rn.
+    // this(string description) pure nothrow @nogc
+    // {
+    //     this.pattern = Pattern.init;
+    //     this.description = description;
+    // }
 };
 
 struct Command
@@ -48,7 +55,19 @@ struct CommandDefault
 struct ArgPositional
 {
     string name;
-    string description = "";
+    string description;
+
+    this(string description)
+    {
+        this.description = description;
+        this.name = "";
+    }
+    
+    this(string name, string description)
+    {
+        this.description = description;
+        this.name = name;
+    }
 }
 
 struct ArgNamed
