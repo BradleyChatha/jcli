@@ -303,7 +303,9 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     alias ParsingContext = CommandParsingContext!maxNamedArgCount;
     alias Context = MatchAndExecuteContext;
 
-    private auto addCommand(int typeIndex)(scope ref Context context)
+    // These should be public to allow other modules to work with the context.
+    // But we should also think about doing a typesafe wrapper over the context.
+    auto addCommand(int typeIndex)(scope ref Context context)
     {
         alias Type = Types[typeIndex];
         // TODO: maybe add something fancier here later 
@@ -312,13 +314,13 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         return t;
     }
 
-    private auto getLatestCommand(int typeIndex)(scope ref Context context)
+    auto getLatestCommand(int typeIndex)(scope ref Context context)
     {
         assert(context._storage.length > 0);
         return getCommand!typeIndex(context, cast(int) context._storage.length - 1);
     }
 
-    private auto getCommand(int typeIndex)(scope ref Context context, int index)
+    auto getCommand(int typeIndex)(scope ref Context context, int index)
     {
         assert(context._storage.length > index);
         assert(typeIndex == context._storage[index].typeIndex);
