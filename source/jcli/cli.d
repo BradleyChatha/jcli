@@ -746,10 +746,16 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         {
             advanceState(context, parsingContext, tokenizer, errorHandler);
         }
+
+        // TODO: switch over the terminal states here, see `executeSingleCommand`.
+
         return context;
     }
 }
 
+// This is kind of what I mean by a type-safe wrapper, but it also needs getters for everything
+// that would assert if the state is right and stuff like that.
+// Currently this one is only used for tests.
 struct SimpleMatchAndExecuteHelper(Types...)
 {
     alias bindArgument = jcli.argbinder.bindArgument!();
@@ -1658,5 +1664,13 @@ unittest
         assert(CommandArgumentsInfo!A.named[0].flags.has(ArgFlags._requiredBit));
         assert(executeSingleCommand!A([], errorHandler) != 0);
         assert(errorHandler.hasError(CommandParsingErrorCode.missingNamedArgumentsError));
+    }
+}
+
+mixin template SingleCommandMain(TCommand)
+{
+    int main(string[] args)
+    {
+        return executeSingleCommand!TCommand(args[1 .. $]);
     }
 }

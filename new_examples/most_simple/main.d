@@ -44,5 +44,4 @@ int main(string[] args)
 }
 
 // Or like this
-// mixin singleCommandMain!Command;
-
+// mixin SingleCommandMain!IsEvenCommand;
