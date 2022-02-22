@@ -1385,10 +1385,10 @@ Custom converters are supported for this.
 
 # Using JCLI without Dub
 
-It's possible to use JCLI without dub, especially because it has no external dependencies (other than JANSI, which is actually bundled instead of added as a proper
-dub dependency).
+It's possible to use JCLI without dub, especially because it has no external dependencies 
+(other than JANSI, which is actually bundled instead of added as a proper dub dependency, why btw?).
 
-In fact, this library is developed under [Meson](https://mesonbuild.com) as the build tool, which means that you can easily integrated this library into your own Meson projects.
+In fact, this library is developed under [Meson](https://mesonbuild.com) as the build tool, which means that you can easily integrate this library into your own Meson projects.
 
 # Contributing
 
