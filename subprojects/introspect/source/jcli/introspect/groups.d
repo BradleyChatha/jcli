@@ -12,6 +12,19 @@ module jcli.introspect.groups;
 /// Multiple nested commands in the same function won't work correctly!
 enum ParentCommand;
 
+// TODO: 
+// Ways to specify children instead of the parent.
+// Needs some changes in the graph code. Not hard.
+// TODO: 
+// Ways to parent all commands within a module.
+// I bet this one can be really useful.
+// Should also be pretty easy to implement.
+// TODO:
+// Discover commands throught a parent command, by looking at its children.
+// Should be very useful when you decide to go top-down
+// and have more control over the command layout.
+// I imagine it shouldn't be that hard?
+
 import std.traits;
 import std.meta;
 
@@ -83,7 +96,7 @@ template TypeGraph(Types...)
             // Check for cicles in the graph.
             // Cicles will stifle the compiler (but I'm not sure).
             // TODO: use bit array?
-            bool[Types.length] visited = void;
+            bool[Types.length] visited = false;
 
             bool isCyclic(size_t index)
             {
@@ -103,7 +116,6 @@ template TypeGraph(Types...)
             {
                 if (isNotRoot)
                     continue;
-                visited = 0;
                 if (isCyclic(parentIndex))
                 {
                     // TODO: report more info here.
@@ -274,25 +286,37 @@ template TypeGraph(Types...)
 //     }
 // }
 
+// Haven't tested this one, haven't used it either.
 template AllCommandsOf(Modules...)
 {
     // enum isCommand(string memberName) = hasUDA!(__traits(getMember, Module, memberName), Command)
     //     || hasUDA!(__traits(getMember, Module, memberName), CommandDefault);
     // alias AllCommandsOf = Filter!(isCommand, Modules);
     
-    // TODO:
-    // This is quadratic, I'm pretty sure.
-    // You can do better with templates by splitting in half (there are functions in std.traits).
-    static foreach (Module; Modules)
+    static if (Modules.length == 0)
     {
-        static foreach (memberName; __traits(allMembers, Module))
-        {   
-            static if (hasUDA!(__traits(getMember, Module, memberName), Command)
-                || hasUDA!(__traits(getMember, Module, memberName), CommandDefault))
-            {
-                AllCommandsOf = AliasSeq!(AllCommandsOf, __traits(getMember, Module, memberName));
-            }
+        alias AllCommandsOf = AliasSeq!();
+    }
+    static if (Modules.length == 1)
+    {
+        alias Module = Modules[0];
+        
+        // TODO: This can be a CTFE lambda.
+        template isCommand(string memberName)
+        {
+            enum isCommand = hasUDA!(__traits(getMember, Module, memberName), Command)
+                || hasUDA!(__traits(getMember, Module, memberName), CommandDefault);
         }
+        alias Commands = Filter!(isCommand, __traits(allMembers, Module));
+
+        alias getMember(string memberName) =  __traits(getMember, Module, memberName);
+        alias AllCommandsOf = staticMap!(getMember, Commands);
+    }
+    else
+    {
+        alias AllCommandsOf = AliasSeq!(
+            AllCommandsOf!(Modules[0 .. $ / 2]),
+            AllCommandsOf!(Modules[$ / 2 .. $]));
     }
 }
 
