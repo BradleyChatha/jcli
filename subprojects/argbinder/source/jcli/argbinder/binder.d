@@ -24,8 +24,10 @@ struct PostValidate(_validationFunctions...)
     alias validationFunctions = _validationFunctions;
 }
 
-alias PreValidator = PreValidate!();
-alias PostValidator = PostValidate!();
+alias PreValidator = PreValidate;
+alias PostValidator = PostValidate;
+
+alias bindArgumentSimple = bindArgument!();
 
 template bindArgument(Binders...)
 {
