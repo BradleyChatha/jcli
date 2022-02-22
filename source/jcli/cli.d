@@ -303,12 +303,13 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     alias ParsingContext = CommandParsingContext!maxNamedArgCount;
     alias Context = MatchAndExecuteContext;
 
-    private void addCommand(int typeIndex)(scope ref Context context)
+    private auto addCommand(int typeIndex)(scope ref Context context)
     {
         alias Type = Types[typeIndex];
         // TODO: maybe add something fancier here later 
         auto t = new Type();
         context._storage ~= Context.StorageItem(typeIndex, cast(void*) t);
+        return t;
     }
 
     private auto getLatestCommand(int typeIndex)(scope ref Context context)
@@ -490,7 +491,11 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                                 {
                                     case possibleName:
                                     {
-                                        addCommand!(childNode.childIndex)(context);
+                                        auto newCommand = addCommand!(childNode.childIndex)(context);
+                                        
+                                        static if (childNode.fieldIndex != -1)
+                                            newCommand.tupleof[childNode.fieldIndex] = command;
+                                        
                                         context._matchedName = possibleName;
                                         didMatchCommand = true;
                                         break matchSwitch;
