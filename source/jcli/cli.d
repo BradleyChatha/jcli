@@ -416,48 +416,102 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
             case State.initial:
             {
+                void matchRootCommand(size_t rootTypeIndex)()
+                {
+                    addCommand!(cast(int) rootTypeIndex)(context);
+                    context._state = State.matchedRootCommand;
+                    resetNamedArgumentArrayStorage!(Types[rootTypeIndex])(parsingContext);
+                }
+
+                // For now calculate it here, but ideally we should have a wrapper for
+                // command types. (It's not the graph, graph does not have about think of that).
+                // Also, I think no validation of duplicate default commands is done.
+                enum defaultCommandCount =
+                (){
+                    int result;
+                    static foreach (rootTypeIndex; Graph.rootTypeIndices)
+                        static if (CommandInfo!(Types[rootTypeIndex]).general.isDefault)
+                            result++;
+                    return result;
+                }();
+                enum hasDefaultCommand = defaultCommandCount > 0;
+
+                void matchDefaultCommand()
+                {
+                    // Match the root default commands even without name
+                    static foreach (rootTypeIndex; Graph.rootTypeIndices)
+                    {{
+                        alias Type = Types[rootTypeIndex];
+                        alias Info = CommandInfo!Type;
+
+                        static if (Info.general.isDefault)
+                        {
+                            matchRootCommand!rootTypeIndex();
+                            context._matchedName = "";
+                        }
+                    }}
+                }
+
+                if (tokenizer.empty)
+                {
+                    static if (hasDefaultCommand)
+                        matchDefaultCommand();
+                    else
+                        context._state = State.firstTokenNotCommand;
+                    return;
+                }
+
                 if (tryMatchSpecialThingsAndResetContextAccordingly())
                     return;
 
                 ArgToken firstToken = tokenizer.front;
-                if (firstToken.kind.doesNotHave(ArgToken.Kind.valueBit))
+
+                // Try to interpret the first argument as the command name.
+                if (firstToken.kind.has(ArgToken.Kind.valueBit))
+                {
+                    switch (firstToken.nameSlice)
+                    {
+                        default:
+                        {
+                            break;
+                        }
+                        static foreach (rootTypeIndex; Graph.rootTypeIndices)
+                        {{
+                            alias Type = Types[rootTypeIndex];
+                            alias Info = CommandInfo!Type;
+
+                            // They don't even have this uda.
+                            static if (!Info.general.isDefault)
+                            static foreach (possibleName; Info.general.uda.pattern)
+                            {
+                                case possibleName:
+                                {
+                                    matchRootCommand!rootTypeIndex();
+                                    context._matchedName = possibleName;
+                                    tokenizer.popFront();
+                                    return;
+                                }
+                            }
+                        }}
+                    }
+                }
+
+                static if (hasDefaultCommand)
+                {
+                    matchDefaultCommand();
+                }
+                else if (firstToken.kind.has(ArgToken.Kind.valueBit)) // @suppress(dscanner.suspicious.static_if_else)
+                {
+                    // writeln("not matched input ", firstToken.nameSlice,
+                    //     " the number of possible things is ", Graph.rootTypeIndices.length);
+                    context._state = State.notMatchedRootCommand;
+                    tokenizer.popFront();
+                }
+                else
                 {
                     context._state = State.firstTokenNotCommand;
-                    return;
                 }
-                tokenizer.popFront();
-
-                switch (firstToken.nameSlice)
-                {
-                    default:
-                    {
-                        // writeln("not matched input ", firstToken.nameSlice,
-                        //     " the number of possible things is ", Graph.rootTypeIndices.length);
-                        context._state = State.notMatchedRootCommand;
-                        return;
-                    }
-                    static foreach (rootTypeIndex; Graph.rootTypeIndices)
-                    {{
-                        alias Type = Types[rootTypeIndex];
-
-                        void doStuff()
-                        {
-                            addCommand!(cast(int) rootTypeIndex)(context);
-                            context._state = State.matchedRootCommand;
-                            resetNamedArgumentArrayStorage!Type(parsingContext);
-                        }
-
-                        static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
-                        {
-                            case possibleName:
-                            {
-                                doStuff();
-                                context._matchedName = possibleName;
-                                return;
-                            }
-                        }
-                    }}
-                }
+                return;
             }
 
             // Already added, executed, and set up the command, just initialize the latest command.
@@ -1273,6 +1327,80 @@ unittest
         // TODO: 
         // Partial matches option, autoresolve option.
         // Propagate it with the context.
+    }
+    {
+        // This command will match even without the user explicitly specifying its name.
+        @CommandDefault
+        static struct A
+        {
+            void onExecute() {}
+        }
+
+        // This command is also a top-level command, but it will match only if the name
+        // matches.
+        @Command
+        static struct B
+        {
+            void onExecute() {}
+        }
+
+        // This command is a parent command to A.
+        @Command
+        static struct C
+        {
+            @ParentCommand
+            A* a;
+
+            void onExecute() {}
+        }
+
+        alias Types = AliasSeq!(A, B, C);
+        alias createHelper = createHelperThing!Types;
+
+        enum AIndex = 0;
+        enum BIndex = 1;
+        enum CIndex = 2;
+
+        with (createHelper([]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._storage[$ - 1].typeIndex == AIndex);
+        }
+        with (createHelper(["A"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._storage[$ - 1].typeIndex == AIndex);
+            
+            advance();
+            assert(context.state == State.notMatchedNextCommand);
+        }
+        with (createHelper(["B"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._storage[$ - 1].typeIndex == BIndex);
+        }
+        with (createHelper(["C"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._storage[$ - 1].typeIndex == AIndex);
+
+            advance();
+            assert(context.state == State.matchedNextCommand);
+            assert(context._storage[$ - 1].typeIndex == CIndex);
+        }
+        with (createHelper(["kek"]))
+        {
+            advance();
+            assert(context.state == State.matchedRootCommand);
+            assert(context._storage[$ - 1].typeIndex == AIndex);
+            
+            advance();
+            assert(context.state == State.notMatchedNextCommand);
+        }
     }
 }
 unittest

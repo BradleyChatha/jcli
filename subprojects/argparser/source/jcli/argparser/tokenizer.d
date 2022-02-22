@@ -126,6 +126,7 @@ struct ArgTokenizer(TRange)
     
     ArgToken front() const nothrow pure @safe
     {
+        assert(!_empty);
         return _front;
     }
 
