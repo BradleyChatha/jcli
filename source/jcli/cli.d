@@ -445,7 +445,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 (){
                     int result;
                     static foreach (rootTypeIndex; Graph.rootTypeIndices)
-                        static if (CommandInfo!(Types[rootTypeIndex]).general.isDefault)
+                        static if (CommandInfo!(Types[rootTypeIndex]).flags.has(CommandFlags.explicitlyDefault))
                             result++;
                     return result;
                 }();
@@ -458,7 +458,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                     {{
                         alias Type = Types[rootTypeIndex];
 
-                        static if (CommandInfo!Type.general.isDefault)
+                        static if (CommandInfo!Type.flags.has(CommandFlags.explicitlyDefault))
                         {
                             setMatchedRootCommand!(cast(int) rootTypeIndex)(
                                 context, parsingContext, "");
@@ -494,16 +494,21 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                             alias Type = Types[rootTypeIndex];
                             alias Info = CommandInfo!Type;
 
+                            // Again, should be provided by another template.
+                            static assert(Info.flags.has(CommandFlags.commandAttribute));
+
                             // The default commands don't even have their name in the UDA.
-                            static if (!Info.general.isDefault)
-                            static foreach (possibleName; Info.general.uda.pattern)
+                            static if (!Info.flags.has(CommandFlags.explicitlyDefault))
                             {
-                                case possibleName:
+                                static foreach (possibleName; Info.udaValue.pattern)
                                 {
-                                    setMatchedRootCommand!(cast(int) rootTypeIndex)(
-                                        context, parsingContext, possibleName);
-                                    tokenizer.popFront();
-                                    return;
+                                    case possibleName:
+                                    {
+                                        setMatchedRootCommand!(cast(int) rootTypeIndex)(
+                                            context, parsingContext, possibleName);
+                                        tokenizer.popFront();
+                                        return;
+                                    }
                                 }
                             }
                         }}
@@ -559,7 +564,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                             static foreach (childNodeIndex, childNode; Graph.Adjacencies[typeIndex])
                             {{
                                 alias Type = Types[childNode.typeIndex];
-                                static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
+                                static foreach (possibleName; CommandInfo!Type.udaValue.pattern)
                                 {
                                     case possibleName:
                                     {

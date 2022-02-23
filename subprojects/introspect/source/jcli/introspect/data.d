@@ -4,23 +4,8 @@ import jcli.introspect.flags;
 import jcli.core;
 
 import std.conv : to;
-
-struct CommandGeneralInfo(CommandUdaT)
-{
-    CommandUdaT uda;
-    string identifier;
-    bool isDefault;
-
-    string name() const nothrow @nogc pure @safe 
-    {
-        static if(__traits(hasMember, CommandUdaT, "name")) 
-            return uda.name;
-        else
-            return "";
-    }
-    
-    ref inout(string) description() inout nothrow @nogc pure @safe { return uda.description; }
-}
+import std.traits;
+import std.meta;
 
 struct ArgumentCommonInfo
 {
@@ -129,11 +114,88 @@ template getArgumentFieldSymbol(TCommand, alias argumentInfoOrFieldPath)
     mixin("alias getArgumentFieldSymbol = TCommand." ~ fieldPathOf!argumentInfoOrFieldPath ~ ";");
 }
 
+template getCommandUDAs(CommandType)
+{
+    alias commandUDAs = AliasSeq!(
+        getUDAs!(CommandType, Command),
+        getUDAs!(CommandType, CommandDefault));
+
+    static if (commandUDAs.length > 0)
+    {
+        alias getCommandUDAs = commandUDAs;
+    }
+    else
+    {
+        enum isValue(alias stringUDA) = is(typeof(stringUDA) : string);
+        alias stringUDAs = Filter!(isValue,
+            getUDAs!(CommandType, string));
+
+        static if (stringUDAs.length > 0)
+            alias getCommandUDAs = AliasSeq!(stringUDAs[0]);
+        else
+            alias getCommandUDAs = AliasSeq!();
+    }
+}
+
+
+// NOTE:
+// It's not clear at all what a good design fot this is.
+// I only feel esoteric OOP vibes when deciding whether this should be in a struct,
+// template, whether it should be a getter, and enum, immutable, or an alias.
+// It feels to me like it's only philosophical at this point.
+// So I'm just going to do a single thing and call it a day.
+// Whatever I do feels wrong tho.
 template CommandInfo(TCommand)
 {
     alias CommandType = TCommand;
-    immutable general = getGeneralCommandInfoOf!TCommand;
     alias Arguments = CommandArgumentsInfo!TCommand;
+
+    static assert(
+        getCommandUDAs!TCommand.length <= 1,
+        "Only one command UDA is allowed.");
+    alias commandUDAs = getCommandUDAs!TCommand;
+
+    static if (commandUDAs.length == 0)
+    {
+        enum flags = CommandFlags.noCommandAttributeBit;
+    }
+    else
+    {
+        alias rawCommandUDA = Alias!(commandUDAs[0]);
+
+        static if (is(typeof(rawCommandUDA) : string))
+        {
+            enum flags = CommandFlags.stringAttribute | CommandKind.givenValue;
+            enum string udaValue = rawCommandUDA;
+        }
+        else static if (is(rawCommandUDA == Command))
+        {
+            enum flags = CommandFlags.commandAttribute;
+            immutable udaValue = Command([__traits(identifier, TCommand)], "");
+        }
+        else static if (is(rawCommandUDA == CommandDefault))
+        {
+            enum flags = CommandFlags.commandAttribute | CommandFlags.explicitlyDefault;
+            immutable udaValue = CommandDefault("");
+        }
+        else static if (is(typeof(rawCommandUDA) == Command))
+        {
+            enum flags = CommandFlags.commandAttribute | CommandFlags.givenValue;
+            immutable udaValue = rawCommandUDA;
+        }
+        else static if (is(typeof(rawCommandUDA) == CommandDefault))
+        {
+            enum flags = CommandFlags.commandAttribute | CommandFlags.givenValue | CommandFlags.explicitlyDefault;
+            immutable udaValue = rawCommandUDA;
+        }
+        else static assert(0);
+
+        // this part is super meh
+        static if (flags.has(CommandFlags.stringAttribute))
+            enum string description = udaValue;
+        else
+            enum string description = udaValue.description;
+    }
 }
 
 template CommandArgumentsInfo(TCommand)
@@ -678,48 +740,11 @@ template getArgumentInfo(UDAType, alias field)
     }
 }
 
-template commandUDAOf(CommandType)
-{
-    static foreach (uda; __traits(getAttributes, CommandType))
-    {
-        static if (is(uda == Command))
-        {
-            enum commandUDAOf = Command([__traits(identifier, CommandType)], "");
-        }
-        else static if (is(typeof(uda) == Command))
-        {
-            enum commandUDAOf = uda;
-        }
-        else static if (is(CommandDefault == UDAInfo!uda.Type))
-        {
-            enum commandUDAOf = UDAInfo!uda.value;
-        }
-    }
-}
-
-template getGeneralCommandInfoOf(TCommand)
-{
-    enum command    = commandUDAOf!TCommand;
-    enum isDefault  = is(typeof(command) == CommandDefault);
-    enum identifier = __traits(identifier, TCommand);
-
-    // TODO: Not needed, the general info is not needed either.
-    enum getGeneralCommandInfoOf = CommandGeneralInfo!(typeof(command))(command, identifier, isDefault);
-}
 
 template fieldsWithUDAOf(T, UDAType)
 {
-    import std.traits : hasUDA;
-    import std.meta : AliasSeq;
-    alias result = AliasSeq!();
-    static foreach (field; T.tupleof)
-    {
-        static if (hasUDA!(field, UDAType))
-        {
-            result = AliasSeq!(result, field);
-        }
-    }
-    alias fieldsWithUDAOf = result;
+    enum hasThatUDA(alias field) = hasUDA!(field, UDAType);
+    alias fieldsWithUDAOf = Filter!(hasThatUDA, T.tupleof);
 }
 unittest
 {

@@ -2,6 +2,7 @@ module jcli.helptext.helptext;
 
 import jcli.core, jcli.text, jcli.introspect;
 
+// TODO: Maybe make it take the processed command info instead of the command type itself.
 struct CommandHelpText(alias CommandT_)
 {
     alias CommandType  = CommandT_;
@@ -53,6 +54,7 @@ struct CommandHelpText(alias CommandT_)
 
         named.multiSort!("a.optional != b.optional", "a.name < b.name");
         
+
         // TODO:
         // This allocates way too much memory for no reason, and is slower as a result.
         // Just make that addLineWithPrefix take a range, and just chain these together.
@@ -60,7 +62,7 @@ struct CommandHelpText(alias CommandT_)
         import std.format : format;
         help.addLineWithPrefix("Usage: ", "%s %s%s%s".format(
             appName,
-            CommandInfo.general.isDefault ? CommandInfo.general.name : "DEFAULT",
+            CommandInfo.flags.doesNotHave(CommandFlags.explicitlyDefault) ? CommandInfo.udaValue.name : "DEFAULT",
             positionals
                 .map!(p =>  "<" ~ p.name ~ ">")
                 .join(" "),
@@ -69,8 +71,8 @@ struct CommandHelpText(alias CommandT_)
                 .join(" ")
         ), AnsiStyleSet.init.style(AnsiStyle.init.bold));
 
-        if (CommandInfo.general.description)
-            help.addHeaderWithText("Description: ", CommandInfo.general.description);
+        static if (CommandInfo.description)
+            help.addHeaderWithText("Description: ", CommandInfo.description);
 
         if (positionals.length > 0)
         {

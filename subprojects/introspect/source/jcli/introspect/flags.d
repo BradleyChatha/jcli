@@ -251,9 +251,29 @@ string getArgumentConfigFlagsIncompatibilityValidationMessage(ArgConfig[] flagsT
     return null;
 }
 
+enum CommandFlags
+{
+    none = 0,
+
+    /// No command attribute was found.
+    noCommandAttribute = 1 << 0,
+
+    /// The command attribute was deduced from its simple form, aka @("description").
+    stringAttribute = 1 << 1,
+
+    /// The command was set from a Command or CommandDefault attribute
+    commandAttribute = 1 << 2,
+
+    /// e.g. @Command("ab", "cd") instead of @Command.
+    givenValue = 1 << 3,
+
+    ///
+    explicitlyDefault = 1 << 4,
+}
 
 import jcli.core.utils : FlagsHelpers;
 mixin FlagsHelpers!ArgFlags;
+mixin FlagsHelpers!CommandFlags;
 
 @safe nothrow @nogc pure const
 unittest
