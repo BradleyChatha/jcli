@@ -341,7 +341,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         }
     }
 
-    void parseCommand
+    void parseCommandAndMatchNextCommand
     (
         size_t typeIndex,
         Tokenizer : ArgTokenizer!TRange, TRange,
@@ -495,6 +495,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
     // These should be public to allow other modules to work with the context.
     // But we should also think about doing a typesafe wrapper over the context.
+    // TODO: move these in the Context wrapper, make use of that wrapper here everywhere.
     auto addCommand(int typeIndex)(scope ref Context context)
     {
         alias Type = Types[typeIndex];
@@ -529,49 +530,6 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         alias ArgumentInfo = CommandArgumentsInfo!(Types[typeIndex]);
         resetNamedArgumentArrayStorage!(ArgumentInfo)(parsingContext);
     }
-
-    // Frame issues make us do the mixins.
-    private string get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
-        string variableName, string funcName, string currentTypeIndexName, int a = __LINE__)
-    {
-        import std.conv : to;
-        string labelName = `__stuff` ~ a.to!string;
-
-        return labelName ~ `: switch (` ~ currentTypeIndexName ~ `)
-        {
-            static foreach (_typeIndex, CurrentType; Types)
-            {
-                case cast(int) _typeIndex:
-                {
-                    ` ~ funcName ~ `!(cast(int) _typeIndex)();
-                    ` ~ variableName ~ ` = true;
-                    break ` ~ labelName ~ `;
-                }
-            }
-            default:
-            {
-                ` ~ variableName ~ ` = false;
-                break `  ~ labelName ~ `;
-            }
-        }`;
-    }
-
-    // private bool tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex(alias templatedFunc)(int currentTypeIndex)
-    // {
-    //     switch (currentTypeIndex)
-    //     {
-    //         static foreach (typeIndex, CurrentType; Types)
-    //         {
-    //             case cast(int) typeIndex:
-    //             {
-    //                 templatedFunc!(cast(int) typeIndex)();
-    //                 return true;
-    //             }
-    //         }
-    //         default:
-    //             return false;
-    //     }
-    // }
 
     bool tryMatchSpecialThingsAndResetContextAccordingly
     (
@@ -726,7 +684,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             case State.matchedRootCommand:
             case State.intermediateExecutionResult:
             {
-                executeWithCompileTimeTypeIndex!parseCommand(
+                executeWithCompileTimeTypeIndex!parseCommandAndMatchNextCommand(
                     context._storage[$ - 1].typeIndex, context, parsingContext, tokenizer, errorHandler);
                 return;
             }
