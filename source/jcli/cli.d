@@ -3,7 +3,7 @@ module jcli.cli;
 import jcli;
 
 import std.stdio : writefln, writeln;
-import std.meta : AliasSeq;
+import std.meta;
 
 struct ExecuteCommandResult
 {
@@ -77,6 +77,104 @@ unittest
         assert(result.exception !is null);
     }
 }
+
+template CommandTypeContext(_Types...)
+{
+    alias Types = _Types;
+    alias Graph = TypeGraph!Types;
+
+    // I was debating the name for this function, I guess this one's alright 
+    void executeWithCompileTimeTypeIndex
+    (
+        alias templateFunctionThatTakesTheCompileTimeIndex,
+        // We need to pass the arguments explicitly, because of frame issues.
+        // I'm glad it works with static functions tho, I really am.
+        OtherArgsToPassToTemplateFunction...
+    )
+    (
+        int currentTypeIndex,
+        auto ref OtherArgsToPassToTemplateFunction args
+    )
+    {
+        switch (currentTypeIndex)
+        {
+            static foreach (typeIndex, CurrentType; Types)
+            {
+                case cast(int) typeIndex:
+                {
+                    templateFunctionThatTakesTheCompileTimeIndex!(cast(int) typeIndex)(args);
+                    return;
+                }
+            }
+            default:
+                assert(false);
+        }
+    }
+
+    enum indexOf(Type) = Graph.getTypeIndexOf!Type;
+    private enum isDefault(int index) = CommandInfo!(Types[index]).flags.has(CommandFlags.explicitlyDefault);
+    alias defaultCommandIndices = Filter!(isDefault, aliasSeqOf!(Graph.rootTypeIndices));
+
+    private alias getType(int typeIndex) = Types[typeIndex];
+    alias toTypes(alias indices) = staticMap!(getType, aliasSeqOf!(indices));
+}
+
+static scope struct IndexHelper(int typeIndex, alias CommandTypeContext) 
+{
+    static assert(CommandTypeContext.Types.length > typeIndex);
+    alias Type = CommandTypeContext.Types[typeIndex];
+    private MatchAndExecuteContext* _context;
+
+    Type* opIndex(int index)
+    {
+        assert(_context._storage.length > index);
+        assert(typeIndex == _context._storage[index].typeIndex);
+        return cast(Type*) _context._storage[index].commandPointer;
+    }
+
+    int opDollar()
+    {
+        return cast(int) _context._storage.length;
+    }
+
+    Type* add()
+    {
+        auto t = new Type();
+        _context._storage ~= MatchAndExecuteContext.StorageItem(typeIndex, cast(void*) t);
+        return t;
+    }
+}
+
+struct MatchAndParseContextWrapper(
+    alias CommandTypeContext,
+    // Either pointer to MatchAndExecuteContext, or that itself
+    ContextType = MatchAndExecuteContext)
+{
+    ContextType _context;
+    alias _context this;
+
+    auto contextPointer()
+    {
+        static if (is(ContextType : T*))
+            return _context;
+        else
+            return &_context;
+    }
+
+    auto command(int typeIndex)()
+    {
+        return IndexHelper!typeIndex(contextPointer, MatchAndExecuteContext);
+    }
+
+    // SumType-like match, maybe?
+    // template match();
+}
+
+auto wrapContext(Types)(scope ref MatchAndExecuteContext context) return
+{
+    return *cast(MatchAndParseContextWrapper!Types*) &context;
+}
+
 
 enum MatchAndExecuteState
 {
@@ -160,8 +258,9 @@ template matchAndExecuteAcrossModules(Modules...)
 template matchAndExecute(alias bindArgument, CommandTypes...)
 {
     private alias _matchAndExecute = .matchAndExecute!(bindArgument, CommandTypes);
+    private alias _CommandTypeContext = CommandTypeContext!CommandTypes;
 
-    /// Forwards to `MatchAndExecuteTypeContext!Types.matchAndExecute`.
+    /// Forwards.
     int matchAndExecute
     (
         Tokenizer : ArgTokenizer!T, T,
@@ -172,7 +271,7 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
         scope ref TErrorHandler errorHandler
     )
     {
-        return MatchAndExecuteTypeContext!(bindArgument, CommandTypes)
+        return MatchAndExecuteTypeContext!(bindArgument, _CommandTypeContext)
             .matchAndExecute(tokenizer, errorHandler);
     }
 
@@ -275,7 +374,9 @@ struct MatchAndExecuteContext
     }
 
     // TODO: maybe store them inline
-    // TODO: calculate the max path length in the graph and set that as max size.
+    // TODO: 
+    // calculate the max path length in the graph and set that as max size.
+    // pass the max command cound as a template argument.
     struct StorageItem
     {
         int typeIndex;
@@ -283,27 +384,19 @@ struct MatchAndExecuteContext
     }
     StorageItem[] _storage;
 
-    // void* latestCommand()
-    // {
-    //     assert(_currentCommandTypeGraphNode != -1);
-    //     return _storage[$ - 1];
-    // }
-
-
     const pure @safe nothrow @nogc:
-
     State state() { return _state; }
 }
 
 // TODO: better name
-template MatchAndExecuteTypeContext(alias bindArgument, Types...)
+template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext)
 {
     // TODO: should probably take this graph as an argument
-    alias Graph = TypeGraph!Types;
+    alias Graph = CommandTypeContext.Graph;
     enum maxNamedArgCount = 
     (){
         size_t result = 0;
-        static foreach (Type; Types)
+        static foreach (Type; CommandTypeContext.Types)
         {
             import std.algorithm.comparison : max;
             result = max(result, CommandArgumentsInfo!Type.named.length);
@@ -313,32 +406,14 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     alias ParsingContext = CommandParsingContext!maxNamedArgCount;
     alias Context = MatchAndExecuteContext;
 
-    // I was debating the name for this function, I guess this one's alright 
-    private void executeWithCompileTimeTypeIndex
-    (
-        alias templateFunctionThatTakesTheCompileTimeIndex,
-        // We need to pass the arguments explicitly, because of frame issues.
-        // I'm glad it works with static functions tho, I really am.
-        OtherArgsToPassToTemplateFunction...
-    )
-    (
-        int currentTypeIndex,
-        auto ref OtherArgsToPassToTemplateFunction args
-    )
+    // scope MatchAndParseContextWrapper!(CommandTypeContext, Context*) wrapContext(ref scope Context context)
+    // {
+    //     return typeof(return)(&context);
+    // }
+
+    auto commandIndexer(int typeIndex)(ref scope Context context)
     {
-        switch (currentTypeIndex)
-        {
-            static foreach (typeIndex, CurrentType; Types)
-            {
-                case cast(int) typeIndex:
-                {
-                    templateFunctionThatTakesTheCompileTimeIndex!(cast(int) typeIndex)(args);
-                    return;
-                }
-            }
-            default:
-                assert(false);
-        }
+        return IndexHelper!(typeIndex, CommandTypeContext)(&context);
     }
 
     void parseCommandAndMatchNextCommand
@@ -354,10 +429,9 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         scope ref TErrorHandler errorHandler,
     )
     {
-        alias Type = Types[typeIndex];
+        alias Type = CommandTypeContext.Types[typeIndex];
         alias ArgumentsInfo = CommandArgumentsInfo!Type;
-
-        Type* command = getLatestCommand!typeIndex(context);
+        Type* command = commandIndexer!typeIndex(context)[$ - 1];
 
         enum childCommandsCount = Graph.Adjacencies[typeIndex].length;
 
@@ -377,12 +451,12 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 }
                 static foreach (childNodeIndex, childNode; Graph.Adjacencies[typeIndex])
                 {{
-                    alias Type = Types[childNode.typeIndex];
+                    alias Type = CommandTypeContext.Types[childNode.typeIndex];
                     static foreach (possibleName; CommandInfo!Type.udaValue.pattern)
                     {
                         case possibleName:
                         {
-                            auto newCommand = addCommand!(childNode.typeIndex)(context);
+                            auto newCommand = commandIndexer!(childNode.typeIndex)(context).add();
                             
                             static if (childNode.fieldIndex != -1)
                                 newCommand.tupleof[childNode.fieldIndex] = command;
@@ -493,42 +567,18 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         context._state = State.beforeFinalExecution;
     }
 
-    // These should be public to allow other modules to work with the context.
-    // But we should also think about doing a typesafe wrapper over the context.
-    // TODO: move these in the Context wrapper, make use of that wrapper here everywhere.
-    auto addCommand(int typeIndex)(scope ref Context context)
-    {
-        alias Type = Types[typeIndex];
-        // TODO: maybe add something fancier here later 
-        auto t = new Type();
-        context._storage ~= Context.StorageItem(typeIndex, cast(void*) t);
-        return t;
-    }
-
-    auto getLatestCommand(int typeIndex)(scope ref Context context)
-    {
-        assert(context._storage.length > 0);
-        return getCommand!typeIndex(context, cast(int) context._storage.length - 1);
-    }
-
-    auto getCommand(int typeIndex)(scope ref Context context, int index)
-    {
-        assert(context._storage.length > index);
-        assert(typeIndex == context._storage[index].typeIndex);
-        alias Type = Types[typeIndex];
-        return cast(Type*) context._storage[index].commandPointer;
-    }
-
     void setMatchedRootCommand(int typeIndex)(
         scope ref Context context,
         scope ref ParsingContext parsingContext,
         string matchedName = "")
     {
-        addCommand!typeIndex(context);
+        commandIndexer!typeIndex(context).add();
+
         context._state = State.matchedRootCommand;
         context._matchedName = matchedName;
-        alias ArgumentInfo = CommandArgumentsInfo!(Types[typeIndex]);
-        resetNamedArgumentArrayStorage!(ArgumentInfo)(parsingContext);
+
+        alias ArgumentInfo = CommandArgumentsInfo!(CommandTypeContext.Types[typeIndex]);
+        resetNamedArgumentArrayStorage!ArgumentInfo(parsingContext);
     }
 
     bool tryMatchSpecialThingsAndResetContextAccordingly
@@ -587,29 +637,13 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 // command types. (It's not the graph, graph does not have to think about that).
                 // Also, I think no validation of duplicate default commands is done,
                 // but it shouldn't happen on this layer of things either.
-                enum defaultCommandCount =
-                (){
-                    int result;
-                    static foreach (rootTypeIndex; Graph.rootTypeIndices)
-                        static if (CommandInfo!(Types[rootTypeIndex]).flags.has(CommandFlags.explicitlyDefault))
-                            result++;
-                    return result;
-                }();
-                enum hasDefaultCommand = defaultCommandCount > 0;
+                enum hasDefaultCommand = CommandTypeContext.defaultCommandIndices.length > 0;
 
                 void matchDefaultCommand()
                 {
                     // Match the root default commands, even without name.
-                    static foreach (rootTypeIndex; Graph.rootTypeIndices)
-                    {{
-                        alias Type = Types[rootTypeIndex];
-
-                        static if (CommandInfo!Type.flags.has(CommandFlags.explicitlyDefault))
-                        {
-                            setMatchedRootCommand!(cast(int) rootTypeIndex)(
-                                context, parsingContext, "");
-                        }
-                    }}
+                    foreach (rootTypeIndex; CommandTypeContext.defaultCommandIndices)
+                        setMatchedRootCommand!rootTypeIndex(context, parsingContext, "");
                 }
 
                 if (tokenizer.empty)
@@ -637,7 +671,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                         }
                         static foreach (rootTypeIndex; Graph.rootTypeIndices)
                         {{
-                            alias Type = Types[rootTypeIndex];
+                            alias Type = CommandTypeContext.Types[rootTypeIndex];
                             alias Info = CommandInfo!Type;
 
                             // Again, should be provided by another template.
@@ -650,8 +684,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                                 {
                                     case possibleName:
                                     {
-                                        setMatchedRootCommand!(cast(int) rootTypeIndex)(
-                                            context, parsingContext, possibleName);
+                                        setMatchedRootCommand!rootTypeIndex(context, parsingContext, possibleName);
                                         tokenizer.popFront();
                                         return;
                                     }
@@ -684,7 +717,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             case State.matchedRootCommand:
             case State.intermediateExecutionResult:
             {
-                executeWithCompileTimeTypeIndex!parseCommandAndMatchNextCommand(
+                CommandTypeContext.executeWithCompileTimeTypeIndex!parseCommandAndMatchNextCommand(
                     context._storage[$ - 1].typeIndex, context, parsingContext, tokenizer, errorHandler);
                 return;
             }
@@ -698,13 +731,13 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 // in which case we shouldn't have the frame issues.
                 static void executeNextToLast(size_t typeIndex)(ref scope Context context)
                 {
-                    auto command = getCommand!typeIndex(context, cast(int) context._storage.length - 2);
+                    auto command = commandIndexer!typeIndex(context)[$ - 2];
                     auto result = executeCommand(*command);
                     context._state = State.intermediateExecutionResult;
                     context._executeCommandResult = result;
                 }
 
-                executeWithCompileTimeTypeIndex!executeNextToLast(
+                CommandTypeContext.executeWithCompileTimeTypeIndex!executeNextToLast(
                     context._storage[$ - 2].typeIndex, context);
 
                 return;
@@ -714,13 +747,13 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             {
                 static void executeLast(size_t typeIndex)(ref scope Context context)
                 {
-                    auto command = getCommand!typeIndex(context, cast(int) context._storage.length - 1);
+                    auto command = commandIndexer!typeIndex(context)[$ - 1];
                     auto result = executeCommand(*command);
                     context._state = State.finalExecutionResult;
                     context._executeCommandResult = result;
                 }
 
-                executeWithCompileTimeTypeIndex!executeLast(
+                CommandTypeContext.executeWithCompileTimeTypeIndex!executeLast(
                     context._storage[$ - 1].typeIndex, context);
 
                 return;
@@ -749,7 +782,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         }
 
         // TODO: print better help here.
-        void printCommandHelpForTypes(Types...)()
+        static void printCommandHelpForTypes(Types...)()
         {
             enum maxNameLength =
             (){
@@ -757,7 +790,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 static foreach (Type; Types)
                 {
                     import std.algorithm.comparison : max;
-                    result = max(result, CommandInfo!RootType.name.length);
+                    result = max(result, cast(int) CommandInfo!Type.udaValue.name.length);
                 }
                 return result;
             }();
@@ -768,6 +801,35 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 // TODO: format this better.
                 writefln!"%*s  %s"(maxNameLength, Info.udaValue.name ~ ":", Info.description);
             }}
+        }
+
+        static void printHelpForRootTypes()
+        {
+            printCommandHelpForTypes!(
+                CommandTypeContext.toTypes!(Graph.rootTypeIndices));
+        }
+
+        static void printHelpForCommand(int typeIndex)()
+        {
+            alias Type = CommandTypeContext.Types[typeIndex];
+            CommandHelpText!Type help;
+            writeln(help.generate());
+        }
+
+        static void printHelpForTypeAndChildren(int typeIndex)()
+        {
+            alias childNodes = Alias!(Graph.Adjacencies[typeIndex]);
+            static if (childNodes.length > 0)
+            {
+                alias Types = CommandTypeContext.toTypes!childNodes;
+                printCommandHelpForTypes!types();
+            }
+
+            alias Info = CommandArgumentsInfo!(CommandTypeContext.Types[typeIndex]);
+            static if (childNodes.length == 0 || Info.takesSomeArguments)
+            {
+                printHelpForCommand!typeIndex();
+            }
         }
 
         // TODO: switch over the terminal states here, see `executeSingleCommand`.
@@ -781,7 +843,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             {
                 writeln("The first token in the arguments must the name of a subcommand. "
                     ~ "The allowed commands:\n");
-                // printCommandHelpForTypes!(Graph.RootTypes);
+                printHelpForRootTypes();
                 return -1;
             }
 
@@ -790,17 +852,15 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
             case State.notMatchedRootCommand:
             {
-                // printCommandHelpForTypes!(Graph.RootTypes);
+                printHelpForRootTypes();
                 return -1;
             }
+            
             case State.notMatchedNextCommand:
             {
                 import std.traits;
-                // TODO: uncomment some of the things in the graph to have the info and be able print this.
-                // printCommandHelpForTypes!(
-                    // map currentTypeIndex -> compileTimeTypeIndex (with the switch)
-                    // Graph.Adjacencies[compileTimeTypeIndex] -> childNodes    
-                    // map childNodes -> typeSymbols);
+                CommandTypeContext.executeWithCompileTimeTypeIndex!printHelpForTypeAndChildren(
+                    context._storage[$ - 1].typeIndex);
                 return -1;
             }
 
@@ -814,13 +874,13 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                     case SpecialThings.help:
                     {
                         import jcli.helptext;
-                        // map currentTypeIndex -> compileTimeTypeIndex
-                        // Type = Types[compileTimeTypeIndex]
-                        // writeHelpForCommand!Type();
+                        CommandTypeContext.executeWithCompileTimeTypeIndex!printHelpForTypeAndChildren(
+                            context._storage[$ - 1].typeIndex);
                         return 0;
                     }
                 }
             }
+            
             case State.finalExecutionResult:
             {
                 if (context._executeCommandResult.exception !is null)
@@ -830,10 +890,36 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 }
                 return context._executeCommandResult.exitCode;
             }
+            
             case State.tokenizerError:
             case State.commandParsingError:
             {
                 // TODO: exhaust the tokenizer to try to find a help request
+                while (!tokenizer.empty)
+                {
+                    auto specialThing = tryMatchSpecialThingsAndResetContextAccordingly(context, tokenizer);
+                    final switch (specialThing)
+                    {
+                        case SpecialThings.none:
+                        {
+                            tokenizer.popFront();
+                            break;
+                        }
+                        case SpecialThings.help:
+                        {
+                            if (context._storage.length > 0)
+                            {
+                                printHelpForRootTypes();
+                            }
+                            else
+                            {
+                                CommandTypeContext.executeWithCompileTimeTypeIndex!printHelpForTypeAndChildren(
+                                    context._storage[$ - 1].typeIndex);
+                            }
+                            return -1;
+                        }
+                    }
+                }
                 return -1;
             }
         }
@@ -846,7 +932,8 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 struct SimpleMatchAndExecuteHelper(Types...)
 {
     alias bindArgument = jcli.argbinder.bindArgument!();
-    alias TypeContext = MatchAndExecuteTypeContext!(bindArgument, Types);
+    alias _CommandTypeContext = CommandTypeContext!(Types);
+    alias TypeContext = MatchAndExecuteTypeContext!(bindArgument, _CommandTypeContext);
 
     MatchAndExecuteContext context;
     TypeContext.ParsingContext parsingContext;
@@ -1619,7 +1706,7 @@ int executeSingleCommand
 {
     alias bindArgument = jcli.argbinder.bindArgument!();
     alias Types = AliasSeq!(TCommand);
-    alias TypeContext = MatchAndExecuteTypeContext!(bindArgument, Types);
+    alias TypeContext = MatchAndExecuteTypeContext!(bindArgument, CommandTypeContext!Types);
 
     TypeContext.ParsingContext parsingContext;
     MatchAndExecuteContext context;

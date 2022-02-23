@@ -257,6 +257,8 @@ template CommandArgumentsInfo(TCommand)
     enum takesRaw = fieldsWithRaw.length == 1;
     static if (takesRaw)
         immutable ArgumentCommonInfo raw = getCommonArgumentInfo!(fieldsWithRaw[0], ArgConfig.aggregate);
+    
+    enum takesSomeArguments = named.length > 0 || positional.length > 0 || takesOverflow || takesRaw;
 }
 
 unittest

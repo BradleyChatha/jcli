@@ -54,15 +54,19 @@ struct CommandHelpText(alias CommandT_)
 
         named.multiSort!("a.optional != b.optional", "a.name < b.name");
         
+        static if (CommandInfo.flags.hasEither(CommandFlags.explicitlyDefault | CommandFlags.stringAttribute))
+            enum name = "Default";
+        else
+            enum name = CommandInfo.udaValue.name;
 
         // TODO:
         // This allocates way too much memory for no reason, and is slower as a result.
         // Just make that addLineWithPrefix take a range, and just chain these together.
         // Or make it expose the appender and do a `formattedWrite`.
         import std.format : format;
-        help.addLineWithPrefix("Usage: ", "%s %s%s%s".format(
+        help.addLineWithPrefix("Usage: ", "%s %s%s %s".format(
             appName,
-            CommandInfo.flags.doesNotHave(CommandFlags.explicitlyDefault) ? CommandInfo.udaValue.name : "DEFAULT",
+            name,
             positionals
                 .map!(p =>  "<" ~ p.name ~ ">")
                 .join(" "),

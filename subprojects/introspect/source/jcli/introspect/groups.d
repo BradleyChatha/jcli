@@ -118,6 +118,7 @@ template TypeGraph(Types...)
             {
                 if (isNotRoot)
                     continue;
+                visited[] = false;
                 if (isCyclic(parentIndex))
                 {
                     // TODO: report more info here.
@@ -132,11 +133,10 @@ template TypeGraph(Types...)
 
         auto ret = appender!string;
 
-        static if (0)
         {
             ret ~= "template Mappings() {";
             foreach (key, index; typeToIndex)
-                formattedWrite(ret, "enum size_t %s = %d;", key, index);
+                formattedWrite(ret, "enum int %s = %d;", key, index);
             ret ~= "}";
         }
 
@@ -145,7 +145,7 @@ template TypeGraph(Types...)
             // rootTypes ~= "alias RootTypes = AliasSeq!(";
 
             auto rootTypeIndices = appender!string;
-            rootTypeIndices ~= "immutable size_t[] rootTypeIndices = [";
+            rootTypeIndices ~= "immutable int[] rootTypeIndices = [";
             {
                 size_t appendedCount = 0;
                 foreach (nodeIndex, isNotRoot; isNotRootCache)
@@ -223,6 +223,11 @@ template TypeGraph(Types...)
     // pragma(msg, getGraphMixinText());
 
     mixin(getGraphMixinText());
+
+    template getTypeIndexOf(T)
+    {
+        mixin("alias getTypeIndexOf = Mappings!()." ~ escapedName!T ~ ";");
+    }
 
     // template getAdjacenciesOf(T)
     // {
