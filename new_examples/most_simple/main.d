@@ -2,10 +2,7 @@ import jcli;
 
 import std.stdio;
 
-// TODO: 
-// Allow the @("description") syntax for all commands, but this needs a bit more internal rework.
-// And what should that mean exactly? Maybe only allow that syntax for commands used in the simple API's?
-@CommandDefault("Asserts the number is even.")
+@("Asserts the number is even.")
 struct IsEvenCommand
 {
     @("The number to assert")

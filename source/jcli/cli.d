@@ -116,7 +116,11 @@ template CommandTypeContext(_Types...)
     alias defaultCommandIndices = Filter!(isDefault, aliasSeqOf!(Graph.rootTypeIndices));
 
     private alias getType(int typeIndex) = Types[typeIndex];
-    alias toTypes(alias indices) = staticMap!(getType, aliasSeqOf!(indices));
+    alias toTypes(int[] indices) = staticMap!(getType, aliasSeqOf!(indices));
+    
+    // private alias getTypeNode(int typeIndex) = Types[typeIndex];
+    import std.algorithm;
+    alias toTypes(Graph.Node[] nodes) = staticMap!(getType, aliasSeqOf!(map!"a.typeIndex"(nodes)));
 }
 
 static scope struct IndexHelper(int typeIndex, alias CommandTypeContext) 
@@ -674,11 +678,10 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
                             alias Type = CommandTypeContext.Types[rootTypeIndex];
                             alias Info = CommandInfo!Type;
 
-                            // Again, should be provided by another template.
-                            static assert(Info.flags.has(CommandFlags.commandAttribute));
-
                             // The default commands don't even have their name in the UDA.
-                            static if (!Info.flags.has(CommandFlags.explicitlyDefault))
+                            static if (Info.flags.has(CommandFlags.commandAttribute) && 
+                                // Hack so that single commands work.
+                                !Info.flags.has(CommandFlags.explicitlyDefault))
                             {
                                 static foreach (possibleName; Info.udaValue.pattern)
                                 {
@@ -784,13 +787,21 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
         // TODO: print better help here.
         static void printCommandHelpForTypes(Types...)()
         {
+            string getName(Type)()
+            {
+                static if (CommandInfo!Type.flags.has(CommandFlags.explicitlyDefault))
+                    return "default";
+                else
+                    return CommandInfo!Type.udaValue.name;
+            }
+
             enum maxNameLength =
             (){
                 int result = 0;
                 static foreach (Type; Types)
                 {
                     import std.algorithm.comparison : max;
-                    result = max(result, cast(int) CommandInfo!Type.udaValue.name.length);
+                    result = max(result, cast(int) getName!Type.length);
                 }
                 return result;
             }();
@@ -799,7 +810,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
             {{
                 alias Info = CommandInfo!Type;
                 // TODO: format this better.
-                writefln!"%*s  %s"(maxNameLength, Info.udaValue.name ~ ":", Info.description);
+                writefln!"%*s  %s"(maxNameLength, getName!Type ~ ":", Info.description);
             }}
         }
 
@@ -822,7 +833,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
             static if (childNodes.length > 0)
             {
                 alias Types = CommandTypeContext.toTypes!childNodes;
-                printCommandHelpForTypes!types();
+                printCommandHelpForTypes!Types();
             }
 
             alias Info = CommandArgumentsInfo!(CommandTypeContext.Types[typeIndex]);
@@ -873,9 +884,15 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
 
                     case SpecialThings.help:
                     {
-                        import jcli.helptext;
-                        CommandTypeContext.executeWithCompileTimeTypeIndex!printHelpForTypeAndChildren(
-                            context._storage[$ - 1].typeIndex);
+                        if (context._storage.length == 0)
+                        {
+                            printHelpForRootTypes();
+                        }
+                        else
+                        {
+                            CommandTypeContext.executeWithCompileTimeTypeIndex!printHelpForTypeAndChildren(
+                                context._storage[$ - 1].typeIndex);
+                        }
                         return 0;
                     }
                 }
@@ -907,7 +924,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
                         }
                         case SpecialThings.help:
                         {
-                            if (context._storage.length > 0)
+                            if (context._storage.length == 0)
                             {
                                 printHelpForRootTypes();
                             }

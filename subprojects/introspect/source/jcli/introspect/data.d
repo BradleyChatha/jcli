@@ -165,7 +165,7 @@ template CommandInfo(TCommand)
 
         static if (is(typeof(rawCommandUDA) : string))
         {
-            enum flags = CommandFlags.stringAttribute | CommandKind.givenValue;
+            enum flags = CommandFlags.stringAttribute | CommandFlags.givenValue;
             enum string udaValue = rawCommandUDA;
         }
         else static if (is(rawCommandUDA == Command))

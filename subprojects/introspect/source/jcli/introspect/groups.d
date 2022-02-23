@@ -300,6 +300,7 @@ template AllCommandsOf(Modules...)
     {
         template isCommand(string memberName)
         {
+            import jcli.core;
             enum isCommand = hasUDA!(__traits(getMember, Module, memberName), Command)
                 || hasUDA!(__traits(getMember, Module, memberName), CommandDefault);
         }
