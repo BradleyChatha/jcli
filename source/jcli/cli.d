@@ -149,11 +149,11 @@ enum MatchAndExecuteState
 private alias State = MatchAndExecuteState;
 
 ///
-template matchAndExecuteAccrossModules(Modules...)
+template matchAndExecuteAcrossModules(Modules...)
 {
     alias bind = bindArgumentAcrossModules!Modules;
     alias Types = AllCommandsOf!Modules;
-    alias matchAndExecuteAccrossModules = matchAndExecute!(bind, Types);
+    alias matchAndExecuteAcrossModules = matchAndExecute!(bind, Types);
 }
 
 /// Constructs the graph of the given command types, ...
@@ -162,7 +162,7 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
     private alias _matchAndExecute = .matchAndExecute!(bindArgument, CommandTypes);
 
     /// Forwards to `MatchAndExecuteTypeContext!Types.matchAndExecute`.
-    MatchAndExecuteContext matchAndExecute
+    int matchAndExecute
     (
         Tokenizer : ArgTokenizer!T, T,
         TErrorHandler
@@ -179,7 +179,7 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
     /// Resolves the invoked command by parsing the arguments array.
     /// Executes the `onExecute` method of any intermediate commands (command groups).
     /// Returns the result of the execution, and whether there were errors.
-    MatchAndExecuteContext matchAndExecute(scope string[] args)
+    int matchAndExecute(scope string[] args)
     {
         auto tokenizer = argTokenizer(args);
         return _matchAndExecute(tokenizer);
@@ -187,7 +187,7 @@ template matchAndExecute(alias bindArgument, CommandTypes...)
     
     /// ditto
     /// Uses the default error handler.
-    MatchAndExecuteContext matchAndExecute(Tokenizer : ArgTokenizer!T, T)
+    int matchAndExecute(Tokenizer : ArgTokenizer!T, T)
     (
         scope ref Tokenizer tokenizer
     )
@@ -261,6 +261,7 @@ SpecialThings tryMatchSpecialThings(Tokenizer : ArgTokenizer!TRange, TRange)
     return SpecialThings.none;
 }
 
+
 struct MatchAndExecuteContext
 {
     State _state;
@@ -311,6 +312,31 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     }();
     alias ParsingContext = CommandParsingContext!maxNamedArgCount;
     alias Context = MatchAndExecuteContext;
+
+    private bool tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex
+    (
+        alias templatedFunc,
+        Args...
+    )
+    (
+        int currentTypeIndex,
+        auto ref Args args
+    )
+    {
+        switch (currentTypeIndex)
+        {
+            static foreach (typeIndex, CurrentType; Types)
+            {
+                case cast(int) typeIndex:
+                {
+                    templatedFunc!(cast(int) typeIndex)(args);
+                    return true;
+                }
+            }
+            default:
+                return false;
+        }
+    }
 
     // These should be public to allow other modules to work with the context.
     // But we should also think about doing a typesafe wrapper over the context.
@@ -741,8 +767,9 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         }
     }
 
+    // TODO: pull this out into a standalone function.
     ///
-    Context matchAndExecute
+    int matchAndExecute
     (
         Tokenizer : ArgTokenizer!TRange, TRange,
         TErrorHandler,
@@ -760,9 +787,95 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             advanceState(context, parsingContext, tokenizer, errorHandler);
         }
 
-        // TODO: switch over the terminal states here, see `executeSingleCommand`.
+        // TODO: print better help here.
+        void printCommandHelpForTypes(Types...)()
+        {
+            enum maxNameLength =
+            (){
+                int result = 0;
+                static foreach (Type; Types)
+                {
+                    import std.algorithm.comparison : max;
+                    result = max(result, CommandInfo!RootType.name.length);
+                }
+                return result;
+            }();
 
-        return context;
+            static foreach (Type; Types)
+            {{
+                alias Info = CommandInfo!Type;
+                // TODO: format this better.
+                writefln!"%*s  %s"(maxNameLength, Info.udaValue.name ~ ":", Info.description);
+            }}
+        }
+
+        // TODO: switch over the terminal states here, see `executeSingleCommand`.
+        // TODO: a better implementation.
+        switch (context._state)
+        {
+            default:
+                assert(0, "Not all terminal states handled.");
+
+            case State.firstTokenNotCommand:
+            {
+                writeln("The first token in the arguments must the name of a subcommand. "
+                    ~ "The allowed commands:\n");
+                // printCommandHelpForTypes!(Graph.RootTypes);
+                return -1;
+            }
+
+            case State.invalid:
+                assert(0, "The context came to an invalid state — internal API misuse.");
+
+            case State.notMatchedRootCommand:
+            {
+                // printCommandHelpForTypes!(Graph.RootTypes);
+                return -1;
+            }
+            case State.notMatchedNextCommand:
+            {
+                import std.traits;
+                // TODO: uncomment some of the things in the graph to have the info and be able print this.
+                // printCommandHelpForTypes!(
+                    // map currentTypeIndex -> compileTimeTypeIndex (with the switch)
+                    // Graph.Adjacencies[compileTimeTypeIndex] -> childNodes    
+                    // map childNodes -> typeSymbols);
+                return -1;
+            }
+
+            case State.specialThing:
+            {
+                switch (context._specialThing)
+                {
+                    default:
+                        assert(0, "Some special thing was not been properly handled");
+
+                    case SpecialThings.help:
+                    {
+                        import jcli.helptext;
+                        // map currentTypeIndex -> compileTimeTypeIndex
+                        // Type = Types[compileTimeTypeIndex]
+                        // writeHelpForCommand!Type();
+                        return 0;
+                    }
+                }
+            }
+            case State.finalExecutionResult:
+            {
+                if (context._executeCommandResult.exception !is null)
+                {
+                    writeln(context._executeCommandResult.exception);
+                    return -1;
+                }
+                return context._executeCommandResult.exitCode;
+            }
+            case State.tokenizerError:
+            case State.commandParsingError:
+            {
+                // TODO: exhaust the tokenizer to try to find a help request
+                return -1;
+            }
+        }
     }
 }
 
