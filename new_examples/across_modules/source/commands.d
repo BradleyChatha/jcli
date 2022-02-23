@@ -28,6 +28,7 @@ struct CommonContext
     }
 
     // TODO: add a method that is called when the command is specifically a parent.
+    // TODO: allow freestanding functions as callbacks (this is more involved to implement).
     void onExecute()
     {
         if (tempPath == "")
