@@ -313,14 +313,17 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     alias ParsingContext = CommandParsingContext!maxNamedArgCount;
     alias Context = MatchAndExecuteContext;
 
-    private bool tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex
+    // I was debating the name for this function, I guess this one's alright 
+    private void executeWithCompileTimeTypeIndex
     (
-        alias templatedFunc,
-        Args...
+        alias templateFunctionThatTakesTheCompileTimeIndex,
+        // We need to pass the arguments explicitly, because of frame issues.
+        // I'm glad it works with static functions tho, I really am.
+        OtherArgsToPassToTemplateFunction...
     )
     (
         int currentTypeIndex,
-        auto ref Args args
+        auto ref OtherArgsToPassToTemplateFunction args
     )
     {
         switch (currentTypeIndex)
@@ -329,13 +332,165 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             {
                 case cast(int) typeIndex:
                 {
-                    templatedFunc!(cast(int) typeIndex)(args);
-                    return true;
+                    templateFunctionThatTakesTheCompileTimeIndex!(cast(int) typeIndex)(args);
+                    return;
                 }
             }
             default:
-                return false;
+                assert(false);
         }
+    }
+
+    void parseCommand
+    (
+        size_t typeIndex,
+        Tokenizer : ArgTokenizer!TRange, TRange,
+        TErrorHandler
+    )
+    (
+        scope ref Context context,
+        scope ref ParsingContext parsingContext,
+        scope ref Tokenizer tokenizer,
+        scope ref TErrorHandler errorHandler,
+    )
+    {
+        alias Type = Types[typeIndex];
+        alias ArgumentsInfo = CommandArgumentsInfo!Type;
+
+        Type* command = getLatestCommand!typeIndex(context);
+
+        enum childCommandsCount = Graph.Adjacencies[typeIndex].length;
+
+        bool maybeMatchNextCommandNameAndResetState(string nameSlice)
+        {
+            bool didMatchCommand;
+
+            // This one HAS to stay inlined. Otherwise you get frame issues.
+            // See the older code: https://github.com/BradleyChatha/jcli/blob/511a02fe8dcd2913333f463ab5ad60d56fdb7f89/source/jcli/cli.d#L371-L430
+            // TODO: Add better match logic here.
+            matchSwitch: switch (nameSlice)
+            {
+                default:
+                {
+                    didMatchCommand = false;
+                    break matchSwitch;
+                }
+                static foreach (childNodeIndex, childNode; Graph.Adjacencies[typeIndex])
+                {{
+                    alias Type = Types[childNode.typeIndex];
+                    static foreach (possibleName; CommandInfo!Type.udaValue.pattern)
+                    {
+                        case possibleName:
+                        {
+                            auto newCommand = addCommand!(childNode.typeIndex)(context);
+                            
+                            static if (childNode.fieldIndex != -1)
+                                newCommand.tupleof[childNode.fieldIndex] = command;
+                            
+                            context._matchedName = possibleName;
+                            didMatchCommand = true;
+                            break matchSwitch;
+                        }
+                    }
+                    
+                }}
+            }
+
+            if (didMatchCommand)
+            {
+                maybeReportParseErrorsFromFinalContext!ArgumentsInfo(parsingContext, errorHandler);
+                resetNamedArgumentArrayStorage!ArgumentsInfo(parsingContext);
+                tokenizer.resetWithRemainingRange();
+                context._state = State.matchedNextCommand;
+            }
+
+            return didMatchCommand;
+        }
+        
+        // Matched the given command.
+        while (!tokenizer.empty)
+        {
+            if (tryMatchSpecialThingsAndResetContextAccordingly(context, tokenizer))
+                return;
+
+            const currentToken = tokenizer.front;
+
+            auto consumeSingle()
+            { 
+                return consumeSingleArgumentIntoCommand!bindArgument(
+                    parsingContext, *command, tokenizer, errorHandler);
+            }
+
+            static if (0)
+            {
+                if (currentToken.kind.has(ArgToken.Kind.errorBit))
+                {
+                    // TODO: error handler integration, not sure yet??
+                    context._state = State.tokenizerError;
+                    // context._tokenizerError = currentToken.kind;
+                    return;
+                }
+            }
+
+            // We don't bother with subcommands if the current command has no children.
+            // Is this a hack? I'm not sure.
+            static if (childCommandsCount == 0)
+            {
+                const _ = consumeSingle();
+                continue;
+            }
+
+            else if (currentToken.kind.has(ArgToken.Kind.valueBit)  // @suppress(dscanner.suspicious.static_if_else)
+                && currentToken.kind.hasEither(
+                    ArgToken.Kind.positionalArgumentBit | ArgToken.Kind.orphanArgumentBit))
+            {
+                // 3 posibilities
+                // 1. Not all required positional arguments have been read, in which case we read that.
+                // 2. All required positional arguments have been read, but there are still optional ones,
+                //    in which case we try to match command first before reading on.
+                // 3. All possibile positional args have been read, so just match the name.
+                if (parsingContext.currentPositionalArgIndex < ArgumentsInfo.numRequiredPositionalArguments)
+                {
+                    const _ = consumeSingle();
+                }
+                else if (parsingContext.currentPositionalArgIndex < ArgumentsInfo.positional.length
+                    || ArgumentsInfo.takesOverflow)
+                {
+                    // match, add
+                    if (maybeMatchNextCommandNameAndResetState(currentToken.nameSlice))
+                    {
+                        tokenizer.popFront();
+                        return;
+                    }
+                    const _ = consumeSingle();
+                }
+                else
+                {
+                    // match, add
+                    if (!maybeMatchNextCommandNameAndResetState(currentToken.nameSlice))
+                    {
+                        context._state = State.notMatchedNextCommand;
+                        context._notMatchedName = currentToken.nameSlice;
+                    }
+                    tokenizer.popFront();
+                    return;
+                }
+            }
+            else
+            {
+                const _ = consumeSingle();
+            }
+        }
+
+        maybeReportParseErrorsFromFinalContext!ArgumentsInfo(parsingContext, errorHandler);
+
+        if (parsingContext.errorCounter > 0)
+        {
+            context._state = State.commandParsingError;
+            return;
+        }
+
+        context._state = State.beforeFinalExecution;
     }
 
     // These should be public to allow other modules to work with the context.
@@ -418,6 +573,32 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
     //     }
     // }
 
+    bool tryMatchSpecialThingsAndResetContextAccordingly
+    (
+        Tokenizer : ArgTokenizer!TRange, TRange,
+    )
+    (
+        scope ref Context context,
+        scope ref Tokenizer tokenizer,
+    )
+    {
+        final switch (tryMatchSpecialThings(tokenizer))
+        {
+            case SpecialThings.help:
+            {
+                context._specialThing = SpecialThings.help;
+                context._state = State.specialThing;
+                return true;
+            }
+
+            case SpecialThings.none:
+            {
+                break;
+            }
+        }
+        return false;
+    }
+
     ///
     void advanceState
     (
@@ -435,25 +616,6 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
         {
             context._state = State.invalid;
             return;
-        }
-
-        bool tryMatchSpecialThingsAndResetContextAccordingly()
-        {
-            final switch (tryMatchSpecialThings(tokenizer))
-            {
-                case SpecialThings.help:
-                {
-                    context._specialThing = SpecialThings.help;
-                    context._state = State.specialThing;
-                    return true;
-                }
-
-                case SpecialThings.none:
-                {
-                    break;
-                }
-            }
-            return false;
         }
 
         switch (context._state)
@@ -501,7 +663,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                     return;
                 }
 
-                if (tryMatchSpecialThingsAndResetContextAccordingly())
+                if (tryMatchSpecialThingsAndResetContextAccordingly(context, tokenizer))
                     return;
 
                 ArgToken firstToken = tokenizer.front;
@@ -564,157 +726,8 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
             case State.matchedRootCommand:
             case State.intermediateExecutionResult:
             {
-                void fillLatestCommand(size_t typeIndex)()
-                {
-                    alias Type = Types[typeIndex];
-                    alias ArgumentsInfo = CommandArgumentsInfo!Type;
-
-                    Type* command = getLatestCommand!typeIndex(context);
-
-                    enum childCommandsCount = Graph.Adjacencies[typeIndex].length;
-
-                    bool maybeMatchNextCommandNameAndResetState(string nameSlice)
-                    {
-                        bool didMatchCommand;
-
-                        // This one HAS to stay inlined. Otherwise you get frame issues.
-                        // See the older code: https://github.com/BradleyChatha/jcli/blob/511a02fe8dcd2913333f463ab5ad60d56fdb7f89/source/jcli/cli.d#L371-L430
-                        // TODO: Add better match logic here.
-                        matchSwitch: switch (nameSlice)
-                        {
-                            default:
-                            {
-                                didMatchCommand = false;
-                                break matchSwitch;
-                            }
-                            static foreach (childNodeIndex, childNode; Graph.Adjacencies[typeIndex])
-                            {{
-                                alias Type = Types[childNode.typeIndex];
-                                static foreach (possibleName; CommandInfo!Type.udaValue.pattern)
-                                {
-                                    case possibleName:
-                                    {
-                                        auto newCommand = addCommand!(childNode.typeIndex)(context);
-                                        
-                                        static if (childNode.fieldIndex != -1)
-                                            newCommand.tupleof[childNode.fieldIndex] = command;
-                                        
-                                        context._matchedName = possibleName;
-                                        didMatchCommand = true;
-                                        break matchSwitch;
-                                    }
-                                }
-                                
-                            }}
-                        }
-
-                        if (didMatchCommand)
-                        {
-                            maybeReportParseErrorsFromFinalContext!ArgumentsInfo(parsingContext, errorHandler);
-                            resetNamedArgumentArrayStorage!ArgumentsInfo(parsingContext);
-                            tokenizer.resetWithRemainingRange();
-                            context._state = State.matchedNextCommand;
-                        }
-
-                        return didMatchCommand;
-                    }
-                    
-                    // Matched the given command.
-                    while (!tokenizer.empty)
-                    {
-                        if (tryMatchSpecialThingsAndResetContextAccordingly())
-                            return;
-
-                        const currentToken = tokenizer.front;
-
-                        auto consumeSingle()
-                        { 
-                            return consumeSingleArgumentIntoCommand!bindArgument(
-                                parsingContext, *command, tokenizer, errorHandler);
-                        }
-
-                        static if (0)
-                        {
-                            if (currentToken.kind.has(ArgToken.Kind.errorBit))
-                            {
-                                // TODO: error handler integration, not sure yet??
-                                context._state = State.tokenizerError;
-                                // context._tokenizerError = currentToken.kind;
-                                return;
-                            }
-                        }
-
-                        // We don't bother with subcommands if the current command has no children.
-                        // Is this a hack? I'm not sure.
-                        static if (childCommandsCount == 0)
-                        {
-                            const _ = consumeSingle();
-                            continue;
-                        }
-
-                        else if (currentToken.kind.has(ArgToken.Kind.valueBit)  // @suppress(dscanner.suspicious.static_if_else)
-                            && currentToken.kind.hasEither(
-                                ArgToken.Kind.positionalArgumentBit | ArgToken.Kind.orphanArgumentBit))
-                        {
-                            // 3 posibilities
-                            // 1. Not all required positional arguments have been read, in which case we read that.
-                            // 2. All required positional arguments have been read, but there are still optional ones,
-                            //    in which case we try to match command first before reading on.
-                            // 3. All possibile positional args have been read, so just match the name.
-                            if (parsingContext.currentPositionalArgIndex < ArgumentsInfo.numRequiredPositionalArguments)
-                            {
-                                const _ = consumeSingle();
-                            }
-                            else if (parsingContext.currentPositionalArgIndex < ArgumentsInfo.positional.length
-                                || ArgumentsInfo.takesOverflow)
-                            {
-                                // match, add
-                                if (maybeMatchNextCommandNameAndResetState(currentToken.nameSlice))
-                                {
-                                    tokenizer.popFront();
-                                    return;
-                                }
-                                const _ = consumeSingle();
-                            }
-                            else
-                            {
-                                // match, add
-                                if (!maybeMatchNextCommandNameAndResetState(currentToken.nameSlice))
-                                {
-                                    context._state = State.notMatchedNextCommand;
-                                    context._notMatchedName = currentToken.nameSlice;
-                                }
-                                tokenizer.popFront();
-                                return;
-                            }
-                        }
-                        else
-                        {
-                            const _ = consumeSingle();
-                        }
-                    }
-
-                    maybeReportParseErrorsFromFinalContext!ArgumentsInfo(parsingContext, errorHandler);
-
-                    if (parsingContext.errorCounter > 0)
-                    {
-                        context._state = State.commandParsingError;
-                        return;
-                    }
-
-                    context._state = State.beforeFinalExecution;
-                }
-
-                bool matched;
-                enum mixinString = get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
-                    "matched", "fillLatestCommand", "context._storage[$ - 1].typeIndex");
-                mixin(mixinString);
-
-                // monkyyy's frame issues at play.
-                // bool matched = tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex!fillLatestCommand(
-                //     context._currentCommandTypeIndex);
-
-                assert(matched);
+                executeWithCompileTimeTypeIndex!parseCommand(
+                    context._storage[$ - 1].typeIndex, context, parsingContext, tokenizer, errorHandler);
                 return;
             }
 
@@ -725,7 +738,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                 // Actually, all this thing needs is the match and execute context.
                 // So, we shouldn't need that mixin, it can be easily refactored into a function,
                 // in which case we shouldn't have the frame issues.
-                void executeNextToLast(size_t typeIndex)()
+                static void executeNextToLast(size_t typeIndex)(ref scope Context context)
                 {
                     auto command = getCommand!typeIndex(context, cast(int) context._storage.length - 2);
                     auto result = executeCommand(*command);
@@ -733,35 +746,25 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                     context._executeCommandResult = result;
                 }
 
-                bool didHandlerExecute;
-                enum mixinString = get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
-                    "didHandlerExecute", "executeNextToLast", "context._storage[$ - 2].typeIndex");
-                mixin(mixinString);
+                executeWithCompileTimeTypeIndex!executeNextToLast(
+                    context._storage[$ - 2].typeIndex, context);
 
-                assert(didHandlerExecute);
                 return;
             }
 
             case State.beforeFinalExecution:
             {
-                void executeLast(size_t typeIndex)()
+                static void executeLast(size_t typeIndex)(ref scope Context context)
                 {
                     auto command = getCommand!typeIndex(context, cast(int) context._storage.length - 1);
                     auto result = executeCommand(*command);
                     context._state = State.finalExecutionResult;
                     context._executeCommandResult = result;
                 }
-                
-                bool didHandlerExecute;
-                enum mixinString = get_tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex_MixinString(
-                    "didHandlerExecute", "executeLast", "context._storage[$ - 1].typeIndex");
-                mixin(mixinString);
 
-                // bool didHandlerExecute = tryExecuteHandlerWithCompileTimeCommandIndexGivenRuntimeCommandIndex!executeLast(
-                //     context._currentCommandTypeIndex);
-                // assert(didHandlerExecute);
+                executeWithCompileTimeTypeIndex!executeLast(
+                    context._storage[$ - 1].typeIndex, context);
 
-                assert(didHandlerExecute);
                 return;
             }
         }
