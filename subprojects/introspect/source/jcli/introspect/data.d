@@ -157,7 +157,7 @@ template CommandInfo(TCommand)
 
     static if (commandUDAs.length == 0)
     {
-        enum flags = CommandFlags.noCommandAttributeBit;
+        enum flags = CommandFlags.noCommandAttribute;
     }
     else
     {
