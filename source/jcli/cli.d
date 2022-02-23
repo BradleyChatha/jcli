@@ -540,7 +540,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
 
                     Type* command = getLatestCommand!typeIndex(context);
 
-                    enum childCommandsCount = Graph.Nodes[typeIndex].length;
+                    enum childCommandsCount = Graph.Adjacencies[typeIndex].length;
 
                     bool maybeMatchNextCommandNameAndResetState(string nameSlice)
                     {
@@ -556,14 +556,14 @@ template MatchAndExecuteTypeContext(alias bindArgument, Types...)
                                 didMatchCommand = false;
                                 break matchSwitch;
                             }
-                            static foreach (childNodeIndex, childNode; Graph.Nodes[typeIndex])
+                            static foreach (childNodeIndex, childNode; Graph.Adjacencies[typeIndex])
                             {{
-                                alias Type = Types[childNode.childIndex];
+                                alias Type = Types[childNode.typeIndex];
                                 static foreach (possibleName; CommandInfo!Type.general.uda.pattern)
                                 {
                                     case possibleName:
                                     {
-                                        auto newCommand = addCommand!(childNode.childIndex)(context);
+                                        auto newCommand = addCommand!(childNode.typeIndex)(context);
                                         
                                         static if (childNode.fieldIndex != -1)
                                             newCommand.tupleof[childNode.fieldIndex] = command;

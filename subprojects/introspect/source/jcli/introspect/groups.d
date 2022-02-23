@@ -8,19 +8,19 @@ module jcli.introspect.groups;
 /// For now, when multiple such fields exist, the command  will be a child of both, 
 /// and when the command is resolved, only the context pointer of 
 /// the parent command that it was resolved through will be not-null.
-///
-/// Multiple nested commands in the same function won't work correctly!
 enum ParentCommand;
 
 // TODO: 
 // Ways to specify children instead of the parent.
 // Needs some changes in the graph code. Not hard.
+//
 // TODO: 
 // Ways to parent all commands within a module.
 // I bet this one can be really useful.
 // Should also be pretty easy to implement.
+//
 // TODO:
-// Discover commands throught a parent command, by looking at its children.
+// Discover commands through a parent command, by looking at its children.
 // Should be very useful when you decide to go top-down
 // and have more control over the command layout.
 // I imagine it shouldn't be that hard?
@@ -45,7 +45,10 @@ template escapedName(T)
 
 struct TypeGraphNode
 {
-    int childIndex;
+    int typeIndex;
+    
+    /// Shows which field of the given command type points to the parent context.
+    /// Is -1 if the related command does not have a member pointing to the parent context. 
     int fieldIndex;
 }
 
@@ -73,7 +76,6 @@ template TypeGraph(Types...)
                 {
                     static if (hasUDA!(field, ParentCommand))
                     {{
-                        // Another idea is to use the 
                         const name = escapedName!T;
                         if (auto index = name in typeToIndex)
                             childrenGraph[*index] ~= Node(cast(int) outerIndex, cast(int) fieldIndex);
@@ -89,7 +91,7 @@ template TypeGraph(Types...)
         foreach (parentIndex, children; childrenGraph)
         {
             foreach (childNode; children)
-                isNotRootCache[childNode.childIndex] = true;
+                isNotRootCache[childNode.typeIndex] = true;
         }
 
         {
@@ -106,7 +108,7 @@ template TypeGraph(Types...)
                 visited[index] = true;
                 foreach (childNode; childrenGraph[index])
                 {
-                    if (isCyclic(childNode.childIndex))
+                    if (isCyclic(childNode.typeIndex))
                         return true;
                 }
                 return false;
@@ -171,7 +173,7 @@ template TypeGraph(Types...)
             // ret ~= "\n";
         }
         {
-            formattedWrite(ret, "immutable Node[][] Nodes = %s;\n", childrenGraph);
+            formattedWrite(ret, "immutable Node[][] Adjacencies = %s;\n", childrenGraph);
         }
 
         // Extra info, not actually used
@@ -187,19 +189,19 @@ template TypeGraph(Types...)
                 types ~= "alias " ~ escapedName!ParentType ~ " = AliasSeq!(";
                 fields ~= "alias " ~ escapedName!ParentType ~ " = AliasSeq!(";
 
-                foreach (childIndexIndex, childNode; childrenGraph[parentIndex])
+                foreach (typeIndexIndex, childNode; childrenGraph[parentIndex])
                 {
-                    if (childIndexIndex > 0)
+                    if (typeIndexIndex > 0)
                     {
                         types ~= ", ";
                         fields ~= ", ";
                     }
 
                     formattedWrite(fields, "Types[%d].tupleof[%d]", 
-                        childNode.childIndex, childNode.fieldIndex);
+                        childNode.typeIndex, childNode.fieldIndex);
 
                     formattedWrite(types, "Types[%d]", 
-                        childNode.childIndex);
+                        childNode.typeIndex);
                 }
 
                 types ~= ");\n";
@@ -222,9 +224,9 @@ template TypeGraph(Types...)
 
     mixin(getGraphMixinText());
 
-    // template getNodesOf(T)
+    // template getAdjacenciesOf(T)
     // {
-    //     mixin("alias getNodesOf = Nodes[Mappings!()." ~ escapedName!T ~ "];");
+    //     mixin("alias getAdjacenciessOf = Adjacencies[Mappings!()." ~ escapedName!T ~ "];");
     // }
 
     // template getChildTypes(T)
@@ -289,35 +291,20 @@ template TypeGraph(Types...)
 // Haven't tested this one, haven't used it either.
 template AllCommandsOf(Modules...)
 {
-    // enum isCommand(string memberName) = hasUDA!(__traits(getMember, Module, memberName), Command)
-    //     || hasUDA!(__traits(getMember, Module, memberName), CommandDefault);
-    // alias AllCommandsOf = Filter!(isCommand, Modules);
-    
-    static if (Modules.length == 0)
+    template getCommands(alias Module)
     {
-        alias AllCommandsOf = AliasSeq!();
-    }
-    static if (Modules.length == 1)
-    {
-        alias Module = Modules[0];
-        
-        // TODO: This can be a CTFE lambda.
         template isCommand(string memberName)
         {
             enum isCommand = hasUDA!(__traits(getMember, Module, memberName), Command)
                 || hasUDA!(__traits(getMember, Module, memberName), CommandDefault);
         }
-        alias Commands = Filter!(isCommand, __traits(allMembers, Module));
+        alias commandNames = Filter!(isCommand, __traits(allMembers, Module));
 
-        alias getMember(string memberName) =  __traits(getMember, Module, memberName);
-        alias AllCommandsOf = staticMap!(getMember, Commands);
+        alias getMember(string memberName) = __traits(getMember, Module, memberName);
+        alias getCommands = staticMap!(getMember, commandNames);
     }
-    else
-    {
-        alias AllCommandsOf = AliasSeq!(
-            AllCommandsOf!(Modules[0 .. $ / 2]),
-            AllCommandsOf!(Modules[$ / 2 .. $]));
-    }
+
+    alias AllCommandsOf = staticMap!(getCommands, Modules);
 }
 
 // template getParentCommandCandidateFieldSymbols(AllCommands)
