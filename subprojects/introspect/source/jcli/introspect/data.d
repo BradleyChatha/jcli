@@ -590,6 +590,26 @@ unittest
         enum b = Info.positional[1];
         static assert(b.flags.has(ArgFlags._optionalBit | ArgFlags._inferedOptionalityBit));
     }
+    {
+        static struct S
+        {
+            @("Hello")
+            @(ArgConfig.positional)
+            string a;
+
+            @("World")
+            string b;
+        }
+        alias Info = CommandArgumentsInfo!S;
+
+        enum a = Info.positional[0];
+        static assert(a.flags.has(ArgFlags._requiredBit | ArgFlags._inferedOptionalityBit));
+        static assert(a.description == "Hello");
+        
+        enum b = Info.named[0];
+        static assert(b.flags.has(ArgFlags._requiredBit | ArgFlags._inferedOptionalityBit));
+        static assert(b.description == "World");
+    }
 }
 
 private:
@@ -870,16 +890,36 @@ PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)() pure
 
     // Since this is a static foreach, it will be easy to include type info here.
     PositionalArgumentInfo[] result;
-    static foreach (field; fieldsWithUDAOf!(TCommand, ArgPositional))
+
+    static foreach (field; TCommand.tupleof)
     {{
-        auto info = getArgumentInfo!(ArgPositional, field);
-        if (info.name == "")
-            info.name = __traits(identifier, field);
-        
-        auto t = PositionalArgumentInfo(
-            info,
-            getCommonArgumentInfo!(field, ArgFlags._positionalArgumentBit));
-        result ~= t;
+        enum hasPositionalUDA = hasUDA!(field, ArgPositional);
+        // Doing this one is tiny bit costly ...
+        enum foldedArgFlags = foldArgumentFlags!(__traits(getAttributes, field));
+        enum hasPositionalFlag = foldedArgFlags.has(ArgFlags._positionalArgumentBit);
+
+        static if (hasPositionalUDA)
+        {
+            auto info = getArgumentInfo!(ArgPositional, field);
+            if (info.name == "")
+                info.name = __traits(identifier, field);
+        }
+        else static if (hasPositionalFlag)
+        {
+            alias stringAttributes = getUDAs!(field, string);
+
+            // TODO: check for string type attribute.
+            static if (stringAttributes.length > 0)
+                auto info = ArgPositional(__traits(identifier, field), stringAttributes[0]);
+            else
+                auto info = ArgPositional(__traits(identifier, field), "");
+        }
+
+        static if (hasPositionalUDA || hasPositionalFlag)
+        {
+            result ~= PositionalArgumentInfo(
+                info, getCommonArgumentInfo!(field, ArgFlags._positionalArgumentBit));
+        }
     }}
 
     alias isOptional = p => p.flags.has(ArgFlags._optionalBit);
@@ -975,7 +1015,15 @@ NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)() pure
     static foreach (field; TCommand.tupleof)
     {{
         enum hasNamed = hasUDA!(field, ArgNamed);
-        enum isSimple = !hasNamed && !hasUDA!(field, ArgPositional) && hasUDA!(field, string);
+        enum foldedArgFlags = foldArgumentFlags!(__traits(getAttributes, field));
+        enum hasPositionalFlag = foldedArgFlags.has(ArgFlags._positionalArgumentBit);
+        enum hasNamedFlag = foldedArgFlags.has(ArgFlags._namedArgumentBit);
+
+        // This check is getting quite complex, so time to refactor to be honest.
+        enum isSimple = !hasNamed
+            && !hasUDA!(field, ArgPositional)
+            && !hasPositionalFlag
+            && (hasUDA!(field, string) || hasNamedFlag);
 
         static if (hasNamed)
         {
@@ -985,8 +1033,11 @@ NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)() pure
         }
         else static if (isSimple)
         {
-            enum description = getUDAs!(field, string)[0];
-            ArgNamed uda = ArgNamed(__traits(identifier, field), description);
+            alias stringAttributes = getUDAs!(field, string);
+            static if (stringAttributes.length > 0)
+                ArgNamed uda = ArgNamed(__traits(identifier, field), stringAttributes[0]);
+            else
+                ArgNamed uda = ArgNamed(__traits(identifier, field), "");
         }
         
         static if (hasNamed || isSimple)

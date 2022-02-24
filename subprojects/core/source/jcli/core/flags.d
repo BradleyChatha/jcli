@@ -6,7 +6,7 @@ enum ArgConfig : ArgFlags
     none,
 
     /// If the argument appears multiple times, the last value provided will take effect.
-    canRedefine = ArgFlags._canRedefineBit | ArgFlags._multipleBit,
+    canRedefine = ArgFlags._canRedefineBit | ArgFlags._multipleBit | ArgFlags._namedArgumentBit,
 
     /// If not given a value, will have its default value and not trigger an error.
     /// Missing (even named) arguments trigger an error by default.
@@ -20,19 +20,25 @@ enum ArgConfig : ArgFlags
     caseInsensitive = ArgFlags._caseInsensitiveBit,
 
     /// Example: `-a -a` gives 2.
-    accumulate = ArgFlags._multipleBit | ArgFlags._countBit,
+    accumulate = ArgFlags._multipleBit | ArgFlags._countBit | ArgFlags._namedArgumentBit,
 
     /// The type of the field must be an array of some sort.
     /// Example: `-a b -a c` gives an the array ["b", "c"]
-    aggregate = ArgFlags._multipleBit | ArgFlags._aggregateBit,
+    aggregate = ArgFlags._multipleBit | ArgFlags._aggregateBit | ArgFlags._namedArgumentBit,
 
     /// When an argument name is specified multiple times, count how many there are.
     /// Example: `-vvv` gives the count of 3.
-    repeatableName = ArgFlags._repeatableNameBit | ArgFlags._countBit,
+    repeatableName = ArgFlags._repeatableNameBit | ArgFlags._countBit | ArgFlags._namedArgumentBit,
 
     /// Allow an argument name to appear without a value.
     /// Example: `--flag` would parse as `true`.
-    parseAsFlag = ArgFlags._parseAsFlagBit | ArgFlags._optionalBit,
+    parseAsFlag = ArgFlags._parseAsFlagBit | ArgFlags._optionalBit | ArgFlags._namedArgumentBit,
+
+    /// Can be used instead of ArgPositional UDA.
+    positional = ArgFlags._positionalArgumentBit,
+
+    /// Can be used instead of ArgNamed UDA.
+    named = ArgFlags._namedArgumentBit,
 }
 unittest
 {

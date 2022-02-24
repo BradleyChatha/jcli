@@ -3,7 +3,6 @@ import jcli.core.flags : ArgConfig;
 @("Asserts the number is even.")
 struct IsEvenCommand
 {
-
     @("The number to assert")
     int number;
 

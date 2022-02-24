@@ -57,6 +57,8 @@ struct ArgPositional
     string name;
     string description;
 
+    @nogc nothrow pure @safe:
+    
     this(string description)
     {
         this.description = description;
