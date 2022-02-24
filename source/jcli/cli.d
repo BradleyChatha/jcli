@@ -758,8 +758,6 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
                 }
                 else if (firstToken.kind.has(ArgToken.Kind.valueBit)) // @suppress(dscanner.suspicious.static_if_else)
                 {
-                    // writeln("not matched input ", firstToken.nameSlice,
-                    //     " the number of possible things is ", Graph.rootTypeIndices.length);
                     context._state = State.notMatchedRootCommand;
                     tokenizer.popFront();
                 }
@@ -783,14 +781,10 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
             // Already added the command, but haven't executed the previous one.
             case State.matchedNextCommand:
             {
-                // TODO:
-                // Actually, all this thing needs is the match and execute context.
-                // So, we shouldn't need that mixin, it can be easily refactored into a function,
-                // in which case we shouldn't have the frame issues.
                 static void executeNextToLast(size_t typeIndex)(ref scope Context context)
                 {
                     auto command = commandIndexer!typeIndex(context)[$ - 2];
-                    auto result = executeCommand(*command);
+                    auto result = executeGroupCommand(*command);
                     context._state = State.intermediateExecutionResult;
                     context._executeCommandResult = result;
                 }
