@@ -35,10 +35,10 @@ struct CommonContext
     }
 
     // TODO: allow freestanding functions as callbacks (this is more involved to implement).
-    // onGroupExecute is only called when the function is invoked as an intermediate command.
+    
     // An example: `./program_name print -number 1`.
     // So before the arguments to `print` get parsed, this method gets invoked first.
-    void onGroupExecute()
+    void onIntermediateExecute()
     {
         if (tempPath == "")
             tempPath = "temp";

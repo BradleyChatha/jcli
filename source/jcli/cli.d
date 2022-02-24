@@ -83,13 +83,13 @@ ExecuteCommandResult executeGroupCommand(T)(auto ref scope T command)
 {
     try
     {
-        static if (is(typeof(command.onGroupExecute()) : int))
+        static if (is(typeof(command.onIntermediateExecute()) : int))
         {
-            return typeof(return)(command.onGroupExecute(), null);
+            return typeof(return)(command.onIntermediateExecute(), null);
         }
-        else static if (is(typeof(T.onGroupExecute()) == void))
+        else static if (is(typeof(T.onIntermediateExecute()) == void))
         {
-            command.onGroupExecute();
+            command.onIntermediateExecute();
             return typeof(return)(0, null);
         }
         else
