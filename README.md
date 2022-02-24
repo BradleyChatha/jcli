@@ -154,7 +154,7 @@ For example the command `mytool 60 yoyo true` would have `60` in the 0th positio
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @ArgPositional("number", "The number to check.")
+    @ArgPositional("The number to check.")
     int number;
 
     int onExecute()
@@ -286,7 +286,7 @@ enum Mode
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @ArgPositional("number", "The number to check.")
+    @ArgPositional("The number to check.")
     int number;
 
     @ArgNamed("mode", "Which mode to use.")
@@ -363,7 +363,7 @@ So to make our `mode` argument optional, we add `ArgConfig.optional` UDA:
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @ArgPositional("number", "The number to check.")
+    @ArgPositional("The number to check.")
     int number;
 
     @ArgNamed("mode", "Which mode to use.")
@@ -388,7 +388,7 @@ Another way is to make it `Nullable`, which may be useful sometimes, but in this
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @ArgPositional("number", "The number to check.")
+    @ArgPositional("The number to check.")
     int number;
 
     @ArgNamed("mode", "Which mode to use.")
@@ -824,10 +824,10 @@ Imagine we had a `copy` command that copies the contents of a file into another 
 @Command("copy", "Copies a file")
 struct CopyCommand
 {
-    @ArgPositional("source", "The source file.")
+    @ArgPositional("The source file.")
     File source;
 
-    @ArgPositional("destination", "The destination file.")
+    @ArgPositional("The destination file.")
     File destination;
 
     void onExecute()
@@ -863,11 +863,11 @@ ResultOf!File openReadOnly(string arg)
 @Command("copy", "Copies a file")
 struct CopyCommand
 {
-    @ArgPositional("source", "The source file.")
+    @ArgPositional("The source file.")
     @UseConverter!openReadOnly
     File source;
 
-    @ArgPositional("destination", "The destination file.")
+    @ArgPositional("The destination file.")
     @UseConverter!(arg => ok!File(File(arg, "w")))
     File destination;
 
@@ -1201,10 +1201,10 @@ enum CalculateOperation
 
 struct CalculateCommand
 {
-    @ArgPositional("a", "The first value.")
+    @ArgPositional("The first value.")
     int a;
 
-    @ArgPositional("b", "The second value.")
+    @ArgPositional("The second value.")
     int b;
 
     @ArgNamed("o|op", "The operation to perform.")
