@@ -78,6 +78,32 @@ unittest
     }
 }
 
+// The name is subject to change.
+ExecuteCommandResult executeGroupCommand(T)(auto ref scope T command)
+{
+    try
+    {
+        static if (is(typeof(command.onGroupExecute()) : int))
+        {
+            return typeof(return)(command.onGroupExecute(), null);
+        }
+        else static if (is(typeof(T.onGroupExecute()) == void))
+        {
+            command.onGroupExecute();
+            return typeof(return)(0, null);
+        }
+        else
+        {
+            // Default to executing the command normally. (Maybe we shouldn't??)
+            return executeCommand(command);
+        }
+    }
+    catch (Exception exc)
+    {
+        return typeof(return)(0, exc);
+    }
+}
+
 template CommandTypeContext(_Types...)
 {
     alias Types = _Types;
@@ -157,9 +183,11 @@ struct MatchAndParseContextWrapper(
     ContextType _context;
     alias _context this;
 
-    auto contextPointer()
+    pure nothrow @nogc:
+
+    auto contextPointer() inout
     {
-        static if (is(ContextType : T*))
+        static if (is(ContextType : T*, T))
             return _context;
         else
             return &_context;
@@ -167,8 +195,43 @@ struct MatchAndParseContextWrapper(
 
     auto command(int typeIndex)()
     {
-        return IndexHelper!typeIndex(contextPointer, MatchAndExecuteContext);
+        return IndexHelper!(typeIndex, CommandTypeContext)(contextPointer);
     }
+
+    auto command(CommandType)()
+    {
+        enum index = CommandTypeContext.indexOf!CommandType;
+        return IndexHelper!(index, CommandTypeContext)(contextPointer);
+    }
+
+    SpecialThings specialThing() const
+    {
+        assert(_context._state == State.specialThing);
+        return _context._specialThing;
+    }
+    
+    inout(ExecuteCommandResult) executeCommandResult() inout
+    {
+        assert(_context._state == State.intermediateExecutionResult
+            || _context._state == State.finalExecutionResult);
+        return _context._executeCommandResult;
+    }
+
+    string matchedName() const
+    {
+        assert(_context._state == State.matchedNextCommand
+            || _context._state == State.matchedRootCommand);
+        return _context._matchedName;
+    }
+    
+    string notMatchedName() const
+    {
+        assert(_context._state == State.notMatchedNextCommand
+            || _context._state == State.notMatchedRootCommand);
+        return _context._notMatchedName;
+    }
+
+    State state() const @safe { return _state; }
 
     // SumType-like match, maybe?
     // template match();
@@ -387,9 +450,6 @@ struct MatchAndExecuteContext
         void* commandPointer;
     }
     StorageItem[] _storage;
-
-    const pure @safe nothrow @nogc:
-    State state() { return _state; }
 }
 
 // TODO: better name
@@ -409,11 +469,6 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
     }();
     alias ParsingContext = CommandParsingContext!maxNamedArgCount;
     alias Context = MatchAndExecuteContext;
-
-    // scope MatchAndParseContextWrapper!(CommandTypeContext, Context*) wrapContext(ref scope Context context)
-    // {
-    //     return typeof(return)(&context);
-    // }
 
     auto commandIndexer(int typeIndex)(ref scope Context context)
     {
@@ -779,10 +834,26 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
         ParsingContext parsingContext;
         Context context;
 
-        while (!(context._state & State.terminalStateBit))
+        do
         {
             advanceState(context, parsingContext, tokenizer, errorHandler);
+
+            // TODO: handle this better.
+            if (context._state == State.intermediateExecutionResult)
+            {
+                if (context._executeCommandResult.exception !is null)
+                {
+                    writeln(context._executeCommandResult.exception);
+                    return -1;
+                }
+                if (context._executeCommandResult.exitCode != 0)
+                {
+                    writeln("Command execution failed");
+                    return context._executeCommandResult.exitCode;
+                }
+            }
         }
+        while (!(context._state & State.terminalStateBit));
 
         // TODO: print better help here.
         static void printCommandHelpForTypes(Types...)()
@@ -952,7 +1023,7 @@ struct SimpleMatchAndExecuteHelper(Types...)
     alias _CommandTypeContext = CommandTypeContext!(Types);
     alias TypeContext = MatchAndExecuteTypeContext!(bindArgument, _CommandTypeContext);
 
-    MatchAndExecuteContext context;
+    MatchAndParseContextWrapper!_CommandTypeContext context;
     TypeContext.ParsingContext parsingContext;
     ArgTokenizer!(string[]) tokenizer;
     ErrorCodeHandler errorHandler;
@@ -962,7 +1033,7 @@ struct SimpleMatchAndExecuteHelper(Types...)
     {
         tokenizer = argTokenizer(args);
         parsingContext = TypeContext.ParsingContext();
-        context = MatchAndExecuteContext();
+        context = MatchAndParseContextWrapper!_CommandTypeContext();
         errorHandler = createErrorCodeHandler();
     }
 
@@ -1097,7 +1168,7 @@ unittest
         {
             advance();
             assert(context.state == State.matchedRootCommand);
-            auto a = cast(A*) context._storage[$ - 1].commandPointer;
+            auto a = context.command!(A)[$ - 1];
 
             advance();
             assert(context.state == State.beforeFinalExecution);
@@ -1111,7 +1182,7 @@ unittest
         {
             advance();
             assert(context.state == State.matchedRootCommand);
-            auto a = cast(A*) context._storage[$ - 1].commandPointer;
+            auto a = context.command!(A)[$ - 1];
 
             advance();
             assert(context.state == State.beforeFinalExecution);
@@ -1290,7 +1361,7 @@ unittest
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == A.onExecute);
 
-            assert((cast(A*) context._storage[$ - 1].commandPointer).str == "op");
+            assert(context.command!(A)[$ - 1].str == "op");
         }
         with (createHelper(["A", "B"]))
         {
@@ -1306,7 +1377,7 @@ unittest
 
             advance();
             assert(context.state == State.beforeFinalExecution);
-            assert((cast(A*) context._storage[$ - 1].commandPointer).str == "ok");
+            assert(context.command!(A)[$ - 1].str == "ok");
 
             advance();
             assert(context.state == State.finalExecutionResult);
@@ -1320,7 +1391,7 @@ unittest
             assert(context.state == State.matchedNextCommand);
             assert(context._storage[$ - 1].typeIndex == 1);
             assert(context._storage[$ - 2].typeIndex == 0);
-            assert((cast(A*) context._storage[$ - 2].commandPointer).str == "ok");
+            assert(context.command!(A)[$ - 2].str == "ok");
 
             advance();
             assert(context.state == State.intermediateExecutionResult);
@@ -1394,7 +1465,7 @@ unittest
             advance();
             assert(context.state == State.finalExecutionResult);
 
-            auto b = cast(B*) context._storage[$ - 1].commandPointer;
+            auto b = context.command!(B)[$ - 1];
             assert(b.str == "op");
             assert(cast(void*) b.a == context._storage[$ - 2].commandPointer);
         }
@@ -1415,7 +1486,7 @@ unittest
             advance();
             assert(context.state == State.finalExecutionResult);
 
-            assert((cast(B*) context._storage[$ - 1].commandPointer).str == "kek");
+            assert(context.command!(B)[$ - 1].str == "kek");
         }
     }
     {
@@ -1467,7 +1538,7 @@ unittest
             assert(context.state == State.finalExecutionResult);
             assert(context._executeCommandResult.exitCode == A.onExecute);
 
-            assert((cast(A*) context._storage[$ - 1].commandPointer).overflow == ["a"]);
+            assert(context.command!(A)[$ - 1].overflow == ["a"]);
         }
         with (createHelper(["A", "B"]))
         {
@@ -1482,7 +1553,7 @@ unittest
             advance();
             assert(context.state == State.finalExecutionResult);
 
-            assert((cast(A*) context._storage[$ - 2].commandPointer).overflow == []);
+            assert(context.command!(A)[$ - 2].overflow == []);
         }
         with (createHelper(["A", "b", "B"]))
         {
@@ -1497,7 +1568,7 @@ unittest
             advance();
             assert(context.state == State.finalExecutionResult);
 
-            assert((cast(A*) context._storage[$ - 2].commandPointer).overflow == ["b"]);
+            assert(context.command!(A)[$ - 2].overflow == ["b"]);
         }
     }
     {
@@ -1638,7 +1709,7 @@ unittest
             advance();
             assert(context.state.beforeFinalExecution);
 
-            auto a = cast(A*) context._storage[$ - 1].commandPointer;
+            auto a = context.command!(A)[$ - 1];
             assert(a.hello == "kek");
             
             advance();
@@ -1682,7 +1753,7 @@ unittest
             advance();
             assert(context.state == State.beforeFinalExecution);
 
-            auto a = cast(A*) context._storage[$ - 1].commandPointer;
+            auto a = context.command!(A)[$ - 1];
             assert(a.b == "c");
         }
     }
