@@ -27,9 +27,18 @@ struct CommonContext
         string tempPath;
     }
 
-    // TODO: add a method that is called when the command is specifically a parent.
-    // TODO: allow freestanding functions as callbacks (this is more involved to implement).
+    // This method is called when the command is called as a terminal command.
+    // An example in this case would be `./program_name`
     void onExecute()
+    {
+        writeln("TODO: display help message when the command is called without a child command argument.");
+    }
+
+    // TODO: allow freestanding functions as callbacks (this is more involved to implement).
+    // onGroupExecute is only called when the function is invoked as an intermediate command.
+    // An example: `./program_name print -number 1`.
+    // So before the arguments to `print` get parsed, this method gets invoked first.
+    void onGroupExecute()
     {
         if (tempPath == "")
             tempPath = "temp";
