@@ -79,7 +79,7 @@ unittest
 }
 
 // The name is subject to change.
-ExecuteCommandResult executeGroupCommand(T)(auto ref scope T command)
+ExecuteCommandResult executeCommandIntermediate(T)(auto ref scope T command)
 {
     try
     {
@@ -784,7 +784,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
                 static void executeNextToLast(size_t typeIndex)(ref scope Context context)
                 {
                     auto command = commandIndexer!typeIndex(context)[$ - 2];
-                    auto result = executeGroupCommand(*command);
+                    auto result = executeCommandIntermediate(*command);
                     context._state = State.intermediateExecutionResult;
                     context._executeCommandResult = result;
                 }
