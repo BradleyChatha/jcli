@@ -1,4 +1,4 @@
-module jcli.introspect.flags;
+module jcli.core.flags;
 
 enum ArgConfig : ArgFlags
 {

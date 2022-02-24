@@ -1,15 +1,5 @@
 module jcli.introspect.groups;
 
-/// Mark the member pointers of the command context struct 
-/// to the parent command context struct with this.
-/// That will make it join the command group.
-/// The `onExecute` method will be called after the `onExecute` of that parent executes.
-/// 
-/// For now, when multiple such fields exist, the command  will be a child of both, 
-/// and when the command is resolved, only the context pointer of 
-/// the parent command that it was resolved through will be not-null.
-enum ParentCommand;
-
 // TODO: 
 // Ways to specify children instead of the parent.
 // Needs some changes in the graph code. Not hard.
@@ -24,6 +14,8 @@ enum ParentCommand;
 // Should be very useful when you decide to go top-down
 // and have more control over the command layout.
 // I imagine it shouldn't be that hard?
+
+import jcli.core.udas : ParentCommand;
 
 import std.traits;
 import std.meta;

@@ -1,6 +1,8 @@
 module commands;
 
-import jcli;
+import jcli.core.udas;
+import jcli.core.flags;
+
 import std.stdio;
 
 enum LogLevel
@@ -35,7 +37,7 @@ struct CommonContext
     }
 
     // TODO: allow freestanding functions as callbacks (this is more involved to implement).
-    
+
     // An example: `./program_name print -number 1`.
     // So before the arguments to `print` get parsed, this method gets invoked first.
     void onIntermediateExecute()
@@ -45,7 +47,9 @@ struct CommonContext
 
         static import std.file;
         if (!std.file.exists(tempPath))
-            std.file.mkdirRecurse(tempPath);
+            // Commented-out, so that it's not annoying
+            // std.file.mkdirRecurse(tempPath);
+            writeln("Temp path: ", tempPath);
 
         if (logLevel == LogLevel.debug_)
             writeln("Just executed the common context's onExecute().");

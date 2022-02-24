@@ -1,10 +1,9 @@
-import jcli;
-
-import std.stdio;
+import jcli.core.flags : ArgConfig;
 
 @("Asserts the number is even.")
 struct IsEvenCommand
 {
+
     @("The number to assert")
     int number;
 
@@ -37,6 +36,7 @@ struct IsEvenCommand
 
 int main(string[] args)
 {
+    import jcli : executeSingleCommand;
     return executeSingleCommand!IsEvenCommand(args[1 .. $]);
 }
 

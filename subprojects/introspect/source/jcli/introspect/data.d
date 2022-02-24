@@ -1,6 +1,5 @@
 module jcli.introspect.data;
 
-import jcli.introspect.flags;
 import jcli.core;
 
 import std.conv : to;

@@ -6,7 +6,6 @@ jcli_intro_srcs = [
     'source/jcli/introspect/package.d',
     'source/jcli/introspect/data.d',
     'source/jcli/introspect/groups.d',
-    'source/jcli/introspect/flags.d',
 ]
 
 jcli_intro_dep = declare_dependency(

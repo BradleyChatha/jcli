@@ -1,0 +1,6 @@
+name "tokenizer"
+targetType "executable"
+
+# TODO: include just the tokenizer as a dependency, idk how.
+dependency "jcli" path="../../"
+sourceFiles "main.d"

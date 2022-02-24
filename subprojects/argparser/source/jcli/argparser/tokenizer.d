@@ -41,7 +41,7 @@ struct ArgToken
         orphanArgument = valueBit | orphanArgumentBit,
         
         /// The bit! indicating that an error has occured.
-        errorBit = 48,
+        errorBit = 64,
         /// 3 dashes are ambiguous and are not allowed.
         error_threeOrMoreDashes = errorBit | 1,
         /// Lonely dash not allowed. (Should it be parsed as positional instead??)
