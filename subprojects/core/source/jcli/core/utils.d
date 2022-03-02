@@ -36,3 +36,26 @@ string toFlagsString(Flags)(Flags flags)
     }
     return result[];
 }
+
+template FlagsHelpers(TFlags)
+{
+    @safe nothrow @nogc pure const
+    {
+        bool doesNotHave(TFlags a, TFlags b)
+        {
+            return (a & b) != b;
+        }
+        bool has(TFlags a, TFlags b)
+        {
+            return (a & b) == b;
+        }
+        bool hasEither(TFlags a, TFlags b)
+        {
+            return (a & b) != 0;
+        }
+        bool doesNotHaveEither(TFlags a, TFlags b)
+        {
+            return (a & b) == 0;
+        }
+    }
+}

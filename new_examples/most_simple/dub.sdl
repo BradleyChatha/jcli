@@ -1,0 +1,4 @@
+name "most_simple"
+targetType "executable"
+dependency "jcli" path="../../"
+sourceFiles "main.d"

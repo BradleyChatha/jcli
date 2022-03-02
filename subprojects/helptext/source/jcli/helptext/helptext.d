@@ -2,6 +2,7 @@ module jcli.helptext.helptext;
 
 import jcli.core, jcli.text, jcli.introspect;
 
+// TODO: Maybe make it take the processed command info instead of the command type itself.
 struct CommandHelpText(alias CommandT_)
 {
     alias CommandType  = CommandT_;
@@ -53,14 +54,19 @@ struct CommandHelpText(alias CommandT_)
 
         named.multiSort!("a.optional != b.optional", "a.name < b.name");
         
+        static if (CommandInfo.flags.hasEither(CommandFlags.explicitlyDefault | CommandFlags.stringAttribute))
+            enum name = "Default";
+        else
+            enum name = CommandInfo.udaValue.name;
+
         // TODO:
         // This allocates way too much memory for no reason, and is slower as a result.
         // Just make that addLineWithPrefix take a range, and just chain these together.
         // Or make it expose the appender and do a `formattedWrite`.
         import std.format : format;
-        help.addLineWithPrefix("Usage: ", "%s %s%s%s".format(
+        help.addLineWithPrefix("Usage: ", "%s %s%s %s".format(
             appName,
-            CommandInfo.general.isDefault ? CommandInfo.general.name : "DEFAULT",
+            name,
             positionals
                 .map!(p =>  "<" ~ p.name ~ ">")
                 .join(" "),
@@ -69,8 +75,8 @@ struct CommandHelpText(alias CommandT_)
                 .join(" ")
         ), AnsiStyleSet.init.style(AnsiStyle.init.bold));
 
-        if (CommandInfo.general.description)
-            help.addHeaderWithText("Description: ", CommandInfo.general.description);
+        static if (CommandInfo.description)
+            help.addHeaderWithText("Description: ", CommandInfo.description);
 
         if (positionals.length > 0)
         {

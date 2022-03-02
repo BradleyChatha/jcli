@@ -2,30 +2,45 @@ module jcli.argbinder.binder;
 
 import jcli.introspect, jcli.core;
 
-import std.algorithm;
+// import std.algorithm;
 import std.meta;
 import std.traits;
 import std.range : ElementType;
 
 enum Binder;
-template UseConverter(alias _conversionFunction)
+
+// Note: these have to be types, because you cannot 
+// pattern-match templates in an is expression.
+struct UseConverter(alias _conversionFunction)
 { 
     alias conversionFunction = _conversionFunction;
 }
-template PreValidate(_validationFunctions...)
+struct PreValidate(_validationFunctions...)
 {
     alias validationFunctions = _validationFunctions;
 }
-template PostValidate(_validationFunctions...)
+struct PostValidate(_validationFunctions...)
 {
     alias validationFunctions = _validationFunctions;
 }
 
-alias PreValidator = PreValidate!();
-alias PostValidator = PostValidate!();
+alias PreValidator = PreValidate;
+alias PostValidator = PostValidate;
+
+alias bindArgumentSimple = bindArgument!();
 
 template bindArgument(Binders...)
 {
+    static foreach (Binder; Binders)
+    {
+        static if (is(typeof(&Binder)))
+        {
+            static assert(Parameters!Binder.length == 1
+                && is(Parameters!Binder[0] : string),
+                "The binder " ~ Binder.stringof ~ " cannot be invoked with a string argument.");
+        }
+    }
+
     Result bindArgument
     (
         alias /* Common or Named or Positional info */ argumentInfo,
@@ -45,7 +60,7 @@ template bindArgument(Binders...)
         else
             alias ArgumentType = typeof(argumentFieldSymbol);
         
-        alias conversionFunction  = getConversionFunction!(argumentFieldSymbol, ArgumentType, Binders);
+        alias conversionFunction = getConversionFunction!(argumentFieldSymbol, ArgumentType, Binders);
 
         static foreach (v; preValidators)
         {{
@@ -72,6 +87,180 @@ template bindArgument(Binders...)
             command.getArgumentFieldRef!argumentInfo = conversionResult.value;
 
         return ok();
+    }
+}
+unittest
+{
+    alias Dummy = ArgNamed;
+    
+    // no binders
+    alias bind = bindArgument!();
+    
+    {
+        struct S
+        {
+            @Dummy
+            int a;
+        }
+        S s;
+        enum a = getCommonArgumentInfo!(S.a);
+        {
+            const result = bind!a(s, "1");
+            assert(result.isOk);
+            assert(s.a == 1);
+        }
+        {
+            const result = bind!a(s, "b");
+            assert(result.isError);
+            assert(s.a == 1);
+        }
+    }
+    {
+        struct S
+        {
+            @Dummy
+            @(ArgConfig.aggregate)
+            int[] a;
+        }
+        S s;
+        enum a = getCommonArgumentInfo!(S.a);
+        {
+            const result = bind!a(s, "1");
+            assert(result.isOk);
+            assert(s.a == [1]);
+        }
+        {
+            const result = bind!a(s, "2");
+            assert(result.isOk);
+            assert(s.a == [1, 2]);
+        }
+        {
+            const result = bind!a(s, "b");
+            assert(result.isError);
+            assert(s.a == [1, 2]);
+        }
+    }
+    {
+        struct S
+        {
+            @Dummy
+            Nullable!bool a;
+        }
+        S s;
+        enum a = getCommonArgumentInfo!(S.a);
+        {
+            s.a = false;
+            const result = bind!a(s, "null");
+            assert(result.isError);
+            assert(s.a == false);
+        }
+        {
+            const result = bind!a(s, "true");
+            assert(result.isOk);
+            assert(s.a == true);
+        }
+        {
+            const result = bind!a(s, "false");
+            assert(result.isOk);
+            assert(s.a == false);
+        }
+        {
+            s.a = true;
+            const result = bind!a(s, "kek");
+            assert(result.isError);
+            assert(s.a == true);
+        }
+    }
+    {
+        struct S
+        {
+            @Dummy
+            @(PreValidate!(a => fail!void("")))
+            int a;
+        }
+        S s;
+        enum a = getCommonArgumentInfo!(S.a);
+        {
+            const result = bind!a(s, "1");
+            assert(result.isError);
+        }
+    }
+    {
+        struct S
+        {
+            @Dummy
+            @(PostValidate!(a => fail!void("")))
+            int a;
+        }
+        S s;
+        enum a = getCommonArgumentInfo!(S.a);
+        {
+            s.a = 9;
+            const result = bind!a(s, "1");
+            assert(result.isError);
+            assert(s.a == 9);
+        }
+    }
+    {
+        struct S
+        {
+            @Dummy
+            @(UseConverter!((string b) => ok("nope")))
+            int a;
+        }
+        enum a = getCommonArgumentInfo!(S.a);
+        static assert(!__traits(compiles, bind!(a, S)));
+    }
+    {
+        struct S
+        {
+            @Dummy
+            @(UseConverter!(b => ok(b ~ "lol")))
+            string a;
+        }
+        enum a = getCommonArgumentInfo!(S.a);
+        S s;
+        {
+            const result = bind!a(s, "1");
+            assert(result.isOk);
+            assert(s.a == "1lol");
+        }
+    }
+}
+unittest
+{
+    alias Dummy = ArgNamed;
+    {
+
+        struct S
+        {
+            @Dummy
+            string a;
+        }
+
+        enum a = getCommonArgumentInfo!(S.a);
+        S s;
+        {
+            static ResultOf!string binder(string input) { return ok(input ~ "kek"); }
+            alias bind = bindArgument!(binder);
+            const result = bind!a(s, "1");
+            assert(result.isOk);
+            assert(s.a == "1kek");
+        }
+        {
+            static ResultOf!string binder() { return ok("kek"); }
+            static assert(!__traits(compiles, bindArgument!(binder)));
+        }
+    }
+    {
+        static ResultOf!T test(T)(string arg) { return ok(T.init); }
+        struct S
+        {
+            @Dummy
+            string a;
+        }
+        // Currently, validation is not done for temples at all.
+        static assert(__traits(compiles, bindArgument!(test)));
     }
 }
 
@@ -160,6 +349,6 @@ template getConversionFunction(
     }
     else
     {
-        alias getConversionFunction = FoundExplicitConverters[0].converterFunction;
+        alias getConversionFunction = FoundExplicitConverters[0].conversionFunction;
     }
 }

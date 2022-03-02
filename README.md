@@ -41,6 +41,7 @@ Tested on Windows and Ubuntu 18.04.
     - [ArgConfig.caseInsensitive](#argconfigcaseinsensitive)
     - [ArgConfig.canRedefine](#argconfigcanredefine)
     - [ArgConfig.optional](#argconfigoptional)
+    - [ArgConfig.required](#argconfigrequired)
     - [ArgConfig.accumulate](#argconfigaccumulate)
     - [ArgConfig.aggregate](#argconfigaggregate)
     - [ArgConfig.repeatableName](#argconfigrepeatablename)
@@ -62,9 +63,9 @@ Tested on Windows and Ubuntu 18.04.
 
     * Named and positional arguments.
 
-    * Boolean arguments (flags).
+    * Boolean flags.
 
-    * Optional arguments using the standard `Nullable` type.
+    * Optional arguments using the standard `Nullable` type, or by giving that field a default value.
 
     * User-Defined argument binding (string -> any_type_you_want) - blanket and per-argument.
 
@@ -78,7 +79,7 @@ Tested on Windows and Ubuntu 18.04.
 
 * Commands:
 
-    * Standard command line format (`./mytool command args --flag=value ...`).
+    * Standard command line format (`./mytool command args --named=value ...`).
 
     * Automatic command dispatch.
 
@@ -90,7 +91,7 @@ Tested on Windows and Ubuntu 18.04.
 
     * ~~Support for command inheritance~~ (currently broken).
 
-    * Only `structs` are allowed for the moment.
+    * Only `structs` are allowed (I don't see why you'd want to use classes for this anyway).
 
 * Help text:
 
@@ -106,7 +107,7 @@ Tested on Windows and Ubuntu 18.04.
 
 * Utilities:
 
-    * Bash completion support.
+    * ~~Bash completion support~~.
 
     * Decent support for writing and parsing ANSI text via [jcli](https://github.com/BradleyChatha/jcli).
 
@@ -153,7 +154,7 @@ For example the command `mytool 60 yoyo true` would have `60` in the 0th positio
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @ArgPositional("number", "The number to check.")
+    @ArgPositional("The number to check.")
     int number;
 
     int onExecute()
@@ -196,6 +197,9 @@ struct Command
 ## Registering commands
 
 To use our new command, we just need to register it first:
+
+> The CommandLineInterface has been removed, so this is wrong.
+> There ~~are~~ will be simpler alternatives.
 
 ```d
 module app;
@@ -282,7 +286,7 @@ enum Mode
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @ArgPositional("number", "The number to check.")
+    @ArgPositional("The number to check.")
     int number;
 
     @ArgNamed("mode", "Which mode to use.")
@@ -352,15 +356,39 @@ We can see that `--mode` is working as expected, however notice that in the last
 
 ## Optional Arguments
 
-JCLI supports optional arguments through the standard [Nullable](https://dlang.org/phobos/std_typecons.html#Nullable) type. Note that only Named arguments can be optional for now (technically, Positional arguments can be optional in certain use cases, but it's not supported... yet).
 
-So to make our `mode` argument optional, we need to make it `Nullable`:
+So to make our `mode` argument optional, we add `ArgConfig.optional` UDA:
 
 ```d
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @ArgPositional("number", "The number to check.")
+    @ArgPositional("The number to check.")
+    int number;
+
+    @ArgNamed("mode", "Which mode to use.")
+    @(ArgConfig.optional)
+    Mode mode;
+
+    int onExecute()
+    {
+        if(mode == Mode.normal)
+            return number % 2 == 0 ? 1 : 0;
+        else
+            return number % 2;
+    }
+}
+```
+
+You could also give it a default value. If the default value is other than the initial value (`Mode.init`, which would be `Mode.normal` in this case), it would infer that it's optional on its own.
+
+Another way is to make it `Nullable`, which may be useful sometimes, but in this case it makes it more complicated than anything.
+
+```d
+@CommandDefault("The default command.")
+struct DefaultCommand
+{
+    @ArgPositional("The number to check.")
     int number;
 
     @ArgNamed("mode", "Which mode to use.")
@@ -412,20 +440,30 @@ Program exited with status code 0
 
 While `--mode` is nice and descriptive, it'd be nice if we could also refer to it via `-m` wouldn't it?
 
-Here is where the very simple concept of "patterns" comes into play. At the moment, and honestly for the foreseeable future, patterns are just strings with a pipe ('|') between each different value:
+Here is where the very simple concept of "patterns" comes into play. Patterns are just arrays of possible names:
 
 ```d
 @CommandDefault("The default command.")
 struct DefaultCommand
 {
-    @ArgNamed("mode|m", "Which mode to use.")
+    @ArgNamed(["mode", "m"], "Which mode to use.")
     Nullable!Mode mode;
 
     // omitted as it's unchanged...
 }
 ```
 
+You can make it (subjectively) nicer by separating the names with a pipe (`|`) within a single string:
+
+```d
+@ArgNamed("mode|m", "Which mode to use.")
+```
+
 All we've done is changed `@ArgNamed`'s name from `"mode"` to `"mode|m"`, which basically means that we can use *either* `--mode` or `-m` to set the mode.
+
+> `-mode` and `--m` also work.
+
+> The option names must be ASCII.
 
 You can have as many values within a pattern as you want. Named Arguments cannot have whitespace within their patterns though.
 
@@ -457,7 +495,7 @@ It's really easy to make a named command. Let's change our default command into 
 
 ```d
 // Renamed from DefaultCommand
-@Command("assert|a|is even", "Asserts that a number is even.")
+@Command("assert|a|is-even", "Asserts that a number is even.")
 struct AssertCommand
 {
     // ...
@@ -466,7 +504,7 @@ struct AssertCommand
 
 Basically, we change `@CommandDefault` to `@Command`, then we just pass a pattern (yes, commands can have multiple names!) as the first parameter for the `@Command` UDA, and move the description into the second parameter.
 
-Command patterns can have spaces in them, to allow for a multi-word, fluent interface for your tool.
+Command patterns cannot have spaces in them, but you can group commands, creating command hierachies (~~described later~~ not described yet).
 
 As a bit of a difference, let's test the code first:
 
@@ -480,12 +518,12 @@ Did you mean:
 # Passing cases (all producing the same output)
 $> ./mytool assert 60
 $> ./mytool a 60
-$> ./mytool is even 60
+$> ./mytool is-even 60
 Program exited with status code 1
 ```
 
-JCLI has "smart" help text when it comes to displaying named commands. Observe here that JCLI is careful to only display one of the possible
-names for commands that may have multiple names:
+JCLI has "smart" help text when it comes to displaying named commands.
+Observe here that JCLI is careful to only display one of the possible names for commands that may have multiple names:
 
 ```bash
 # JCLI will always display the first name of each commands' pattern.
@@ -501,13 +539,13 @@ The other feature of this help text is that JCLI has support for partial command
 $> ./mytool --help
 Available commands:
     assert                       - Asserts that a number is even.
-    do a                         - Does A
+    do-a                         - Does A
 
 # If we have a partial match to a command, then JCLI will filter the results down.
 $> ./mytool do
 mytool.exe: Unknown command 'do'.
 Did you mean:
-    do a                         - Does A
+    do-a                         - Does A
 
 # If the command has multiple names, then JCLI is careful to use the correct name for the partial match.
 # Remember that "assert" is also "is even".
@@ -519,8 +557,7 @@ Available commands:
 ## User Defined argument binding
 
 JCLI has support for users specifying their own functions for converting an argument's string value into the final value passed into the command instance.
-
-In fact, all of JCLI's built in arg binders use this system, they're just implicitly included by JCLI.
+By default, all arguments are converted to the right types using `std.conv.to`.
 
 While I won't go over them directly, [here's](https://github.com/BradleyChatha/jcli/blob/master/source/jaster/cli/binder.d#L37) the documentation for lookup rules regarding binders, for those of you who are interested.
 
@@ -620,7 +657,41 @@ Very simple. Very useful.
 
 ## User Defined argument validation
 
-**Currently not applicable since version v0.30.0**
+
+**Simple example:**
+
+`@PreValidate` takes a sequence of functions that will be called on the raw input of the user, before the value gats converted and bound to the argument field.
+
+`@PostValidate` also takes a sequence of functions that will be called on the argument value *after* the conversion.
+
+Functions passed to these UDA's must return `ResultOf!void`, which would include the message displayed to the user when the validation fails.
+Of course, you can pass either lambdas, or normal function aliases.
+
+This is what the above example would look like using these two validators:
+
+```d
+@Command("cat", "Displays the contents of a file.")
+struct CatCommand
+{
+    @ArgPositional("filePath", "The path to the file to display.")
+    @PreValidate!(
+        str => !str.endsWith(".json") 
+            ? fail("Expected file to end with .json.") 
+            : ok())
+    @PostValidate!(
+        file => file.size() <= 2 
+            ? ok()
+            : fail!void())
+    File file;
+
+    // omitted...
+}
+```
+
+The interface is still kind of ugly, IMO it should be simplified significantly.
+
+
+**A complicated example with `opCall`**
 
 It's cool and all being able to very easily create arg binders, but sometimes commands will need validation logic involved.
 
@@ -633,12 +704,11 @@ JCLI handles all of this via argument validators.
 Let's start off with the first example, making sure the user only passes in files with a `.json` extention, and apply it to our `cat` command. Code first, explanation after:
 
 ```d
-@PreValidator
 struct HasExtention
 {
     string wantedExtention;
 
-    ResultOf!void preValidate(string arg)
+    ResultOf!void opCall(string arg)
     {
         import std.algorithm : endsWith;
 
@@ -652,21 +722,19 @@ struct HasExtention
 struct CatCommand
 {
     @ArgPositional("filePath", "The path to the file to display.")
-    @HasExtention(".json")
+    @PreValidate!(HasExtention(".json"))
     File file;
 
     // omitted...
 }
 ```
 
-To start, we create a struct called `HasExtention`, we decorate it with `@PreValidator`, and we give it a field member called `string wantedExtention;`.
-
 Before I continue, I want to explicitly state that this validator wants to perform validation on the raw string that the user provides (pre-arg-binded) and *not* on the final value (post-arg-binded). This is referred to as "Pre Validation". So on that note...
 
-Next, and most importantly, we define a function that specifically called `preValidate` that follows the following convention:
+Most importantly, we define the function that will be called when  that follows the following convention:
 
 ```d
-ResultOf!void preValidate(string arg);
+ResultOf!void opCall(string arg);
 ```
 
 This is the function that performs the actual validation (in this case, "Pre" validation).
@@ -702,12 +770,11 @@ The other type of validation is post-arg-binded validation, which performs valid
 Let's make a validator that ensures that the file is under a certain size:
 
 ```d
-@PostValidator
 struct MaxSize
 {
     ulong maxSize;
 
-    ResultOf!void postValidate(File file)
+    ResultOf!void opCall(File file)
     {
         return file.size() <= this.maxSize
             ? ok()
@@ -719,8 +786,8 @@ struct MaxSize
 struct CatCommand
 {
     @ArgPositional("filePath", "The path to the file to display.")
-    @HasExtention(".json")
-    @MaxSize(2)
+    @PreValidate!(HasExtention(".json"))
+    @PostValidate!(MaxSize(2))
     File file;
 
     // omitted...
@@ -730,7 +797,7 @@ struct CatCommand
 The convention for post-arg-binded validation is almost exactly the same as pre-arg-binded validation, it also functions in exactly the same way:
 
 ```d
-ResultOf!void postValidate(<TYPE_OF_VALUE_TO_VALIDATE> value);
+ResultOf!void opCall(<TYPE_OF_VALUE_TO_VALIDATE> value);
 ```
 
 The only difference is that the first parameter isn't a `string`, but instead the type of value that this validator will work with.
@@ -747,37 +814,6 @@ temp.exe: File is too large.
 Program exited with status code -1
 ```
 
-Excellent. We have an issue however where this is all a bit... cumbersome, right?
-
-**Currently not implemented in v0.20.0** 
-
-Well, for small one-off validation tasks like this, we can use the two built-in validators `@PreValidate` and `@PostValidate`.
-
-The functions you use in these two validators can return: `ResultOf!void`, `bool`, or `string`. So let's use `string` which signals
-an error if we return non-null, and also `bool` which signals an error if we return `false`.
-
-This is what the above example would look like using these two validators:
-
-```d
-@Command("cat", "Displays the contents of a file.")
-struct CatCommand
-{
-    @ArgPositional("filePath", "The path to the file to display.")
-    @PreValidate!(str => !str.endsWith(".json") ? "Expected file to end with .json." : null)
-    @PostValidate!(file => file.size() <= 2)
-    File file;
-
-    // omitted...
-}
-```
-
-So now we've moved the logic of `HasExtention` into a lamba inside `@PreValidate` using the `string` return variant,
-and the logic of `MaxSize` into `PostValidate` using the `bool` return variant.
-
-You can of course also pass already-made functions instead of lambdas, if that's more your thing.
-
-The results are exactly the same as before, so they will be omitted.
-
 ## Per-argument binding
 
 There is seemingly a fatal flaw with the arg binding system.
@@ -788,10 +824,10 @@ Imagine we had a `copy` command that copies the contents of a file into another 
 @Command("copy", "Copies a file")
 struct CopyCommand
 {
-    @ArgPositional("source", "The source file.")
+    @ArgPositional("The source file.")
     File source;
 
-    @ArgPositional("destination", "The destination file.")
+    @ArgPositional("The destination file.")
     File destination;
 
     void onExecute()
@@ -820,18 +856,18 @@ ResultOf!File openReadOnly(string arg)
     import std.file : exists;
 
     return (arg.exists)
-    ? ok!File(File(arg, "r"))
-    : fail!File("The file doesn't exist: "~arg);
+        ? ok!File(File(arg, "r"))
+        : fail!File("The file doesn't exist: "~arg);
 }
 
 @Command("copy", "Copies a file")
 struct CopyCommand
 {
-    @ArgPositional("source", "The source file.")
+    @ArgPositional("The source file.")
     @UseConverter!openReadOnly
     File source;
 
-    @ArgPositional("destination", "The destination file.")
+    @ArgPositional("The destination file.")
     @UseConverter!(arg => ok!File(File(arg, "w")))
     File destination;
 
@@ -849,11 +885,16 @@ Next, we attach `@UseConverter!openReadOnly` onto our `source` argument. This te
 
 Finally, we attach `@UseConverter!(/*lambda*/)` onto our `destination` argument, for the same reasons as above. A lambda is used here for demonstration purposes.
 
-And just like that we have now solved overcome our initial issue of "how to I customise binding for arguments of the same type?" in a simple, sane manner.
+And just like that we have now solved overcome our initial issue of "how do I customise binding for arguments of the same type?" in a simple, sane manner.
 
 I'd like to mention that this feature works alongside the usual arg binding behavior. In other words, you can define an `@Binder` for a type which will
 serve as the default method for binding, but then for those awkward, one-off cases you can use `@UseConverter` to specify a different binding behavior on a per-argument
 basis.
+
+> You don't have to validate everything before the command is started.
+> You can just take strings and open your files in `onExecute`, and then do additional validation there, if it's too complicated or messy to express it with UDA's.
+
+
 
 ## Unparsed Raw Arg List
 
@@ -870,9 +911,8 @@ struct EchoCommand
 
     void onExecute()
     {
-        import std.stdio, std.algorithm;
-        foreach(arg; this.rawArgs.map!(arg => arg.fullSlice))
-            writeln(arg);
+        import std.stdio;
+        writeln(rawArgs);
     }
 }
 ```
@@ -881,11 +921,7 @@ Simply make a field of type `string[]`, then mark it with `@ArgRaw`, and then vo
 
 ```bash
 $> ./mytool echo -- Hello world, please be kind.
-Hello
-world,
-please
-be
-kind.
+["Hello", "world", "please", "be", "kind."]
 Program exited with status code 0
 ```
 
@@ -893,6 +929,9 @@ Program exited with status code 0
 
 **As of v0.12.0 inheritance is currently in a broken state, please see issue [#44](https://github.com/BradleyChatha/jcli/issues/44) for a description**
 **of the issue, as well as a mitigation suggestion.**
+
+> First question yourself, why you'd want to use inheritance and/or classes with commands in the first place,
+> what problem does it solve. Then solve your problem in a simpler way.
 
 JCLI supports command inheritance.
 
@@ -1027,9 +1066,7 @@ struct ComplexCommand
 
 ## Bash Completion
 
-JCLI provides automatic autocomplete for commands (currently only for command arguments, not commands themselves) via the `jcli.autocomplete` package.
-
-yada yada, do this up eventually once this is up and running again (it's almost ready though!).
+JCLI ~~provides~~ will provide automatic autocomplete for commands (currently only for command arguments, not commands themselves) via the `jcli.autocomplete` package.
 
 ## Command Introspection
 
@@ -1044,6 +1081,9 @@ their own functionality on top of the several parts JCLI provides.
 Our example will simply be an empty command with a few arguments we'd like to get information of:
 
 **TODO Update this for v0.20.0 since this is outdated**
+
+**It's way simpler than in the example, actually, and the info is all compile-time**.
+
 
 ```d
 import std, jcli;
@@ -1149,6 +1189,8 @@ To do this, you can use the `CommandParser` struct, which is responsible for onl
 
 Here's an example:
 
+**It's an over-complicated example, it's in fact way simpler than this**.
+
 ```d
 import std, jcli;
 enum CalculateOperation
@@ -1157,13 +1199,12 @@ enum CalculateOperation
     sub
 }
 
-@CommandDefault // CommandParser doesn't really care about this UDA, it just wants it to exist (or @Command)
 struct CalculateCommand
 {
-    @ArgPositional("a", "The first value.")
+    @ArgPositional("The first value.")
     int a;
 
-    @ArgPositional("b", "The second value.")
+    @ArgPositional("The second value.")
     int b;
 
     @ArgNamed("o|op", "The operation to perform.")
@@ -1298,13 +1339,17 @@ By attaching `@(ArgConfig.canRedefine)` onto a named argument, the right-most de
 
 ### ArgConfig.optional
 
-By default, named arguments are mandatory unless marked they're a `Nullable` type.
+By default, all arguments mandatory unless marked they're a `Nullable` type, or have a default value other than the `init` value.
 
-By attaching `@(ArgConfig.optional)` onto a named argument, it is no longer an error to not specify the argument.
+By attaching `@(ArgConfig.optional)` onto an argument, it is no longer an error to not specify the argument.
+
+### ArgConfig.required
+
+You can force the arguments with default values other than `init` to be required using this flag.
 
 ### ArgConfig.accumulate
 
-This is a special case for numeric named arguments. Everytime the argument is defined, it will increment the argument's value.
+Only applicable to numeric named arguments. Everytime the argument is defined, it will increment the argument's value.
 
 So `-a` produces `1`, `-a -a -a` produces `3`, etc.
 
@@ -1320,11 +1365,9 @@ Allows the argument's name to be repeated multiple times.
 
 So `-v` would define `v` once, `-vvvv` would define `-v` multiple times.
 
-This is mostly useful when paired with `ArgConfig.accumulate`.
-
 ### ArgConfig.parseAsFlag
 
-Enables flag semantics for the named argument. This can only work on `bool` and `Nullable!bool`.
+Enables flag semantics for the named argument. For now, this can only work on `bool` and `Nullable!bool`.
 
 If the argument is defined by itself with no value, then it is set to true: `--verbose`
 
@@ -1335,15 +1378,17 @@ If the argument is defined with a value, and the value isn't `true` or `false`, 
 a space between the argument name and its value, then the value is treated as a positional argument
 instead of a named argument value, and the named argument is set to `true`: `--verbose foo`
 
-If the argument is defined with a value, and the value isn't `true` or `false`, and there''s
+If the argument is defined with a value, and the value isn't `true` or `false`, and there's
 an equal sign between the argument name and its value, then this is treated as an error: `--verbose=foo`
+
+Custom converters are supported for this.
 
 # Using JCLI without Dub
 
-It's possible to use JCLI without dub, especially because it has no external dependencies (other than JANSI, which is actually bundled instead of added as a proper
-dub dependency).
+It's possible to use JCLI without dub, especially because it has no external dependencies 
+(other than JANSI, which is actually bundled instead of added as a proper dub dependency, why btw?).
 
-In fact, this library is developed under [Meson](https://mesonbuild.com) as the build tool, which means that you can easily integrated this library into your own Meson projects.
+In fact, this library is developed under [Meson](https://mesonbuild.com) as the build tool, which means that you can easily integrate this library into your own Meson projects.
 
 # Contributing
 

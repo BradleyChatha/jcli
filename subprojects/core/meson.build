@@ -6,6 +6,7 @@ jcli_core_srcs = [
     'source/jcli/core/pattern.d',
     'source/jcli/core/result.d',
     'source/jcli/core/utils.d',
+    'source/jcli/core/flags.d',
 ]
 
 jcli_core_dep = declare_dependency(

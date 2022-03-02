@@ -1,27 +1,10 @@
 module jcli.introspect.data;
 
-import jcli.introspect.flags;
 import jcli.core;
 
 import std.conv : to;
-
-struct CommandGeneralInfo(CommandUdaT)
-{
-    CommandUdaT uda;
-    string identifier;
-    bool isDefault;
-
-    string name() const nothrow @nogc pure @safe 
-    {
-        static if(__traits(hasMember, CommandUdaT, "name")) 
-            return uda.name;
-        else
-            return "";
-    }
-    
-    ref inout(string) description() inout nothrow @nogc pure @safe { return uda.description; }
-
-}
+import std.traits;
+import std.meta;
 
 struct ArgumentCommonInfo
 {
@@ -130,11 +113,88 @@ template getArgumentFieldSymbol(TCommand, alias argumentInfoOrFieldPath)
     mixin("alias getArgumentFieldSymbol = TCommand." ~ fieldPathOf!argumentInfoOrFieldPath ~ ";");
 }
 
+template getCommandUDAs(CommandType)
+{
+    alias commandUDAs = AliasSeq!(
+        getUDAs!(CommandType, Command),
+        getUDAs!(CommandType, CommandDefault));
+
+    static if (commandUDAs.length > 0)
+    {
+        alias getCommandUDAs = commandUDAs;
+    }
+    else
+    {
+        enum isValue(alias stringUDA) = is(typeof(stringUDA) : string);
+        alias stringUDAs = Filter!(isValue,
+            getUDAs!(CommandType, string));
+
+        static if (stringUDAs.length > 0)
+            alias getCommandUDAs = AliasSeq!(stringUDAs[0]);
+        else
+            alias getCommandUDAs = AliasSeq!();
+    }
+}
+
+
+// NOTE:
+// It's not clear at all what a good design fot this is.
+// I only feel esoteric OOP vibes when deciding whether this should be in a struct,
+// template, whether it should be a getter, and enum, immutable, or an alias.
+// It feels to me like it's only philosophical at this point.
+// So I'm just going to do a single thing and call it a day.
+// Whatever I do feels wrong tho.
 template CommandInfo(TCommand)
 {
     alias CommandType = TCommand;
-    immutable general = getGeneralCommandInfoOf!TCommand;
     alias Arguments = CommandArgumentsInfo!TCommand;
+
+    static assert(
+        getCommandUDAs!TCommand.length <= 1,
+        "Only one command UDA is allowed.");
+    alias commandUDAs = getCommandUDAs!TCommand;
+
+    static if (commandUDAs.length == 0)
+    {
+        enum flags = CommandFlags.noCommandAttribute;
+    }
+    else
+    {
+        alias rawCommandUDA = Alias!(commandUDAs[0]);
+
+        static if (is(typeof(rawCommandUDA) : string))
+        {
+            enum flags = CommandFlags.stringAttribute | CommandFlags.givenValue;
+            enum string udaValue = rawCommandUDA;
+        }
+        else static if (is(rawCommandUDA == Command))
+        {
+            enum flags = CommandFlags.commandAttribute;
+            immutable udaValue = Command([__traits(identifier, TCommand)], "");
+        }
+        else static if (is(rawCommandUDA == CommandDefault))
+        {
+            enum flags = CommandFlags.commandAttribute | CommandFlags.explicitlyDefault;
+            immutable udaValue = CommandDefault("");
+        }
+        else static if (is(typeof(rawCommandUDA) == Command))
+        {
+            enum flags = CommandFlags.commandAttribute | CommandFlags.givenValue;
+            immutable udaValue = rawCommandUDA;
+        }
+        else static if (is(typeof(rawCommandUDA) == CommandDefault))
+        {
+            enum flags = CommandFlags.commandAttribute | CommandFlags.givenValue | CommandFlags.explicitlyDefault;
+            immutable udaValue = rawCommandUDA;
+        }
+        else static assert(0);
+
+        // this part is super meh
+        static if (flags.has(CommandFlags.stringAttribute))
+            enum string description = udaValue;
+        else
+            enum string description = udaValue.description;
+    }
 }
 
 template CommandArgumentsInfo(TCommand)
@@ -196,6 +256,8 @@ template CommandArgumentsInfo(TCommand)
     enum takesRaw = fieldsWithRaw.length == 1;
     static if (takesRaw)
         immutable ArgumentCommonInfo raw = getCommonArgumentInfo!(fieldsWithRaw[0], ArgConfig.aggregate);
+    
+    enum takesSomeArguments = named.length > 0 || positional.length > 0 || takesOverflow || takesRaw;
 }
 
 unittest
@@ -528,6 +590,26 @@ unittest
         enum b = Info.positional[1];
         static assert(b.flags.has(ArgFlags._optionalBit | ArgFlags._inferedOptionalityBit));
     }
+    {
+        static struct S
+        {
+            @("Hello")
+            @(ArgConfig.positional)
+            string a;
+
+            @("World")
+            string b;
+        }
+        alias Info = CommandArgumentsInfo!S;
+
+        enum a = Info.positional[0];
+        static assert(a.flags.has(ArgFlags._requiredBit | ArgFlags._inferedOptionalityBit));
+        static assert(a.description == "Hello");
+        
+        enum b = Info.named[0];
+        static assert(b.flags.has(ArgFlags._requiredBit | ArgFlags._inferedOptionalityBit));
+        static assert(b.description == "World");
+    }
 }
 
 private:
@@ -538,11 +620,19 @@ import std.meta;
 // NOTE:
 // Passing the udas as a sequence works, but trying to get them within the function does not.
 // Apparently, it may work if we mark the function static, but afaik that's a compiler bug.
-ArgFlags foldArgumentFlags(udas...)()
+// Another NOTE:
+// We still need the static here?? wtf?
+static ArgFlags foldArgumentFlags(udas...)()
 {
     ArgFlags result;
+    ArgConfig[] highLevelFlags;
+
     static foreach (uda; udas)
     {
+        static if (is(typeof(uda) == ArgConfig))
+        {
+            highLevelFlags ~= uda;
+        }
         static if (is(typeof(uda) : ArgFlags))
         {
             static assert(uda.doesNotHaveEither(
@@ -552,6 +642,13 @@ ArgFlags foldArgumentFlags(udas...)()
             result |= uda;
         }
     }
+
+    // Validate only the high level flag combinations.
+    {
+        string validationMessage = getArgumentConfigFlagsIncompatibilityValidationMessage(highLevelFlags);
+        assert(validationMessage is null, validationMessage);
+    }
+
     return result;
 }
 
@@ -631,10 +728,11 @@ ArgFlags inferOptionalityAndValidate(FieldType)(ArgFlags initialFlags, FieldType
 // makes the compiler complain.
 enum defaultValueOf(alias field) = __traits(child, __traits(parent, field).init, field);
 
-template getCommonArgumentInfo(alias field, ArgFlags initialFlags)
+// Gives some basic information associated with the given argument field.
+public template getCommonArgumentInfo(alias field, ArgFlags initialFlags = ArgFlags.none)
 {
     enum flagsBeforeInference = initialFlags | foldArgumentFlags!(__traits(getAttributes, field));
-    enum flagsAfterInference  = inferOptionalityAndValidate!(typeof(field))(
+    enum flagsAfterInference = inferOptionalityAndValidate!(typeof(field))(
         flagsBeforeInference, defaultValueOf!field);
     
     alias groups = getUDAs!(field, ArgGroup);
@@ -654,7 +752,7 @@ template getArgumentInfo(UDAType, alias field)
     {
         static if (is(uda == UDAType))
         {
-            enum getArgumentInfo = UDAType(__traits(identifier, field), "");
+            enum getArgumentInfo = UDAType.init;
         }
         else static if (is(typeof(uda) == UDAType))
         {
@@ -663,48 +761,11 @@ template getArgumentInfo(UDAType, alias field)
     }
 }
 
-template commandUDAOf(CommandType)
-{
-    static foreach (uda; __traits(getAttributes, CommandType))
-    {
-        static if (is(uda == Command))
-        {
-            enum commandUDAOf = Command([__traits(identifier, CommandType)], "");
-        }
-        else static if (is(typeof(uda) == Command))
-        {
-            enum commandUDAOf = uda;
-        }
-        else static if (is(CommandDefault == UDAInfo!uda.Type))
-        {
-            enum commandUDAOf = UDAInfo!uda.value;
-        }
-    }
-}
-
-template getGeneralCommandInfoOf(TCommand)
-{
-    enum command    = commandUDAOf!TCommand;
-    enum isDefault  = is(typeof(command) == CommandDefault);
-    enum identifier = __traits(identifier, TCommand);
-
-    // TODO: Not needed, the general info is not needed either.
-    enum getGeneralCommandInfoOf = CommandGeneralInfo!(typeof(command))(command, identifier, isDefault);
-}
 
 template fieldsWithUDAOf(T, UDAType)
 {
-    import std.traits : hasUDA;
-    import std.meta : AliasSeq;
-    alias result = AliasSeq!();
-    static foreach (field; T.tupleof)
-    {
-        static if (hasUDA!(field, UDAType))
-        {
-            result = AliasSeq!(result, field);
-        }
-    }
-    alias fieldsWithUDAOf = result;
+    enum hasThatUDA(alias field) = hasUDA!(field, UDAType);
+    alias fieldsWithUDAOf = Filter!(hasThatUDA, T.tupleof);
 }
 unittest
 {
@@ -829,12 +890,36 @@ PositionalArgumentInfo[] getPositionalArgumentInfosOf(TCommand)() pure
 
     // Since this is a static foreach, it will be easy to include type info here.
     PositionalArgumentInfo[] result;
-    static foreach (field; fieldsWithUDAOf!(TCommand, ArgPositional))
+
+    static foreach (field; TCommand.tupleof)
     {{
-        auto t = PositionalArgumentInfo(
-            getArgumentInfo!(ArgPositional, field),
-            getCommonArgumentInfo!(field, ArgFlags._positionalArgumentBit));
-        result ~= t;
+        enum hasPositionalUDA = hasUDA!(field, ArgPositional);
+        // Doing this one is tiny bit costly ...
+        enum foldedArgFlags = foldArgumentFlags!(__traits(getAttributes, field));
+        enum hasPositionalFlag = foldedArgFlags.has(ArgFlags._positionalArgumentBit);
+
+        static if (hasPositionalUDA)
+        {
+            auto info = getArgumentInfo!(ArgPositional, field);
+            if (info.name == "")
+                info.name = __traits(identifier, field);
+        }
+        else static if (hasPositionalFlag)
+        {
+            alias stringAttributes = getUDAs!(field, string);
+
+            // TODO: check for string type attribute.
+            static if (stringAttributes.length > 0)
+                auto info = ArgPositional(__traits(identifier, field), stringAttributes[0]);
+            else
+                auto info = ArgPositional(__traits(identifier, field), "");
+        }
+
+        static if (hasPositionalUDA || hasPositionalFlag)
+        {
+            result ~= PositionalArgumentInfo(
+                info, getCommonArgumentInfo!(field, ArgFlags._positionalArgumentBit));
+        }
     }}
 
     alias isOptional = p => p.flags.has(ArgFlags._optionalBit);
@@ -930,16 +1015,29 @@ NamedArgumentInfo[] getNamedArgumentInfosOf(TCommand)() pure
     static foreach (field; TCommand.tupleof)
     {{
         enum hasNamed = hasUDA!(field, ArgNamed);
-        enum isSimple = !hasNamed && !hasUDA!(field, ArgPositional) && hasUDA!(field, string);
+        enum foldedArgFlags = foldArgumentFlags!(__traits(getAttributes, field));
+        enum hasPositionalFlag = foldedArgFlags.has(ArgFlags._positionalArgumentBit);
+        enum hasNamedFlag = foldedArgFlags.has(ArgFlags._namedArgumentBit);
+
+        // This check is getting quite complex, so time to refactor to be honest.
+        enum isSimple = !hasNamed
+            && !hasUDA!(field, ArgPositional)
+            && !hasPositionalFlag
+            && (hasUDA!(field, string) || hasNamedFlag);
 
         static if (hasNamed)
         {
             ArgNamed uda = getArgumentInfo!(ArgNamed, field);
+            if (uda.pattern == Pattern.init)
+                uda.pattern = Pattern([__traits(identifier, field)]);
         }
         else static if (isSimple)
         {
-            enum description = getUDAs!(field, string)[0];
-            ArgNamed uda = ArgNamed(__traits(identifier, field), description);
+            alias stringAttributes = getUDAs!(field, string);
+            static if (stringAttributes.length > 0)
+                ArgNamed uda = ArgNamed(__traits(identifier, field), stringAttributes[0]);
+            else
+                ArgNamed uda = ArgNamed(__traits(identifier, field), "");
         }
         
         static if (hasNamed || isSimple)

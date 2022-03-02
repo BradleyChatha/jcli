@@ -1,0 +1,4 @@
+name "tokenizer"
+targetType "executable"
+dependency "jcli" path="../../"
+sourceFiles "main.d"

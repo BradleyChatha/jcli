@@ -1,4 +1,4 @@
-module jcli.introspect.flags;
+module jcli.core.flags;
 
 enum ArgConfig : ArgFlags
 {
@@ -6,7 +6,7 @@ enum ArgConfig : ArgFlags
     none,
 
     /// If the argument appears multiple times, the last value provided will take effect.
-    canRedefine = ArgFlags._canRedefineBit | ArgFlags._multipleBit,
+    canRedefine = ArgFlags._canRedefineBit | ArgFlags._multipleBit | ArgFlags._namedArgumentBit,
 
     /// If not given a value, will have its default value and not trigger an error.
     /// Missing (even named) arguments trigger an error by default.
@@ -20,19 +20,25 @@ enum ArgConfig : ArgFlags
     caseInsensitive = ArgFlags._caseInsensitiveBit,
 
     /// Example: `-a -a` gives 2.
-    accumulate = ArgFlags._multipleBit | ArgFlags._countBit,
+    accumulate = ArgFlags._multipleBit | ArgFlags._countBit | ArgFlags._namedArgumentBit,
 
     /// The type of the field must be an array of some sort.
     /// Example: `-a b -a c` gives an the array ["b", "c"]
-    aggregate = ArgFlags._multipleBit | ArgFlags._aggregateBit,
+    aggregate = ArgFlags._multipleBit | ArgFlags._aggregateBit | ArgFlags._namedArgumentBit,
 
     /// When an argument name is specified multiple times, count how many there are.
     /// Example: `-vvv` gives the count of 3.
-    repeatableName = ArgFlags._repeatableNameBit | ArgFlags._countBit,
+    repeatableName = ArgFlags._repeatableNameBit | ArgFlags._countBit | ArgFlags._namedArgumentBit,
 
     /// Allow an argument name to appear without a value.
     /// Example: `--flag` would parse as `true`.
-    parseAsFlag = ArgFlags._parseAsFlagBit | ArgFlags._optionalBit,
+    parseAsFlag = ArgFlags._parseAsFlagBit | ArgFlags._optionalBit | ArgFlags._namedArgumentBit,
+
+    /// Can be used instead of ArgPositional UDA.
+    positional = ArgFlags._positionalArgumentBit,
+
+    /// Can be used instead of ArgNamed UDA.
+    named = ArgFlags._namedArgumentBit,
 }
 unittest
 {
@@ -160,14 +166,14 @@ bool areArgumentFlagsValid(ArgFlags flags) pure @safe
 //     return jcli.core.utils.toFlagsString(flags);
 // }
 
+alias ArgFlagsInfo = _ArgFlagsInfo!(ArgFlags);
+
+import jcli.core.utils : toFlagsString;
+import std.bitmanip : bitsSet;        
+import std.conv : to;
+
 string getArgumentFlagsValidationMessage(ArgFlags flags) pure @safe
 {
-    import std.bitmanip : bitsSet;        
-    import std.conv : to;
-    import jcli.core.utils;
-
-    alias ArgFlagsInfo = _ArgFlagsInfo!(ArgFlags);
-    
     foreach (size_t index; bitsSet(flags))
     {
         const currentFlag = cast(ArgFlags)(1 << index);
@@ -212,39 +218,86 @@ string getArgumentFlagsValidationMessage(ArgFlags flags) pure @safe
 
     return null;
 }
-@safe nothrow @nogc pure const
+
+/// Returns the validation message that describes in what way
+/// any pairs of flags were incompatible.
+/// We only do compile-time assertions, which is why this function 
+/// just concatenates strings to return the error message (basically, it shouldn't matter).
+string getArgumentConfigFlagsIncompatibilityValidationMessage(ArgConfig[] flagsToTest)
 {
-    bool doesNotHave(ArgFlags a, ArgFlags b)
+    foreach (index, f1; flagsToTest)
     {
-        return (a & b) != b;
-    }
-    bool has(ArgFlags a, ArgFlags b)
-    {
-        return (a & b) == b;
-    }
-    bool hasEither(ArgFlags a, ArgFlags b)
-    {
-        return (a & b) != 0;
-    }
-    bool doesNotHaveEither(ArgFlags a, ArgFlags b)
-    {
-        return (a & b) == 0;
-    }
-    unittest
-    {
-        with (ArgFlags)
+        foreach (f2; flagsToTest[index + 1 .. $])
         {
-            ArgFlags a = _aggregateBit | _caseInsensitiveBit;
-            ArgFlags b = _canRedefineBit;
-            assert(doesNotHave(a, b));  
-            assert(doesNotHave(a, b | _caseInsensitiveBit));  
-            assert(has(a, _caseInsensitiveBit));  
-            assert(hasEither(a, b | _caseInsensitiveBit));
-            assert(hasEither(a, _caseInsensitiveBit)); 
-            assert(doesNotHaveEither(a, b));
+            if (f1 == f2)
+                continue;
+
+            foreach (bitIndex; bitsSet(f1))
+            {
+                auto incompatibleForThisBit = ArgFlagsInfo.incompatible[bitIndex];
+
+                if (incompatibleForThisBit & f1)
+                {
+                    return "The high-level config flag " ~ f1.to!string
+                        ~ " is invalid, the low level parts are incompatible. The bit "
+                        ~ (cast(ArgFlags)(1 << bitIndex)).to!string
+                        ~ " is incompatible with " ~ incompatibleForThisBit.toFlagsString;
+                }
+
+                auto problematicFlags = cast(ArgFlags) (incompatibleForThisBit & f2);
+                if (problematicFlags)
+                {
+                    return "The high-level config flag " ~ f1.to!string
+                        ~ " is incompatible with " ~ f2.to!string
+                        ~ ". The problematic flags are " ~ problematicFlags.toFlagsString;
+                }
+            }
         }
     }
+    return null;
 }
+
+enum CommandFlags
+{
+    none = 0,
+
+    /// No command attribute was found.
+    noCommandAttribute = 1 << 0,
+
+    /// The command attribute was deduced from its simple form, aka @("description").
+    stringAttribute = 1 << 1,
+
+    /// The command was set from a Command or CommandDefault attribute
+    commandAttribute = 1 << 2,
+
+    /// e.g. @Command("ab", "cd") instead of @Command.
+    givenValue = 1 << 3,
+
+    ///
+    explicitlyDefault = 1 << 4,
+}
+
+import jcli.core.utils : FlagsHelpers;
+mixin FlagsHelpers!ArgFlags;
+mixin FlagsHelpers!CommandFlags;
+
+@safe nothrow @nogc pure const
+unittest
+{
+    with (ArgFlags)
+    {
+        ArgFlags a = _aggregateBit | _caseInsensitiveBit;
+        ArgFlags b = _canRedefineBit;
+        assert(doesNotHave(a, b));  
+        assert(doesNotHave(a, b | _caseInsensitiveBit));  
+        assert(has(a, _caseInsensitiveBit));  
+        assert(hasEither(a, b | _caseInsensitiveBit));
+        assert(hasEither(a, _caseInsensitiveBit)); 
+        assert(doesNotHaveEither(a, b));
+    }
+}
+
+
 
 private template _ArgFlagsInfo(Flags)
 {
@@ -255,7 +308,6 @@ private template _ArgFlagsInfo(Flags)
 
     enum argFlagCount = 
     (){
-        import std.bitmanip : bitsSet;
         import std.algorithm;
         import std.range;
         return Flags.max.bitsSet.array[$ - 1] + 1;
@@ -265,7 +317,6 @@ private template _ArgFlagsInfo(Flags)
     {
         Flags[argFlagCount] result;
 
-        import std.bitmanip : bitsSet; 
         static foreach (memberName; __traits(allMembers, Flags))
         {{
             size_t index = __traits(getMember, Flags, memberName).bitsSet.front;

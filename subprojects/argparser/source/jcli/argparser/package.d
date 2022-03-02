@@ -1,4 +1,4 @@
 module jcli.argparser;
 
 public import
-    jcli.argparser.parser;
+    jcli.argparser.tokenizer;
