@@ -492,7 +492,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
         alias ArgumentsInfo = CommandArgumentsInfo!Type;
         Type* command = commandIndexer!typeIndex(context)[$ - 1];
 
-        enum childCommandsCount = Graph.Adjacencies[typeIndex].length;
+        enum childCommandsCount = Graph.adjacencies[typeIndex].length;
 
         bool maybeMatchNextCommandNameAndResetState(string nameSlice)
         {
@@ -508,7 +508,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
                     didMatchCommand = false;
                     break matchSwitch;
                 }
-                static foreach (childNodeIndex, childNode; Graph.Adjacencies[typeIndex])
+                static foreach (childNodeIndex, childNode; Graph.adjacencies[typeIndex])
                 {{
                     alias Type = CommandTypeContext.Types[childNode.typeIndex];
                     static foreach (possibleName; CommandInfo!Type.udaValue.pattern)
@@ -894,7 +894,7 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
 
         static void printHelpForTypeAndChildren(int typeIndex)()
         {
-            alias childNodes = Alias!(Graph.Adjacencies[typeIndex]);
+            alias childNodes = Alias!(Graph.adjacencies[typeIndex]);
             static if (childNodes.length > 0)
             {
                 alias Types = CommandTypeContext.toTypes!childNodes;
@@ -1928,3 +1928,12 @@ mixin template SingleCommandMain(TCommand)
         return executeSingleCommand!TCommand(args[1 .. $]);
     }
 }
+
+
+template matchAndExecuteCommandRecursively(RootCommandTypes...)
+{
+
+}
+
+
+

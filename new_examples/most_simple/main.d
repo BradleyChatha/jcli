@@ -15,7 +15,7 @@ struct IsEvenCommand
     int errorCodeIfOdd = 1; // is implied optional.
 
 
-    int onExecute()
+    int get()
     {
         bool isOdd = number & 1;
         
@@ -30,6 +30,12 @@ struct IsEvenCommand
         }
 
         return 0;
+    }
+
+    void onExecute()
+    {
+        import std.stdio;
+        writeln(get);
     }
 }
 

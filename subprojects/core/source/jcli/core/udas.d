@@ -96,3 +96,8 @@ enum ArgRaw;
 /// and when the command is resolved, only the context pointer of 
 /// the parent command that it was resolved through will be not-null.
 enum ParentCommand;
+
+struct Subcommands(SubcommandTypes...)
+{
+    alias Types = SubcommandTypes;
+}

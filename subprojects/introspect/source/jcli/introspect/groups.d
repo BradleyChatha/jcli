@@ -15,7 +15,7 @@ module jcli.introspect.groups;
 // and have more control over the command layout.
 // I imagine it shouldn't be that hard?
 
-import jcli.core.udas : ParentCommand;
+import jcli.core.udas : ParentCommand, Subcommands;
 
 import std.traits;
 import std.meta;
@@ -44,9 +44,19 @@ struct TypeGraphNode
     int fieldIndex;
 }
 
-template TypeGraph(Types...)
+template TypeGraph(_Types...)
 {
     alias Node = TypeGraphNode;
+    alias Types = _Types;
+
+    // Mappings, rootTypeIndices, adjacencies
+    mixin(getGraphMixinText());
+    // pragma(msg, getGraphMixinText());
+
+    template getTypeIndexOf(T)
+    {
+        mixin("alias getTypeIndexOf = Mappings!()." ~ escapedName!T ~ ";");
+    }
 
     // Note:
     // I'm realying on the idea that name lookup in scopes is linear in time to
@@ -70,21 +80,37 @@ template TypeGraph(Types...)
                     {{
                         const name = escapedName!T;
                         if (auto index = name in typeToIndex)
+                        {
+                            // A command being a child of itself is not detected anywhere else, it's an edge case.
+                            assert(*index != outerIndex, "`" ~ T.stringof ~ "` cannot be a parent of itself.");
+
                             childrenGraph[*index] ~= Node(cast(int) outerIndex, cast(int) fieldIndex);
+                        }
                         else
-                            assert(false, name ~ " not found among types.");
+                        {
+                            assert(false, "`" ~ T.stringof ~ "` not found among types.");
+                        }
                     }}
                 }
             }
         }
 
         // TODO: is bit array worth it?
-        bool[Types.length] isNotRootCache;
+        bool [Types.length] isNotRootCache;
         foreach (parentIndex, children; childrenGraph)
         {
             foreach (childNode; children)
                 isNotRootCache[childNode.typeIndex] = true;
         }
+
+        size_t[] rootTypeIndices;
+        foreach (index, isNotRoot; isNotRootCache)
+        {
+            if (!isNotRoot)
+                rootTypeIndices ~= index;
+        }
+
+        checkNodeAcessibility(childrenGraph[], rootTypeIndices);
 
         {
             // Check for cicles in the graph.
@@ -132,46 +158,18 @@ template TypeGraph(Types...)
             ret ~= "}";
         }
 
+        // TODO: return normally
         {
-            // auto rootTypes = appender!string;
-            // rootTypes ~= "alias RootTypes = AliasSeq!(";
-
-            auto rootTypeIndices = appender!string;
-            rootTypeIndices ~= "immutable int[] rootTypeIndices = [";
-            {
-                size_t appendedCount = 0;
-                foreach (nodeIndex, isNotRoot; isNotRootCache)
-                {
-                    if (isNotRoot)
-                        continue;
-                    if (appendedCount > 0)
-                    {
-                        rootTypeIndices ~= ", ";
-                        // rootTypes ~= ", ";
-                    }
-                    appendedCount++;
-                    
-                    formattedWrite(rootTypeIndices, "%d", nodeIndex);
-                    // formattedWrite(rootTypes, "Types[%d]", nodeIndex);
-                }
-            }
-            rootTypeIndices ~= "];\n";
-
-            ret ~= rootTypeIndices[];
-            ret ~= "\n";
-
-            // rootTypes ~= ");\n";
-            // ret ~= rootTypes[];
-            // ret ~= "\n";
+            formattedWrite(ret, "immutable int[] rootTypeIndices = %s;\n", rootTypeIndices);
         }
         {
-            formattedWrite(ret, "immutable Node[][] Adjacencies = %s;\n", childrenGraph);
+            formattedWrite(ret, "immutable Node[][] adjacencies = %s;\n", childrenGraph);
         }
 
         // Extra info, not actually used
         static if (0)
         {
-            formattedWrite(ret, "immutable bool[] IsNodeRoot = %s;\n", isNotRootCache[].map!"!a");
+            formattedWrite(ret, "immutable bool[] isNodeRoot = %s;\n", isNotRootCache[].map!"!a");
 
             auto types = appender!string;
             auto fields = appender!string;
@@ -211,79 +209,43 @@ template TypeGraph(Types...)
         
         return ret[];
     }
+}
 
-    // pragma(msg, getGraphMixinText());
-
-    mixin(getGraphMixinText());
-
-    template getTypeIndexOf(T)
+unittest
+{
     {
-        mixin("alias getTypeIndexOf = Mappings!()." ~ escapedName!T ~ ";");
+        static struct A {}
+        static struct B { @ParentCommand A* a; }
+        alias Graph = TypeGraph!(A, B);
+        static assert(is(Graph.Types == AliasSeq!(A, B)));
+
+        enum AIndex = Graph.getTypeIndexOf!A;
+        static assert(AIndex == 0);
+        
+        enum BIndex = Graph.getTypeIndexOf!B;
+        static assert(BIndex == 1);
+
+        static assert(Graph.adjacencies[AIndex] == [TypeGraphNode(BIndex, 0)]);
+        static assert(Graph.adjacencies[BIndex].length == 0);
+
+        static assert(Graph.rootTypeIndices == [AIndex]);
     }
 
-    // template getAdjacenciesOf(T)
-    // {
-    //     mixin("alias getAdjacenciessOf = Adjacencies[Mappings!()." ~ escapedName!T ~ "];");
-    // }
-
-    // template getChildTypes(T)
-    // {
-    //     mixin("alias getChildTypes = Commands!()." ~ escapedName!T ~ ";");
-    // }
-
-    // template getChildCommandFieldsOf(T)
-    // {
-    //     mixin("alias getChildCommandFieldsOf = Fields!()." ~ escapedName!T ~ ";");
-    // }
+    // Cycle detection
+    {
+        static struct A { @ParentCommand A* a; }
+        static assert(!__traits(compiles, TypeGraph!A));
+    }
+}
+version(unittest)
+{
+    // These have to be outside function scope to refer to themselves.
+    struct A0 { @ParentCommand B0* b; }
+    struct B0 { @ParentCommand A0* a; }
+    static assert(!__traits(compiles, TypeGraph!(A0, B0)));
 }
 
 
-/// ParentCommandFieldSymbols must be already filtered to have at least
-/// one member marked with ParentCommand.
-// template getChildCommandFieldsOf(T, Types...)
-// {
-    // alias G = Graph!Types;
- 
-    //
-    // I'm keeping the old reflections for the sake of food for thought:
-    //
-    // This implementation is currently close to quadratic, when done for all commands
-    // due to the limitations of metaprogramming in D.
-    // In normal code, you would've done a lookup table by type for all commands,
-    // which you cannot do at compile time in D.
-    // alias ChildCommandFieldsOf = AliasSeq!();
-
-    // If it really becomes a problem, this could offer a temporary solution.
-    // But ideally, we need a lookup table.
-    // alias RemainingCommandFieldSymbols = AliasSeq!();
-    // alias CommandType = TCommand;
-
-    // static foreach (field; parentCommandFieldSymbols)
-    // {
-    //     static if (is(typeof(field) : const(TCommand)*))
-    //     {
-    //         ChildCommandFieldsOf = AliasSeq!(ChildCommandFieldsOf, field);
-    //     }
-    //     // else
-    //     // {
-    //     //     RemainingCommandFieldSymbols = AliasSeq!(RemainingCommands, field);
-    //     // }
-    // }
-// }
-// unittest
-// {
-//     static struct A {}
-//     static struct B { @ParentCommand A* a; }
-//     static struct C { @ParentCommand B* b; }
-
-//     {
-//         alias Types = AliasSeq!(A, B, C);
-//         alias G = TypeGraph!Types;
-//         static assert(__traits(isSame, G.getChildCommandFieldsOf!A[0], B.a));
-//         static assert(__traits(isSame, G.getChildCommandFieldsOf!B[0], C.b));
-//         static assert(G.getChildCommandFieldsOf!C.length == 0);
-//     }
-// }
 
 // Haven't tested this one, haven't used it either.
 template AllCommandsOf(Modules...)
@@ -305,28 +267,250 @@ template AllCommandsOf(Modules...)
     alias AllCommandsOf = staticMap!(getCommands, Modules);
 }
 
-// template getParentCommandCandidateFieldSymbols(AllCommands)
+template TypeGraphFromRootTypes(RootTypes...)
+{
+    alias Node = TypeGraphNode;
+
+    private immutable graphData = getGraphData();
+
+    // Types, Mappings
+    mixin(graphData.mixinText);
+    immutable Node[][] adjacencies = graphData.childrenGraph;
+    immutable size_t[] rootTypeIndices = graphData.rootTypeIndices;
+
+    template getTypeIndexOf(T)
+    {
+        mixin("alias getTypeIndexOf = Mappings!()." ~ escapedName!T ~ ";");
+    }
+    
+    private auto getGraphData()
+    {
+        static struct Result
+        {
+            string mixinText;
+            Node[][] childrenGraph;
+            size_t[] rootTypeIndices;
+        }
+
+        // This thing could contain duplicates!
+        // Which is why I'm doing all of the remapping below. 
+        // It's still a bad idea to map to a command from two places, because then this array
+        // will contain ALL of the subcommands of that type both times!
+        alias AllTypes = AllSubcommandsOf!RootTypes;
+
+        size_t[string] typeToIndex;
+        size_t[] actualTypeIndexToAllTypeIndex;
+
+        static foreach (index, Type; AllTypes)
+        {{
+            if (escapedName!Type !in typeToIndex)
+            {
+                typeToIndex[escapedName!Type] = actualTypeIndexToAllTypeIndex.length;
+                actualTypeIndexToAllTypeIndex ~= index;
+            }
+        }}
+
+        size_t numTypes = actualTypeIndexToAllTypeIndex.length;
+        Node[][] childrenGraph = new Node[][](numTypes);
+
+        static foreach (index, ParentType; Types)
+        {{
+            size_t actualTypeIndex = typeToIndex[escapedName!ParentType];
+            static foreach (Subcommand; SubcommandsOf!ParentType)
+            {{
+                int fieldIndex = getIndexOfFieldWithParentPointerType!(ParentType, Subcommand);
+                size_t subcommandActualTypeIndex = typeToIndex[escapedName!Subcommand];
+                childrenGraph[actualTypeIndex] ~= Node(cast(int) subcommandActualTypeIndex, cast(int) fieldIndex);
+            }}
+        }}
+
+        size_t[] rootTypeIndices; // @suppress(dscanner.suspicious.label_var_same_name)
+        foreach (RootType; RootTypes)
+            rootTypeIndices ~= typeToIndex[escapedName!RootType];
+
+        checkNodeAcessibility(childrenGraph[], rootTypeIndices);
+
+        import std.array : appender;
+        import std.format : formattedWrite;
+        import std.algorithm : map;
+
+        auto ret = appender!string;
+
+        {
+            ret ~= "template Mappings() {";
+            foreach (key, index; typeToIndex)
+                formattedWrite(ret, "enum int %s = %d;", key, index);
+            ret ~= "}";
+        }
+
+        {
+            ret ~= "\n";
+            ret ~= "alias Types = AliasSeq!(";
+            size_t appendedCount = 0;
+            static foreach (index, Type; AllTypes)
+            {{
+                size_t actualIndex = typeToIndex[escapedName!Type];
+                if (actualTypeIndexToAllTypeIndex[actualIndex] == index)
+                {
+                    if (appendedCount > 0)
+                        ret ~= ",";
+                    
+                    assert(appendedCount == actualIndex);
+                    appendedCount++;
+
+                    formattedWrite(ret, "AllTypes[%d]", actualTypeIndexToAllTypeIndex[actualIndex]);
+                }
+            }}
+            ret ~= ");";
+            ret ~= "\n";
+        }
+
+        return Result(ret[], actualTypeIndexToAllTypeIndex, childrenGraph);
+    }
+}
+unittest
+{
+    {
+        @(Subcommands!B)
+        static struct A {}
+        static struct B { A* a; }
+
+        alias Graph = TypeGraphFromRootTypes!(A);
+        static assert(is(Graph.Types == AliasSeq!(A, B)));
+
+        enum AIndex = Graph.getTypeIndexOf!A;
+        static assert(AIndex == 0);
+        
+        enum BIndex = Graph.getTypeIndexOf!B;
+        static assert(BIndex == 1);
+
+        static assert(Graph.adjacencies[AIndex] == [TypeGraphNode(BIndex, 0)]);
+        static assert(Graph.adjacencies[BIndex].length == 0);
+
+        static assert(Graph.rootTypeIndices == [AIndex]);
+    }
+
+    // Cycle detection
+    {
+        @(Subcommands!A)
+        static struct A { A* a; }
+        static assert(!__traits(compiles, TypeGraphFromRootTypes!A));
+    }
+    {
+        static struct A { B* b; }
+        @(Subcommands!A)
+        static struct B { A* a; }
+        static assert(!__traits(compiles, TypeGraphFromRootTypes!(A, B)));
+    }
+    {
+        @(Subcommands!B)
+        static struct A {}
+        static struct B {}
+
+        enum AIndex = Graph.getTypeIndexOf!A;
+        enum BIndex = Graph.getTypeIndexOf!B;
+        static assert(Graph.adjacencies[AIndex] == [TypeGraphNode(BIndex, -1)]);
+    }
+}
+// version(unittest)
 // {
-//     alias result = AliasSeq!();
-//     static foreach (Command; AllCommands)
-//     {
-//         static foreach (field; Command.tupleof)
-//         {
-//             static if (hasUDA!(field, ParentCommand))
-//             {
-//                 static assert(is(typeof(field) : T*, T));
-//                 result = AliasSeq!(result, field);
-//             }
-//         }
-//     }
-//     alias getParentCommandCandidateFieldSymbols = result;
-// }   
-// unittest
-// {
-//     static struct A
-//     {
-//         @ParentCommand int* i;
-//         @ParentCommand int* j;
-//     }
-//     static assert(is(GetParentCommandCandidateFieldSymbols!A == AliasSeq!(A.i, A.j)));
+//     // These have to be outside any function scope to refer to themselves.
+//     @(Subcommands!B1)
+//     struct A1 {}
+//     @(Subcommands!A1)
+//     struct B1 {}
+//     static assert(!__traits(compiles, TypeGraph!(A1)));
 // }
+
+
+template SubcommandsOf(CommandType)
+{
+    alias _Subcommands = getUDAs!(CommandType, Subcommands);
+    alias getTypes(Attr) = Attr.Types;
+    alias SubcommandsOf = staticMap!(_Subcommands, getTypes);
+}
+
+template AllSubcommandsOf(CommandTypes...)
+{
+    static if (CommandTypes.length == 1)
+    {
+        alias AllSubcommandsOf = AliasSeq!(
+            CommandTypes[0], staticMap!(SubcommandsOf!(CommandTypes[0]), AllSubcommandsOf));
+    }
+    else static if (CommandTypes.length == 0)
+    {
+        alias AllSubcommandsOf = AliasSeq!();
+    }
+    else
+    {
+        alias AllSubcommandsOf = staticMap!(CommandTypes, AllSubcommandsOf);
+    }
+}
+
+private int getIndexOfFieldWithParentPointerType(ParentType, ChildType)()
+{
+    static foreach (SubcommandType; SubcommandsOf!ParentType)
+    {
+        static foreach (fieldIndex, field; SubcommandType.tupleof)
+        {
+            static if (is(typeof(field) : T*, T))
+            {
+                // TODO: ParentCommand uda checks
+                static if (is(T == ParentType))
+                {
+                    return cast(int) fieldIndex;
+                }
+            }
+        }
+    }
+    return -1;
+}
+
+unittest
+{
+    {
+        static struct A {}
+        static assert(is(AllSubcommandsOf!A == AliasSeq!(A)));
+    }
+    {
+        static struct A {}
+        static struct B {}
+        static assert(is(AllSubcommandsOf!(A, B) == AliasSeq!(A, B)));
+    }
+    {
+        static struct B {}
+        static struct C {}
+
+        @(Subcommands!(B, C))
+        static struct A {}
+        
+        static assert(is(AllSubcommandsOf!(A) == AliasSeq!(A, B, C)));
+    }
+}
+
+
+private void checkNodeAcessibility(TypeGraphNode[][] adjacencies, size_t[] rootTypeIndices)
+{
+    bool[] isAccessibleCache = new bool[adjacencies.length];
+
+    void markChildrenAccessible(size_t index)
+    {
+        foreach (childNode; adjacencies[index])
+        {
+            if (isAccessibleCache[childNode.typeIndex])
+                continue;
+            isAccessibleCache[childNode.typeIndex] = true;
+            markChildrenAccessible(childNode.typeIndex);
+        }
+    }
+
+    foreach (parentIndex; rootTypeIndices)
+    {
+        isAccessibleCache[parentIndex] = true;
+        markChildrenAccessible(parentIndex);
+    }
+
+    import std.algorithm : all;
+    // TODO: better error here.
+    assert(all(isAccessibleCache[]), "Some types were inaccessible.");
+}
