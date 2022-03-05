@@ -117,7 +117,6 @@ struct ArgTokenizer(TRange)
     void resetWithRemainingRange()
     {
         alias Kind = ArgToken.Kind;
-
         if (_front.kind == Kind.namedArgumentValue)
             popFront();
         if (_front.kind.has(Kind.orphanArgument))
@@ -442,7 +441,7 @@ struct ArgTokenizer(TRange)
                 if (previousKind == Kind.none)
                     return Kind.positionalArgument;
 
-                // Say, if the input is malformatted, we consider everythin after that orphans,
+                // Say, if the input is malformatted, we consider everything after that orphans,
                 // I guess this is pretty reasonable.
                 if (previousKind.has(Kind.errorBit))
                     return Kind.orphanArgument;
@@ -453,8 +452,14 @@ struct ArgTokenizer(TRange)
                 // Just to be sure nothing went wrong.
                 assert(previousKind.has(Kind.valueBit));
 
-                // Copy the positional or the orphan bit of the previous argument.
-                return previousKind & ~Kind.namedArgumentValueBit;
+                if (previousKind.hasEither(Kind.orphanArgumentBit | Kind.positionalArgumentBit))
+                {
+                    // Copy the positional or the orphan bit of the previous argument.
+                    return previousKind & ~Kind.namedArgumentValueBit;
+                }
+
+                assert(previousKind == Kind.namedArgumentValue);
+                return Kind.orphanArgument;
             }();
             const fullSlice  = currentSlice;
             const valueSlice = currentSlice;
@@ -627,6 +632,17 @@ unittest
         assert(equal(argTokenizer(args), [
             ArgToken(Kind.fullNamedArgumentName, "--a", "a"),
             ArgToken(Kind.namedArgumentValueOrOrphanArgument, "物事", "物事"),
+        ]));
+    }
+    {
+        // A tricky bug. The orphan argument after a sure positional would only have `valueBit`.
+        auto args = ["test", "-hello=world", "abc"];
+        auto tokenizer = argTokenizer(args);
+        assert(equal(tokenizer, [
+            ArgToken(Kind.positionalArgument, "test", "test"),
+            ArgToken(Kind.shortNamedArgumentName, "-hello", "hello"),
+            ArgToken(Kind.namedArgumentValue, "world", "world"),
+            ArgToken(Kind.orphanArgument, "abc", "abc"),
         ]));
     }
     

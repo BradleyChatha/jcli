@@ -334,7 +334,7 @@ template TopDownCommandTypeGraph(RootTypes...)
         }}
 
         size_t numTypes = actualTypeIndexToAllTypeIndex.length;
-        Node[][] childrenGraph = new Node[][](numTypes);
+        auto childrenGraph = new Node[][](numTypes);
 
         static foreach (index, ParentType; AllTypes)
         {{
@@ -366,7 +366,7 @@ template TopDownCommandTypeGraph(RootTypes...)
         {
             ret ~= "template Mappings() {";
             foreach (key, index; typeToIndex)
-                formattedWrite(ret, "enum int %s = %d;", key, index);
+                formattedWrite!"enum int %s = %d;"(ret, key, index);
             ret ~= "}";
         }
 
@@ -385,7 +385,7 @@ template TopDownCommandTypeGraph(RootTypes...)
                     assert(appendedCount == actualIndex);
                     appendedCount++;
 
-                    formattedWrite(ret, "AllTypes[%d]", actualTypeIndexToAllTypeIndex[actualIndex]);
+                    formattedWrite!"AllTypes[%d]"(ret, actualTypeIndexToAllTypeIndex[actualIndex]);
                 }
             }}
             ret ~= ");";
@@ -626,7 +626,7 @@ unittest
 }
 
 
-private void checkNodeAcessibility(TypeGraphNode[][] adjacencies, size_t[] rootTypeIndices)
+private void checkNodeAcessibility(const TypeGraphNode[][] adjacencies, const size_t[] rootTypeIndices)
 {
     bool[] isAccessibleCache = new bool[adjacencies.length];
 
