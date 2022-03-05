@@ -1,5 +1,4 @@
 module jcli.introspect;
 
 public import
-    jcli.introspect.data,
-    jcli.introspect.groups;
+    jcli.introspect.data;

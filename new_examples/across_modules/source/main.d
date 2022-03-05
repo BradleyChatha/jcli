@@ -1,5 +1,3 @@
-import jcli;
-
 int main(string[] args)
 {
     // The idea of this one is that all of the commands in the given modules will
@@ -23,6 +21,9 @@ int main(string[] args)
 
     */
 
+
+    import jcli;
+    // import jcli.commandgraph.cli : matchAndExecuteAcrossModules;
     static import commands;
     return matchAndExecuteAcrossModules!(commands)(args[1 .. $]);
 }

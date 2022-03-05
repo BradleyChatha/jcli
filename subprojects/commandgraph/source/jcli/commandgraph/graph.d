@@ -1,4 +1,4 @@
-module jcli.introspect.groups;
+module jcli.commandgraph.graph;
 
 // TODO: 
 // Ways to specify children instead of the parent.
