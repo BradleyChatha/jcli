@@ -22,17 +22,18 @@ import std.meta;
 
 template escapedName(T)
 {
-    import std.string : replace;
     import std.conv : to;
     import std.path : baseName;
+    import std.algorithm;
+    import std.range;
 
     // The idea here is to minimize collisions between type symbols.
     enum location = __traits(getLocation, T);
-    enum escapedName = (baseName(location[0]) ~ fullyQualifiedName!T)
-            .replace(".", "_")
-            .replace(" ", "_")
-            .replace("!", "_")
-        ~ location[1].to!string;
+    enum escapedName = baseName(location[0])
+        .chain(fullyQualifiedName!T)
+        .map!(ch => canFind([cast(dchar) '.', ' ', '!', '(', ')'], ch) ? '_' : ch)
+        .chain(location[1].to!string)
+        .to!string;
 }
 
 struct TypeGraphNode
@@ -44,7 +45,23 @@ struct TypeGraphNode
     int fieldIndex;
 }
 
-template TypeGraph(_Types...)
+/// Represents a command type graph with only one type.
+template DegenerateCommandTypeGraph(CommandType)
+{
+    alias Types = AliasSeq!CommandType;
+    immutable TypeGraphNode[][1] adjacencies = [[]];
+    immutable int[] rootTypeIndices = [0];
+
+    template getTypeIndexOf(T)
+    {
+        static assert(is(T == CommandType));
+        enum int getTypeIndexOf = 0;
+    }
+}
+
+/// Represents a command type graph where the information about the parent-child
+/// relationships of commands are drawn from the children, via the @ParentCommand UDA.
+template BottomUpCommandTypeGraph(_Types...)
 {
     alias Node = TypeGraphNode;
     alias Types = _Types;
@@ -63,6 +80,7 @@ template TypeGraph(_Types...)
     // essentially have a fake compile time AA.
     // Normal AA's are not allowed to be used at compile time rn. 
     // (E.g. `immutable int[int] example = [1: 2]` does not compile).
+    // TODO: refactor to return an info struct, like the top-down graph below.
     private string getGraphMixinText()
     {
         size_t[string] typeToIndex;
@@ -216,7 +234,7 @@ unittest
     {
         static struct A {}
         static struct B { @ParentCommand A* a; }
-        alias Graph = TypeGraph!(A, B);
+        alias Graph = BottomUpCommandTypeGraph!(A, B);
         static assert(is(Graph.Types == AliasSeq!(A, B)));
 
         enum AIndex = Graph.getTypeIndexOf!A;
@@ -234,15 +252,17 @@ unittest
     // Cycle detection
     {
         static struct A { @ParentCommand A* a; }
-        static assert(!__traits(compiles, TypeGraph!A));
+        static assert(!__traits(compiles, BottomUpCommandTypeGraph!A));
     }
-}
-version(unittest)
-{
-    // These have to be outside function scope to refer to themselves.
-    struct A0 { @ParentCommand B0* b; }
-    struct B0 { @ParentCommand A0* a; }
-    static assert(!__traits(compiles, TypeGraph!(A0, B0)));
+
+    template Cycle()
+    {
+        struct A0 { @ParentCommand B0* b; }
+        struct B0 { @ParentCommand A0* a; }
+        static assert(!__traits(compiles, BottomUpCommandTypeGraph!(A0, B0)));
+    }
+
+    alias a = Cycle!();
 }
 
 
@@ -267,9 +287,13 @@ template AllCommandsOf(Modules...)
     alias AllCommandsOf = staticMap!(getCommands, Modules);
 }
 
-template TypeGraphFromRootTypes(RootTypes...)
+
+/// Represents a command type graph where the information about the parent-child
+/// relationships of commands are drawn from the parents, via the @Subcommands UDA.
+template TopDownCommandTypeGraph(RootTypes...)
 {
     alias Node = TypeGraphNode;
+    private alias AllTypes = AllSubcommandsOf!RootTypes;
 
     private immutable graphData = getGraphData();
 
@@ -296,7 +320,6 @@ template TypeGraphFromRootTypes(RootTypes...)
         // Which is why I'm doing all of the remapping below. 
         // It's still a bad idea to map to a command from two places, because then this array
         // will contain ALL of the subcommands of that type both times!
-        alias AllTypes = AllSubcommandsOf!RootTypes;
 
         size_t[string] typeToIndex;
         size_t[] actualTypeIndexToAllTypeIndex;
@@ -313,15 +336,19 @@ template TypeGraphFromRootTypes(RootTypes...)
         size_t numTypes = actualTypeIndexToAllTypeIndex.length;
         Node[][] childrenGraph = new Node[][](numTypes);
 
-        static foreach (index, ParentType; Types)
+        static foreach (index, ParentType; AllTypes)
         {{
             size_t actualTypeIndex = typeToIndex[escapedName!ParentType];
-            static foreach (Subcommand; SubcommandsOf!ParentType)
-            {{
-                int fieldIndex = getIndexOfFieldWithParentPointerType!(ParentType, Subcommand);
-                size_t subcommandActualTypeIndex = typeToIndex[escapedName!Subcommand];
-                childrenGraph[actualTypeIndex] ~= Node(cast(int) subcommandActualTypeIndex, cast(int) fieldIndex);
-            }}
+
+            if (actualTypeIndexToAllTypeIndex[actualTypeIndex] == index)
+            {
+                static foreach (Subcommand; SubcommandsOf!ParentType)
+                {{
+                    int fieldIndex = getIndexOfFieldWithParentPointerType!(ParentType, Subcommand);
+                    size_t subcommandActualTypeIndex = typeToIndex[escapedName!Subcommand];
+                    childrenGraph[actualTypeIndex] ~= Node(cast(int) subcommandActualTypeIndex, cast(int) fieldIndex);
+                }}
+            }
         }}
 
         size_t[] rootTypeIndices; // @suppress(dscanner.suspicious.label_var_same_name)
@@ -365,69 +392,143 @@ template TypeGraphFromRootTypes(RootTypes...)
             ret ~= "\n";
         }
 
-        return Result(ret[], actualTypeIndexToAllTypeIndex, childrenGraph);
+        return Result(ret[], childrenGraph, rootTypeIndices);
     }
 }
+
 unittest
 {
+    template Basic()
     {
         @(Subcommands!B)
         static struct A {}
+
         static struct B { A* a; }
 
-        alias Graph = TypeGraphFromRootTypes!(A);
+        alias Graph = TopDownCommandTypeGraph!(A);
         static assert(is(Graph.Types == AliasSeq!(A, B)));
 
-        enum AIndex = Graph.getTypeIndexOf!A;
-        static assert(AIndex == 0);
+        enum AIndex = 0;
+        static assert(AIndex == Graph.getTypeIndexOf!A);
         
-        enum BIndex = Graph.getTypeIndexOf!B;
-        static assert(BIndex == 1);
+        enum BIndex = 1;
+        static assert(BIndex == Graph.getTypeIndexOf!B);
 
-        static assert(Graph.adjacencies[AIndex] == [TypeGraphNode(BIndex, 0)]);
+        enum node = TypeGraphNode(BIndex, 0);
+        static assert(Graph.adjacencies[AIndex].length == 1);
+        static assert(Graph.adjacencies[AIndex][0] == node);
         static assert(Graph.adjacencies[BIndex].length == 0);
 
         static assert(Graph.rootTypeIndices == [AIndex]);
     }
 
     // Cycle detection
+    template ParentOfSelf()
     {
         @(Subcommands!A)
         static struct A { A* a; }
-        static assert(!__traits(compiles, TypeGraphFromRootTypes!A));
+        static assert(!__traits(compiles, TopDownCommandTypeGraph!A));
     }
+
+    template Cycle()
     {
+        @(Subcommands!B)
         static struct A { B* b; }
         @(Subcommands!A)
         static struct B { A* a; }
-        static assert(!__traits(compiles, TypeGraphFromRootTypes!(A, B)));
+        static assert(!__traits(compiles, TopDownCommandTypeGraph!(A, B)));
+        static assert(!__traits(compiles, TopDownCommandTypeGraph!(A)));
+        static assert(!__traits(compiles, TopDownCommandTypeGraph!(B)));
     }
+
+    template NoField()
     {
         @(Subcommands!B)
         static struct A {}
         static struct B {}
 
+        alias Graph = TopDownCommandTypeGraph!(A);
         enum AIndex = Graph.getTypeIndexOf!A;
         enum BIndex = Graph.getTypeIndexOf!B;
-        static assert(Graph.adjacencies[AIndex] == [TypeGraphNode(BIndex, -1)]);
+        
+        enum node = TypeGraphNode(BIndex, -1);
+        static assert(Graph.adjacencies[AIndex].length == 1);
+        static assert(Graph.adjacencies[AIndex][0] == node);
+    }
+
+    template DuplicateParents()
+    {
+        @(Subcommands!C)
+        static struct A {}
+        @(Subcommands!C)
+        static struct B {}
+        static struct C {A* a; B* b;}
+
+        alias Graph = TopDownCommandTypeGraph!(A, B);
+        enum AIndex = Graph.getTypeIndexOf!A;
+        enum BIndex = Graph.getTypeIndexOf!B;
+        enum CIndex = Graph.getTypeIndexOf!C;
+        static assert(Graph.Types.length == 3);
+        
+        enum nodeParentA = TypeGraphNode(CIndex, 0);
+        enum nodeParentB = TypeGraphNode(CIndex, 1);
+        
+        static assert(Graph.adjacencies[AIndex].length == 1);
+        static assert(Graph.adjacencies[AIndex][0] == nodeParentA);
+
+        static assert(Graph.adjacencies[BIndex].length == 1);
+        static assert(Graph.adjacencies[BIndex][0] == nodeParentB);
+
+        static assert(Graph.adjacencies[CIndex].length == 0);
+    }
+
+    {
+        alias _ = Basic!();
+    }
+    {
+        alias _ = ParentOfSelf!();
+    }
+    {
+        alias _ = Cycle!();
+    }
+    {
+        alias _ = NoField!();
+    }
+    {
+        alias _ = DuplicateParents!();
     }
 }
-// version(unittest)
-// {
-//     // These have to be outside any function scope to refer to themselves.
-//     @(Subcommands!B1)
-//     struct A1 {}
-//     @(Subcommands!A1)
-//     struct B1 {}
-//     static assert(!__traits(compiles, TypeGraph!(A1)));
-// }
 
 
 template SubcommandsOf(CommandType)
 {
     alias _Subcommands = getUDAs!(CommandType, Subcommands);
-    alias getTypes(Attr) = Attr.Types;
-    alias SubcommandsOf = staticMap!(_Subcommands, getTypes);
+    alias getTypes(Attr : Subcommands!(Types), Types...) = Types;
+    alias SubcommandsOf = staticMap!(getTypes, _Subcommands);
+}
+unittest
+{
+    {
+        static struct A {}
+        static assert(is(SubcommandsOf!A == AliasSeq!()));
+    }
+    {
+        static struct A {}
+        @(Subcommands!A)
+        static struct B {}
+        static assert(is(SubcommandsOf!B == AliasSeq!A));
+    }
+    {
+        static struct A1 {}
+        static struct A2 {}
+        static struct A3 {}
+
+        @(Subcommands!(A1, A2))
+        @(Subcommands!(A3))
+        static struct B {}
+
+        static assert(is(SubcommandsOf!(B) == AliasSeq!(A1, A2, A3)));
+    }
 }
 
 template AllSubcommandsOf(CommandTypes...)
@@ -435,7 +536,7 @@ template AllSubcommandsOf(CommandTypes...)
     static if (CommandTypes.length == 1)
     {
         alias AllSubcommandsOf = AliasSeq!(
-            CommandTypes[0], staticMap!(SubcommandsOf!(CommandTypes[0]), AllSubcommandsOf));
+            CommandTypes[0], staticMap!(.AllSubcommandsOf, SubcommandsOf!(CommandTypes[0])));
     }
     else static if (CommandTypes.length == 0)
     {
@@ -443,27 +544,63 @@ template AllSubcommandsOf(CommandTypes...)
     }
     else
     {
-        alias AllSubcommandsOf = staticMap!(CommandTypes, AllSubcommandsOf);
+        alias AllSubcommandsOf = staticMap!(.AllSubcommandsOf, CommandTypes);
     }
 }
+unittest
+{
+    template Cycle()
+    {
+        @(Subcommands!B)
+        static struct A {}
+        @(Subcommands!A)
+        static struct B {}
+        static assert(!__traits(compiles, AllSubcommandsOf!A));
+        static assert(!__traits(compiles, AllSubcommandsOf!B));
+        static assert(!__traits(compiles, AllSubcommandsOf!(A, B)));
+    }
+
+    {
+        static struct A {}
+        static assert(is(AllSubcommandsOf!A == AliasSeq!(A)));
+    }
+
+    template SelfIncluded()
+    {
+        static struct A {}
+        @(Subcommands!A)
+        static struct B {}
+        static assert(is(AllSubcommandsOf!B == AliasSeq!(B, A)));
+    }
+
+    {
+        alias _ = Cycle!();
+    }
+    {
+        alias _ = SelfIncluded!();
+    }
+
+}
+
 
 private int getIndexOfFieldWithParentPointerType(ParentType, ChildType)()
 {
+    int result = -1;
     static foreach (SubcommandType; SubcommandsOf!ParentType)
     {
         static foreach (fieldIndex, field; SubcommandType.tupleof)
-        {
+        {{
             static if (is(typeof(field) : T*, T))
             {
                 // TODO: ParentCommand uda checks
                 static if (is(T == ParentType))
                 {
-                    return cast(int) fieldIndex;
+                    result = cast(int) fieldIndex;
                 }
             }
-        }
+        }}
     }
-    return -1;
+    return result;
 }
 
 unittest

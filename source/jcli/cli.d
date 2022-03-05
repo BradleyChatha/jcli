@@ -104,10 +104,10 @@ ExecuteCommandResult executeCommandIntermediate(T)(auto ref scope T command)
     }
 }
 
-template CommandTypeContext(_Types...)
+template CommandTypeContext(alias _Graph)
 {
-    alias Types = _Types;
-    alias Graph = TypeGraph!Types;
+    alias Graph = _Graph;
+    alias Types = Graph.Types;
 
     // I was debating the name for this function, I guess this one's alright 
     void executeWithCompileTimeTypeIndex
@@ -146,7 +146,7 @@ template CommandTypeContext(_Types...)
     
     // private alias getTypeNode(int typeIndex) = Types[typeIndex];
     import std.algorithm;
-    alias toTypes(Graph.Node[] nodes) = staticMap!(getType, aliasSeqOf!(map!"a.typeIndex"(nodes)));
+    alias toTypes(TypeGraphNode[] nodes) = staticMap!(getType, aliasSeqOf!(map!"a.typeIndex"(nodes)));
 }
 
 static scope struct IndexHelper(int typeIndex, alias CommandTypeContext) 
@@ -313,19 +313,26 @@ enum MatchAndExecuteState
 
 private alias State = MatchAndExecuteState;
 
-///
+/// Uses the bottom-up command gathering approach.
 template matchAndExecuteAcrossModules(Modules...)
 {
     alias bind = bindArgumentAcrossModules!Modules;
     alias Types = AllCommandsOf!Modules;
-    alias matchAndExecuteAcrossModules = matchAndExecute!(bind, Types);
+    alias matchAndExecuteAcrossModules = matchAndExecute!(bind, BottomUpCommandTypeGraph!Types);
+}
+
+/// Uses the top-down approach, and the given bind argument function.
+/// You don't need to scan the modules to do the top-down approach.
+template matchAndExecuteFromRootCommands(alias bindArgument, RootCommandTypes...)
+{
+    alias matchAndExecuteFromRootCommands = matchAndExecute!(bindArgument, TopDownCommandTypeGraph!RootCommandTypes);
 }
 
 /// Constructs the graph of the given command types, ...
-template matchAndExecute(alias bindArgument, CommandTypes...)
+template matchAndExecute(alias bindArgument, alias Graph)
 {
-    private alias _matchAndExecute = .matchAndExecute!(bindArgument, CommandTypes);
-    private alias _CommandTypeContext = CommandTypeContext!CommandTypes;
+    private alias _matchAndExecute = .matchAndExecute!(bindArgument, Graph);
+    private alias _CommandTypeContext = CommandTypeContext!(Graph);
 
     /// Forwards.
     int matchAndExecute
@@ -1011,10 +1018,10 @@ template MatchAndExecuteTypeContext(alias bindArgument, alias CommandTypeContext
 // This is kind of what I mean by a type-safe wrapper, but it also needs getters for everything
 // that would assert if the state is right and stuff like that.
 // Currently, this one is only used for tests.
-struct SimpleMatchAndExecuteHelper(Types...)
+struct SimpleMatchAndExecuteHelper(alias Graph)
 {
     alias bindArgument = jcli.argbinder.bindArgument!();
-    alias _CommandTypeContext = CommandTypeContext!(Types);
+    alias _CommandTypeContext = CommandTypeContext!(Graph);
     alias TypeContext = MatchAndExecuteTypeContext!(bindArgument, _CommandTypeContext);
 
     MatchAndParseContextWrapper!_CommandTypeContext context;
@@ -1041,7 +1048,8 @@ unittest
 {
     auto createHelperThing(Types...)(string[] args)
     {
-        return SimpleMatchAndExecuteHelper!Types(args);
+        alias Graph = BottomUpCommandTypeGraph!Types;
+        return SimpleMatchAndExecuteHelper!(Graph)(args);
     }
 
     {
@@ -1764,7 +1772,7 @@ unittest
         }
     }
     // Just to make sure it compiles
-    matchAndExecute!(bindArgument!(), A)(["A"]);
+    matchAndExecute!(bindArgument!(), DegenerateCommandTypeGraph!A)(["A"]);
     assert(test == 1);
 }
 
@@ -1787,8 +1795,8 @@ int executeSingleCommand
 )
 {
     alias bindArgument = jcli.argbinder.bindArgument!();
-    alias Types = AliasSeq!(TCommand);
-    alias TypeContext = MatchAndExecuteTypeContext!(bindArgument, CommandTypeContext!Types);
+    alias Graph = DegenerateCommandTypeGraph!TCommand;
+    alias TypeContext = MatchAndExecuteTypeContext!(bindArgument, CommandTypeContext!Graph);
 
     TypeContext.ParsingContext parsingContext;
     MatchAndExecuteContext context;
@@ -1928,12 +1936,3 @@ mixin template SingleCommandMain(TCommand)
         return executeSingleCommand!TCommand(args[1 .. $]);
     }
 }
-
-
-template matchAndExecuteCommandRecursively(RootCommandTypes...)
-{
-
-}
-
-
-
