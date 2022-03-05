@@ -17,6 +17,10 @@ enum LogLevel
     error,
 }
 
+// This default command will be matched every time, so the named arguments
+// will be processed before any named subcommands execute.
+// Aka `program_name --logLevel=warning subcommand_name` will bind `LogLevel.warning`
+// to the field `logLevel`, and then try to match the subcommand with the name `subcommand_name`. 
 @CommandDefault("The common context, passed to all things")
 struct CommonContext
 {
@@ -59,12 +63,16 @@ struct CommonContext
 @Command("print", "Prints the number.")
 struct Print
 {
+    // This UDA adds this command (print) as a subcommand of the default command (CommonContext).
     @ParentCommand
     CommonContext* commonOps;
 
     @ArgPositional("The number to print.")
     int number;
 
+    // Examples:
+    // program_name print 1
+    // program_name -logLevel=error print 2
     void onExecute()
     {
         writeln("number: ", number);
@@ -78,6 +86,7 @@ struct Print
 @Command("add", "Adds up two numbers.")
 struct Add
 {
+    // This UDA adds this command (add) as a subcommand of the default command (CommonContext).
     @ParentCommand
     CommonContext* commonOps;
 
@@ -87,6 +96,9 @@ struct Add
     @ArgPositional("The second number.")
     int number2;
 
+    // Examples:
+    // program_name add 1 2
+    // program_name -logLevel=error add 1 2
     void onExecute()
     {
         writeln(number1 + number2);

@@ -1,0 +1,4 @@
+name "top_down"
+targetType "executable"
+dependency "jcli" path="../../"
+sourceFiles "main.d"

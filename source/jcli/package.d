@@ -9,5 +9,5 @@ public import
     jcli.commandparser,
     jcli.text,
     jcli.helptext,
-    jcli.cli,
+    jcli.commandgraph,
     jcli.autocomplete;
