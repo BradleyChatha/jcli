@@ -205,9 +205,6 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
         }
     }
 
-    import std.stdio;
-    writeln(currentArgToken.kind);
-
     // Cannot be final, since there are flags.
     switch (currentArgToken.kind)
     {
