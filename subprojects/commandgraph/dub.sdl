@@ -1,0 +1,12 @@
+name "commandgraph"
+targetType "library"
+
+dependency "jcli:argbinder" version="*"
+dependency "jcli:argparser" version="*"
+dependency "jcli:commandparser" version="*"
+dependency "jcli:core" version="*"
+dependency "jcli:helptext" version="*"
+dependency "jcli:introspect" version="*"
+dependency "jcli:resolver" version="*"
+dependency "jcli:text" version="*"
+dependency "jcli:autocomplete" version="*"

@@ -695,7 +695,8 @@ ArgFlags inferOptionalityAndValidate(FieldType)(ArgFlags initialFlags, FieldType
             // `struct A { int a = 0; }`
             // Aka when the value is given, but is also the default.
             // Guys from the D server say it's probably impossible to do currently.
-            bool canInferOptional = FieldType.init != fieldDefaultValue;
+            // NOTE: `is` does bitwise comparison. `!=` would fail for float.nan
+            bool canInferOptional = FieldType.init !is fieldDefaultValue;
 
             if (messageIfAddedOptional is null && canInferOptional)
             {

@@ -1,6 +1,23 @@
 // See the tests in the tokenizer module, or just try it out with different inputs.
 void main(string[] args)
 {
+    /*
+        Examples:
+
+        tokenizer
+
+        tokenizer 123
+
+        tokenizer -- abc def
+
+        tokenizer -help --name "value"
+
+        tokenizer -named="value" orphan -named2 "valueorphan"
+
+        tokenizer 1 - 2
+
+        tokenizer -kek="w
+    */
     // TODO: rename to argtokenizer.
     import jcli.argparser;
     import std.stdio;

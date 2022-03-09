@@ -252,6 +252,11 @@ ConsumeSingleArgumentResultKind consumeSingleArgumentIntoCommand
                 {
                     static if (ArgumentInfo.takesOverflow)
                     {
+                        // TODO:
+                        // Could allow to convert this one before appending, it works with `aggregate` already.
+                        // Will have to do some flags inference and validation ideally, specifically for the overflow arg.
+                        // I guess it will be beneficial to add `ArgFlags.overflowBit` and `ArgFlags.rawBit`
+                        // so that every type of argument can be expressed just via flags.
                         command.getArgumentFieldRef!(ArgumentInfo.overflow)
                             ~= currentArgToken.fullSlice;
                     }
