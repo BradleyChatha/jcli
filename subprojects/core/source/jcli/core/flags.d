@@ -331,8 +331,8 @@ ArgFlags getRequiresExactlyOne(ArgFlags flags) pure nothrow @nogc @safe
 {
     switch (flags) with (ArgFlags)
     {
-        case _countBit:
-            return _multipleBit | _repeatableNameBit;
+        case _multipleBit:
+            return _countBit | _canRedefineBit | _aggregateBit;
         default:
             break;
     }
@@ -344,8 +344,8 @@ ArgFlags getRequiresOneOrMore(ArgFlags flags) pure nothrow @nogc @safe
 {
     switch (flags) with (ArgFlags)
     {
-        case _multipleBit:
-            return _countBit | _canRedefineBit | _aggregateBit;
+        case _countBit:
+            return _multipleBit | _repeatableNameBit;
         default:
             break;
     }
