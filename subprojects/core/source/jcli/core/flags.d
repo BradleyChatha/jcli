@@ -56,29 +56,48 @@ private
     /// The flags should only declare this regarding the flags after them. 
     struct IncompatibleWithAnyOf
     {
-        ArgFlags value;
+        int value;
     }
 
     /// Shows which other flags a feature is requred to be accompanied with.
     struct RequiresOneOrMoreOf
     {
-        ArgFlags value;
+        int value;
     }
 
     /// Shows which flags a feature requres exactly one of.
     struct RequiresExactlyOneOf
     {
-        ArgFlags value;
+        int value;
     }
 
     /// Shows which other flags a feature is requres with.
     struct RequiresAllOf
     {
-        ArgFlags value;
+        int value;
     }
 }
 
 package(jcli):
+
+// HACK: DMD-FE v2.102.2 has introduced/fixed a circular dependency bug, and we're being hit by it.
+//       So to compensate we store the values of `ArgFlags` in untyped enum members.
+enum : int
+{
+    _optionalBit_Hack = 1 << 0,
+    _multipleBit_Hack = 1 << 1,
+    _parseAsFlagBit_Hack = 1 << 2,
+    _countBit_Hack = 1 << 3,
+    _caseInsensitiveBit_Hack = 1 << 4,
+    _canRedefineBit_Hack = 1 << 5,
+    _repeatableNameBit_Hack = 1 << 6,
+    _aggregateBit_Hack = 1 << 7,
+    _requiredBit_Hack = 1 << 8,
+    _inferedOptionalityBit_Hack = 1 << 9,
+    _mayChangeOptionalityWithoutBreakingThingsBit_Hack = 1 << 10,
+    _positionalArgumentBit_Hack = 1 << 11,
+    _namedArgumentBit_Hack = 1 << 12,
+}
 
 enum ArgFlags
 {
@@ -86,68 +105,68 @@ enum ArgFlags
     none,
 
     /// If not given a value, will have its default value and not trigger an error.
-    _optionalBit = 1 << 0,
+    _optionalBit = _optionalBit_Hack,
 
     /// An argument with the same name may appear multiple times.
-    @RequiresExactlyOneOf(_countBit | _canRedefineBit | _aggregateBit)
-    _multipleBit = 1 << 1,
+    @RequiresExactlyOneOf(_countBit_Hack | _canRedefineBit_Hack | _aggregateBit_Hack)
+    _multipleBit = _multipleBit_Hack,
 
     /// Allow an argument name to appear without a value.
-    @IncompatibleWithAnyOf(_multipleBit)
-    @RequiresAllOf(_optionalBit)
-    _parseAsFlagBit = 1 << 2,
+    @IncompatibleWithAnyOf(_multipleBit_Hack)
+    @RequiresAllOf(_optionalBit_Hack)
+    _parseAsFlagBit = _parseAsFlagBit_Hack,
 
     /// Implies that the field should get the number of occurences of the argument.
-    @RequiresOneOrMoreOf(_multipleBit | _repeatableNameBit)
-    _countBit = 1 << 3,
+    @RequiresOneOrMoreOf(_multipleBit_Hack | _repeatableNameBit_Hack)
+    _countBit = _countBit_Hack,
 
     /// The name of the argument is case insensitive.
     /// Aka "--STUFF" will work in place of "--stuff".
-    _caseInsensitiveBit = 1 << 4,
+    _caseInsensitiveBit = _caseInsensitiveBit_Hack,
 
     /// If the argument appears multiple times, the last value provided will take effect.
-    @IncompatibleWithAnyOf(_countBit)
-    @RequiresAllOf(_multipleBit)
-    _canRedefineBit = 1 << 5,
+    @IncompatibleWithAnyOf(_countBit_Hack)
+    @RequiresAllOf(_multipleBit_Hack)
+    _canRedefineBit = _canRedefineBit_Hack,
 
     /// When an argument name is specified multiple times, count how many there are.
     /// Example: `-vvv` gives the count of 3.
-    @IncompatibleWithAnyOf(_parseAsFlagBit | _canRedefineBit)
-    @RequiresAllOf(_countBit)
-    _repeatableNameBit = 1 << 6,
+    @IncompatibleWithAnyOf(_parseAsFlagBit_Hack | _canRedefineBit_Hack)
+    @RequiresAllOf(_countBit_Hack)
+    _repeatableNameBit = _repeatableNameBit_Hack,
 
     /// Put all matched values in an array. 
-    @IncompatibleWithAnyOf(_parseAsFlagBit | _countBit | _canRedefineBit)
-    _aggregateBit = 1 << 7,
+    @IncompatibleWithAnyOf(_parseAsFlagBit_Hack | _countBit_Hack | _canRedefineBit_Hack)
+    _aggregateBit = _aggregateBit_Hack,
 
     /// The opposite of optional. Can usually be inferred.
-    @IncompatibleWithAnyOf(_optionalBit | _parseAsFlagBit)
-    _requiredBit = 1 << 8,
+    @IncompatibleWithAnyOf(_optionalBit_Hack | _parseAsFlagBit_Hack)
+    _requiredBit = _requiredBit_Hack,
 
     /// Whether the required bit or optional bit was given explicitly by the user
     /// or inferred by the system.
-    _inferedOptionalityBit = 1 << 9,
+    _inferedOptionalityBit = _inferedOptionalityBit_Hack,
 
     /// Meets the requirements of having their optionality being changed.
     /// This bit is kind of pointless so I will probably remove it.
-    @RequiresAllOf(_inferedOptionalityBit)
-    _mayChangeOptionalityWithoutBreakingThingsBit = 1 << 10,
+    @RequiresAllOf(_inferedOptionalityBit_Hack)
+    _mayChangeOptionalityWithoutBreakingThingsBit = _mayChangeOptionalityWithoutBreakingThingsBit_Hack,
 
     /// Whether is positional. 
     /// On the user side, it is usually provided via UDAs.
     @IncompatibleWithAnyOf(
-        _multipleBit
-        | _parseAsFlagBit
-        | _countBit
-        | _canRedefineBit
-        | _repeatableNameBit
-        | _aggregateBit)
-    _positionalArgumentBit = 1 << 11,
+        _multipleBit_Hack
+        | _parseAsFlagBit_Hack
+        | _countBit_Hack
+        | _canRedefineBit_Hack
+        | _repeatableNameBit_Hack
+        | _aggregateBit_Hack)
+    _positionalArgumentBit = _positionalArgumentBit_Hack,
 
     /// Whether is positional. 
     /// On the user side, it is usually provided via UDAs.
-    @IncompatibleWithAnyOf(_positionalArgumentBit)
-    _namedArgumentBit = 1 << 12,
+    @IncompatibleWithAnyOf(_positionalArgumentBit_Hack)
+    _namedArgumentBit = _namedArgumentBit_Hack,
 
     /// Whether a field is of struct type, containing subfields, which are also arguments.
     /// This means all fields of that nested struct are to be considered arguments, if marked as such.
@@ -324,7 +343,7 @@ private template _ArgFlagsInfo(Flags)
             {
                 static if (is(typeof(uda) == TUDA))
                 {
-                    result[index] = uda.value;
+                    result[index] = cast(Flags)uda.value;
                 }
             }
         }}
