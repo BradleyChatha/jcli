@@ -50,33 +50,6 @@ unittest
     }}
 }
 
-private
-{
-    /// Shows which other flags a feature is incompatible with.
-    /// The flags should only declare this regarding the flags after them. 
-    struct IncompatibleWithAnyOf
-    {
-        ArgFlags value;
-    }
-
-    /// Shows which other flags a feature is requred to be accompanied with.
-    struct RequiresOneOrMoreOf
-    {
-        ArgFlags value;
-    }
-
-    /// Shows which flags a feature requres exactly one of.
-    struct RequiresExactlyOneOf
-    {
-        ArgFlags value;
-    }
-
-    /// Shows which other flags a feature is requres with.
-    struct RequiresAllOf
-    {
-        ArgFlags value;
-    }
-}
 
 package(jcli):
 
@@ -89,16 +62,12 @@ enum ArgFlags
     _optionalBit = 1 << 0,
 
     /// An argument with the same name may appear multiple times.
-    @RequiresExactlyOneOf(_countBit | _canRedefineBit | _aggregateBit)
     _multipleBit = 1 << 1,
 
     /// Allow an argument name to appear without a value.
-    @IncompatibleWithAnyOf(_multipleBit)
-    @RequiresAllOf(_optionalBit)
     _parseAsFlagBit = 1 << 2,
 
     /// Implies that the field should get the number of occurences of the argument.
-    @RequiresOneOrMoreOf(_multipleBit | _repeatableNameBit)
     _countBit = 1 << 3,
 
     /// The name of the argument is case insensitive.
@@ -106,22 +75,16 @@ enum ArgFlags
     _caseInsensitiveBit = 1 << 4,
 
     /// If the argument appears multiple times, the last value provided will take effect.
-    @IncompatibleWithAnyOf(_countBit)
-    @RequiresAllOf(_multipleBit)
     _canRedefineBit = 1 << 5,
 
     /// When an argument name is specified multiple times, count how many there are.
     /// Example: `-vvv` gives the count of 3.
-    @IncompatibleWithAnyOf(_parseAsFlagBit | _canRedefineBit)
-    @RequiresAllOf(_countBit)
     _repeatableNameBit = 1 << 6,
 
     /// Put all matched values in an array. 
-    @IncompatibleWithAnyOf(_parseAsFlagBit | _countBit | _canRedefineBit)
     _aggregateBit = 1 << 7,
 
     /// The opposite of optional. Can usually be inferred.
-    @IncompatibleWithAnyOf(_optionalBit | _parseAsFlagBit)
     _requiredBit = 1 << 8,
 
     /// Whether the required bit or optional bit was given explicitly by the user
@@ -130,23 +93,14 @@ enum ArgFlags
 
     /// Meets the requirements of having their optionality being changed.
     /// This bit is kind of pointless so I will probably remove it.
-    @RequiresAllOf(_inferedOptionalityBit)
     _mayChangeOptionalityWithoutBreakingThingsBit = 1 << 10,
 
     /// Whether is positional. 
     /// On the user side, it is usually provided via UDAs.
-    @IncompatibleWithAnyOf(
-        _multipleBit
-        | _parseAsFlagBit
-        | _countBit
-        | _canRedefineBit
-        | _repeatableNameBit
-        | _aggregateBit)
     _positionalArgumentBit = 1 << 11,
 
     /// Whether is positional. 
     /// On the user side, it is usually provided via UDAs.
-    @IncompatibleWithAnyOf(_positionalArgumentBit)
     _namedArgumentBit = 1 << 12,
 
     /// Whether a field is of struct type, containing subfields, which are also arguments.
@@ -301,10 +255,10 @@ unittest
 
 private template _ArgFlagsInfo(Flags)
 {
-    immutable Flags[argFlagCount] incompatible        = getFlagsInfo!IncompatibleWithAnyOf;
-    immutable Flags[argFlagCount] requiresAll         = getFlagsInfo!RequiresAllOf;
-    immutable Flags[argFlagCount] requiresExactlyOne  = getFlagsInfo!RequiresExactlyOneOf;
-    immutable Flags[argFlagCount] requiresOneOrMore   = getFlagsInfo!RequiresOneOrMoreOf;
+    immutable Flags[argFlagCount] incompatible        = getFlagsInfo!getIncompatible;
+    immutable Flags[argFlagCount] requiresAll         = getFlagsInfo!getRequiresAll;
+    immutable Flags[argFlagCount] requiresExactlyOne  = getFlagsInfo!getRequiresExactlyOne;
+    immutable Flags[argFlagCount] requiresOneOrMore   = getFlagsInfo!getRequiresOneOrMore;
 
     enum argFlagCount = 
     (){
@@ -313,22 +267,88 @@ private template _ArgFlagsInfo(Flags)
         return Flags.max.bitsSet.array[$ - 1] + 1;
     }();
 
-    Flags[argFlagCount] getFlagsInfo(TUDA)()
+    Flags[argFlagCount] getFlagsInfo(alias f)()
     {
         Flags[argFlagCount] result;
 
         static foreach (memberName; __traits(allMembers, Flags))
         {{
             size_t index = __traits(getMember, Flags, memberName).bitsSet.front;
-            static foreach (uda; __traits(getAttributes, __traits(getMember, Flags, memberName)))
-            {
-                static if (is(typeof(uda) == TUDA))
-                {
-                    result[index] = uda.value;
-                }
-            }
+            ArgFlags flag = f(cast(ArgFlags) (1 << index));
+            result[index] = flag;
         }}
 
         return result;
     }
+}
+
+
+ArgFlags getIncompatible(ArgFlags flags) pure nothrow @nogc @safe
+{
+    switch (flags) with (ArgFlags)
+    {
+        case _parseAsFlagBit:
+            return _multipleBit;
+        case _canRedefineBit:
+            return _countBit;
+        case _repeatableNameBit:
+            return _parseAsFlagBit | _canRedefineBit;
+        case _aggregateBit:
+            return _parseAsFlagBit | _countBit | _canRedefineBit;
+        case _requiredBit:
+            return _optionalBit | _parseAsFlagBit;
+        case _positionalArgumentBit:
+            return _multipleBit | _parseAsFlagBit | _countBit | _canRedefineBit | _repeatableNameBit | _aggregateBit;
+        case _namedArgumentBit:
+            return _positionalArgumentBit;
+        default:
+            break;
+    }
+
+    return ArgFlags.none;
+}
+
+ArgFlags getRequiresAll(ArgFlags flags) pure nothrow @nogc @safe
+{
+    switch (flags) with (ArgFlags)
+    {
+        case _parseAsFlagBit:
+            return _optionalBit;
+        case _canRedefineBit:
+            return _multipleBit;
+        case _repeatableNameBit:
+            return _countBit;
+        case _mayChangeOptionalityWithoutBreakingThingsBit:
+            return _inferedOptionalityBit;
+        default:
+            break;
+    }
+
+    return ArgFlags.none;
+}
+
+ArgFlags getRequiresExactlyOne(ArgFlags flags) pure nothrow @nogc @safe
+{
+    switch (flags) with (ArgFlags)
+    {
+        case _multipleBit:
+            return _countBit | _canRedefineBit | _aggregateBit;
+        default:
+            break;
+    }
+
+    return ArgFlags.none;
+}
+
+ArgFlags getRequiresOneOrMore(ArgFlags flags) pure nothrow @nogc @safe
+{
+    switch (flags) with (ArgFlags)
+    {
+        case _countBit:
+            return _multipleBit | _repeatableNameBit;
+        default:
+            break;
+    }
+
+    return ArgFlags.none;
 }
