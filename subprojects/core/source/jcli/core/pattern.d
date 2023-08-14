@@ -4,6 +4,7 @@ struct Pattern
 {
     import std.ascii;
     import std.algorithm;
+    import std.exception : assumeWontThrow;
 
     string[] items;
     alias items this;
@@ -12,7 +13,7 @@ struct Pattern
     in
     {
         assert(items.length > 0, "The pattern must contain at least one item.");
-        assert(items.all!(i => i.all!isASCII), "The pattern items must be ascii.");
+        assert(items.all!(i => i.all!isASCII.assumeWontThrow), "The pattern items must be ascii.");
         assert(items.all!(i => i.length > 0), "The pattern must not contain empty items.");
         assert(items.map!(i => i.length).maxIndex == 0, "The first item in the items list must be the longest");
     }

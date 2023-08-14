@@ -22,10 +22,10 @@ mixin template ArgumentGetters()
 
     inout nothrow @nogc pure @safe
     {
-        ref inout(string) description() { return uda.description; }
-        ref inout(string) identifier() { return argument.identifier; }
-        ref inout(ArgFlags) flags() { return argument.flags; }
-        ref inout(ArgGroup) group() { return argument.group; }
+        ref inout(string) description() return { return uda.description; }
+        ref inout(string) identifier() return { return argument.identifier; }
+        ref inout(ArgFlags) flags() return { return argument.flags; }
+        ref inout(ArgGroup) group() return { return argument.group; }
     }
 }
 
